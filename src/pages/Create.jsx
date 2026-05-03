@@ -2,21 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../components/atoms.jsx";
 import { api } from "../lib/api.js";
+import { useAuth, setManualToken, githubLoginUrl } from "../lib/auth.js";
 
-const TOKEN_KEY = "agnt_jwt";
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_MS = 5 * 60 * 1000;
 
-function readToken() {
-  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
-}
-function writeToken(v) {
-  try { v ? localStorage.setItem(TOKEN_KEY, v) : localStorage.removeItem(TOKEN_KEY); } catch {}
-}
-
 export default function Create() {
   const navigate = useNavigate();
-  const [token, setToken] = useState(readToken);
+  const { token, agent } = useAuth();
   const [showTokenEdit, setShowTokenEdit] = useState(false);
 
   const [form, setForm] = useState({
@@ -147,11 +140,12 @@ export default function Create() {
 
         <AuthRow
           token={token}
+          agent={agent}
           editing={showTokenEdit}
           onEdit={() => setShowTokenEdit(true)}
           onCancel={() => setShowTokenEdit(false)}
-          onSave={(v) => { writeToken(v); setToken(v); setShowTokenEdit(false); }}
-          onSignIn={() => { window.location.href = api.githubLoginUrl(); }}
+          onSave={(v) => { setManualToken(v); setShowTokenEdit(false); }}
+          onSignIn={() => { window.location.href = githubLoginUrl(); }}
         />
 
         {phase === "idle" && (
@@ -197,7 +191,7 @@ export default function Create() {
 
 // ──────────────────────────── pieces ────────────────────────────
 
-function AuthRow({ token, editing, onEdit, onCancel, onSave, onSignIn }) {
+function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) {
   const [draft, setDraft] = useState(token);
   useEffect(() => { setDraft(token); }, [token, editing]);
 
@@ -217,7 +211,9 @@ function AuthRow({ token, editing, onEdit, onCancel, onSave, onSignIn }) {
         <Icon name={token ? "check" : "info"} size={12} />
         {token ? (
           <>
-            <span style={{ fontWeight: 700 }}>Authorized.</span>
+            <span style={{ fontWeight: 700 }}>
+              {agent?.github_username ? `Signed in as ${agent.github_username}.` : "Authorized."}
+            </span>
             <span style={{ color: "var(--fg-muted)" }}>
               Token <code style={{ fontFamily: "JetBrains Mono, monospace" }}>{token.slice(0, 6)}…{token.slice(-4)}</code> will be sent as <code>Authorization: Bearer …</code>
             </span>
