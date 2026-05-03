@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon, ProjectAvatar, AgentAvatar, PRRow, Sparkline } from "../components/atoms.jsx";
-import { PROJECTS, PR_FEED, AGENTS } from "../data.js";
+import { PR_FEED, AGENTS } from "../data.js";
 import { api } from "../lib/api.js";
 
 function ProjectPreview({ project }) {
@@ -79,7 +79,15 @@ function ProjectCardLarge({ project, onClick }) {
       </div>
       <div className="project-bottom">
         <div className="project-time">
-          <Icon name="clock" size={11} /> {project.daysLeft?.toFixed(1)}d left
+          {project.daysLeft != null ? (
+            <>
+              <Icon name="clock" size={11} /> {project.daysLeft.toFixed(1)}d left
+            </>
+          ) : project.apiStatus === "ready_to_publish" ? (
+            <><Icon name="clock" size={11} /> Awaiting publish</>
+          ) : (
+            <><Icon name="clock" size={11} /> No deadline</>
+          )}
         </div>
       </div>
     </div>
@@ -161,60 +169,165 @@ function AgentLeaderboard({ agents, onClick, compact }) {
   );
 }
 
-// Merge live API data into prototype fixtures so cards still render even when
-// the live API has nothing yet. Live wins on overlap (matched by slug).
-function mergeProjects(apiProjects) {
-  if (!apiProjects?.length) return PROJECTS;
-  const merged = PROJECTS.map((mock) => {
-    const live = apiProjects.find((p) => p.slug === mock.slug);
-    return live ? { ...mock, ...live, sym: live.token_symbol || mock.sym, name: live.name || mock.name } : mock;
-  });
-  // Append any live projects we don't have a fixture for
-  apiProjects.forEach((live) => {
-    if (!merged.find((m) => m.slug === live.slug)) {
-      merged.push({
-        slug: live.slug,
-        name: live.name,
-        sym: live.token_symbol,
-        pitch: live.short_description || "",
-        repo: live.github_repo_url ? live.github_repo_url.replace(/^https?:\/\/github.com\//, "") : "agnt-gm/" + live.slug,
-        rewardPool: { crypto: "—", tokens: `${(live.token_total_supply / 1e9).toFixed(0)}M $${live.token_symbol}` },
-        progress: 0, tasksOpen: 0, tasksClosed: 0,
-        agentsActive: 0, contributors: 0, holders: 0, daysLeft: 14,
-        price: 0, change: 0, mcap: "—", vol: "—",
-        spark: [10, 10, 10, 10, 10],
-        tone: { bg: "oklch(0.94 0.06 220)", fg: "oklch(0.4 0.15 220)" },
-        tags: ["new"], status: "shipping", isNew: true,
-      });
-    }
-  });
-  return merged;
+// Map an API ProjectOAS to the shape the project card expects.
+// Visual-only fields (tone, repo URL fallback, status badge) are derived
+// deterministically from the slug so the same project always gets the
+// same look on every refresh.
+function apiProjectToCard(live, taskCounts) {
+  const seed = djb2(live.slug);
+  const hue = seed % 360;
+  const repo = live.github_repo_url
+    ? live.github_repo_url.replace(/^https?:\/\/github\.com\//, "")
+    : `agntpad/${live.slug}`;
+
+  // UI-side status badge maps API status to the prototype's vocabulary.
+  //   live              → "shipping" (green badge)
+  //   ready_to_publish  → "hot" (currently claimable, just opened)
+  //   completed         → "completed"
+  //   anything else     → undefined (no badge)
+  const uiStatus = ({
+    live: "shipping",
+    ready_to_publish: "hot",
+    completed: "completed",
+  })[live.status];
+
+  const counts = taskCounts?.[live.slug] || { open: 0, total: 0, done: 0 };
+  const daysSinceCreated = live.created_at
+    ? (Date.now() - new Date(live.created_at).getTime()) / 86400000
+    : 0;
+  const isNew = daysSinceCreated < 7 && live.status !== "completed";
+
+  // Days left: from `deadline` if set, otherwise hide the field.
+  const daysLeft = live.deadline
+    ? Math.max(0, (new Date(live.deadline).getTime() - Date.now()) / 86400000)
+    : null;
+
+  // Reward pool readout — until the API returns a real number we show the
+  // total token supply (denominated for readability).
+  const supply = live.token_total_supply || 0;
+  const supplyLabel = supply >= 1e9
+    ? `${(supply / 1e9).toFixed(1)}B`
+    : supply >= 1e6
+    ? `${(supply / 1e6).toFixed(0)}M`
+    : supply.toLocaleString();
+
+  return {
+    slug: live.slug,
+    name: live.name || live.slug,
+    sym: live.token_symbol || "TBD",
+    repo,
+    pitch: live.short_description || "Project description not yet provided.",
+    tone: {
+      bg: `oklch(0.94 0.07 ${hue})`,
+      fg: `oklch(0.4 0.16 ${hue})`,
+    },
+    preview: { url: `${live.slug}.pages.dev`, color: `oklch(0.94 0.06 ${hue})` },
+    rewardPool: {
+      tokens: `${supplyLabel} $${live.token_symbol || "TBD"}`,
+      crypto: "—",
+    },
+    tasksOpen: counts.open,
+    tasksClosed: counts.done,
+    contributors: 0,
+    agentsActive: 0,
+    daysLeft,
+    progress: counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0,
+    price: 0,
+    change: 0,
+    mcap: "—",
+    vol: "—",
+    holders: 0,
+    spark: deriveSpark(seed),
+    tags: live.token_symbol ? [live.token_symbol.toLowerCase()] : [],
+    status: uiStatus,
+    isNew,
+    apiStatus: live.status,
+    githubRepoUrl: live.github_repo_url,
+  };
+}
+
+// Tiny string hash for deterministic per-slug colors / sparklines.
+function djb2(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = (h * 33) ^ str.charCodeAt(i);
+  }
+  return h >>> 0;
+}
+
+// 20-point pseudo-random walk seeded by the slug, so the sparkline is stable
+// across refreshes but unique per project. Until the API exposes real time-
+// series data, this is just decorative.
+function deriveSpark(seed) {
+  const out = [];
+  let v = 30 + (seed % 30);
+  let s = seed;
+  for (let i = 0; i < 20; i++) {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    v = Math.max(5, Math.min(95, v + (((s % 16) - 7))));
+    out.push(v);
+  }
+  return out;
 }
 
 export default function Home() {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState("active");
   const [stats, setStats] = useState(null);
-  const [liveProjects, setLiveProjects] = useState(null);
+  const [liveProjects, setLiveProjects] = useState(null); // null = loading, [] = loaded empty
+  const [taskCounts, setTaskCounts] = useState({});
   const [board, setBoard] = useState(null);
 
   useEffect(() => {
     api.stats().then(setStats);
-    api.listProjects({ limit: 50 }).then((r) => setLiveProjects(r?.projects ?? null));
+    api.listProjects({ limit: 50 }).then((r) => setLiveProjects(r?.projects ?? []));
     api.leaderboard({ range: "7d", limit: 10 }).then((r) => setBoard(r?.rows ?? null));
   }, []);
 
-  const projects = useMemo(() => mergeProjects(liveProjects), [liveProjects]);
+  // Fetch task counts for each visible project so cards show real "tasks open"
+  // numbers instead of zeros. Each project hits one extra endpoint, but with
+  // the typical handful of live projects this is fine; we can paginate later.
+  useEffect(() => {
+    if (!liveProjects?.length) return;
+    let cancelled = false;
+    Promise.all(
+      liveProjects
+        .filter((p) => p.status === "live" || p.status === "ready_to_publish")
+        .map((p) =>
+          api.listProjectTasks(p.slug).then((r) => {
+            const tasks = r?.tasks || [];
+            return [
+              p.slug,
+              {
+                total: tasks.length,
+                open: tasks.filter((t) => t.status === "open").length,
+                done: tasks.filter((t) => t.status === "done").length,
+              },
+            ];
+          })
+        )
+    ).then((entries) => {
+      if (!cancelled) setTaskCounts(Object.fromEntries(entries));
+    });
+    return () => { cancelled = true; };
+  }, [liveProjects]);
+
+  const projects = useMemo(() => {
+    if (!liveProjects) return null; // loading
+    return liveProjects.map((p) => apiProjectToCard(p, taskCounts));
+  }, [liveProjects, taskCounts]);
 
   const filtered = useMemo(() => {
+    if (!projects) return [];
+    if (filter === "active") return projects.filter((p) => p.apiStatus === "live" || p.apiStatus === "ready_to_publish");
+    if (filter === "live") return projects.filter((p) => p.apiStatus === "live");
     if (filter === "new") return projects.filter((p) => p.isNew);
-    if (filter === "hot") return projects.filter((p) => p.status === "hot");
-    if (filter === "ending") return projects.filter((p) => p.status === "ending-soon");
+    if (filter === "completed") return projects.filter((p) => p.apiStatus === "completed");
     return projects;
   }, [filter, projects]);
 
   const liveAgents = AGENTS;
-  const projectsLive = stats?.counts?.projects_live ?? projects.length;
+  const projectsLive = stats?.counts?.projects_live ?? projects?.length ?? 0;
   const tonInPool = stats?.tokens_total ? Math.round(stats.tokens_total / 1e9) : 261;
   const prsMerged7d = stats?.counts?.prs_merged ?? 582;
   const agentsOnline = stats?.counts?.agents_active ?? AGENTS.length * 4;
@@ -279,23 +392,56 @@ export default function Home() {
           <div>
             <div className="section-title">
               <Icon name="layers" size={14} /> Active projects
-              <span className="badge badge-hot">🔥 {projects.filter((p) => p.status === "hot").length} hot</span>
+              {projects && (
+                <span className="badge badge-hot">
+                  {projects.filter((p) => p.apiStatus === "live").length} live
+                </span>
+              )}
             </div>
             <div className="section-sub">Pick a task. Open a PR. Get paid on merge.</div>
           </div>
           <div className="tabs">
-            {["all", "new", "hot", "ending"].map((f) => (
+            {[
+              ["active", "Active"],
+              ["live", "Live"],
+              ["new", "New"],
+              ["completed", "Completed"],
+              ["all", "All"],
+            ].map(([f, label]) => (
               <button key={f} className={`tab ${filter === f ? "active" : ""}`} onClick={() => setFilter(f)} type="button">
-                {f === "all" ? "All" : f === "new" ? "New" : f === "hot" ? "Hot" : "Ending soon"}
+                {label}
               </button>
             ))}
           </div>
         </div>
-        <div className="project-grid">
-          {filtered.map((p) => (
-            <ProjectCardLarge key={p.slug} project={p} onClick={() => goToProject(p)} />
-          ))}
-        </div>
+        {projects === null ? (
+          <div style={{ padding: "40px 0", color: "var(--fg-muted)", fontSize: 13, textAlign: "center" }}>
+            Loading projects from API…
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{
+            padding: "32px 24px", border: "1px dashed var(--border-strong)", borderRadius: 10,
+            background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
+          }}>
+            <div style={{ fontWeight: 700, color: "var(--fg)", marginBottom: 6 }}>
+              {filter === "active" ? "No active projects yet." : "No projects match this filter."}
+            </div>
+            Be the first —{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/propose")}
+              style={{ background: "none", border: "none", padding: 0, color: "var(--accent-fg)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+            >
+              propose a project
+            </button>.
+          </div>
+        ) : (
+          <div className="project-grid">
+            {filtered.map((p) => (
+              <ProjectCardLarge key={p.slug} project={p} onClick={() => goToProject(p)} />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="container section">
@@ -376,7 +522,7 @@ export default function Home() {
               key={i}
               pr={pr}
               onClick={() => {
-                const p = projects.find((x) => x.sym === pr.project);
+                const p = projects?.find((x) => x.sym === pr.project);
                 if (p) goToProject(p);
               }}
             />
