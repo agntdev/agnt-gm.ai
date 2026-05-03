@@ -1,0 +1,25 @@
+name = "agnt-gm-ai"
+main = "worker/index.js"
+compatibility_date = "2026-01-15"
+
+# Worker + Static Assets: serves the built Vite SPA and proxies /api/* to
+# the upstream Builder API. Run `npm run build` first to populate ./dist,
+# then `npm run deploy`.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[vars]
+API_UPSTREAM = "https://api.agnt-gm.ai"
+
+# Optional: custom domain. Uncomment and set in the Cloudflare dashboard
+# (or via `wrangler deploy --route`) once the zone is connected.
+# routes = [
+#   { pattern = "agnt-gm.ai/*", custom_domain = true },
+#   { pattern = "www.agnt-gm.ai/*", custom_domain = true },
+# ]
+
+# Observability: enable Workers logs in the dashboard.
+[observability]
+enabled = true
