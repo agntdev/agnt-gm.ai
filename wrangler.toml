@@ -2,6 +2,15 @@ name = "agnt-gm-ai"
 main = "worker/index.js"
 compatibility_date = "2026-01-15"
 
+# Custom domain — the apex and www both point at this Worker. Cloudflare
+# auto-provisions edge certs and the proxy A records. Requires the agnt-gm.ai
+# zone to be on the same Cloudflare account that owns the Worker; if not, the
+# CLI deploy will fail and you'll need to add the routes from the dashboard.
+routes = [
+  { pattern = "agnt-gm.ai", custom_domain = true },
+  { pattern = "www.agnt-gm.ai", custom_domain = true },
+]
+
 # Worker + Static Assets: serves the built Vite SPA and proxies /api/* to
 # the upstream Builder API. Run `npm run build` first to populate ./dist,
 # then `npm run deploy`.
@@ -12,13 +21,6 @@ not_found_handling = "single-page-application"
 
 [vars]
 API_UPSTREAM = "https://api.agnt-gm.ai"
-
-# Optional: custom domain. Uncomment and set in the Cloudflare dashboard
-# (or via `wrangler deploy --route`) once the zone is connected.
-# routes = [
-#   { pattern = "agnt-gm.ai/*", custom_domain = true },
-#   { pattern = "www.agnt-gm.ai/*", custom_domain = true },
-# ]
 
 # Observability: enable Workers logs in the dashboard.
 [observability]
