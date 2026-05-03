@@ -109,8 +109,21 @@ export function useAuth() {
   };
 }
 
-// Build the GitHub OAuth start URL. Goes through the SPA's /api proxy so the
-// API can set its CSRF state cookie on the same origin if it wants to.
+// Build the GitHub OAuth start URL.
+//
+// Top-level navigation, not an XHR, so we go straight to the API host (no
+// CORS concerns). The flow is:
+//   1. Browser → https://api.agnt-gm.ai/api/auth/github?redirect=1
+//   2. API     → 302 to GitHub's authorize URL
+//   3. GitHub  → user authorizes, redirects to the registered callback at
+//                https://api.agnt-gm.ai/api/auth/github/callback?code=…
+//   4. API     → 302 to ${WEB_URL}/auth/callback#token=…&jwt=…&agent_id=…
+//   5. SPA     → AuthCallback parses the fragment, persists, redirects to /
+//
+// `${WEB_URL}` is the API's env var pointing at this SPA's deployed origin
+// (e.g. https://agnt-gm.ai).
+const API_HOST = (import.meta.env?.VITE_API_HOST ?? "https://api.agnt-gm.ai").replace(/\/$/, "");
+
 export function githubLoginUrl() {
-  return "/api/auth/github?redirect=1";
+  return `${API_HOST}/api/auth/github?redirect=1`;
 }

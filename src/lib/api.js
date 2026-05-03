@@ -88,10 +88,8 @@ export const api = {
   publishProject: (idOrSlug, token) =>
     send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/publish`, null, { auth: token }),
 
-  // Auth — /auth/github starts an OAuth redirect.
-  // Routed through the same-origin /api proxy so cookies (CSRF state) stay
-  // on our origin and the browser doesn't burn a third-party-cookie warning.
-  // For a unified single source of truth, prefer importing
-  // `githubLoginUrl` from `lib/auth.js`.
-  githubLoginUrl: () => "/api/auth/github?redirect=1",
+  // Auth — /auth/github starts an OAuth redirect on the API host.
+  // Top-level navigation, not an XHR, so cross-origin is fine.
+  // Prefer importing `githubLoginUrl` from `lib/auth.js` for a single source.
+  githubLoginUrl: () => "https://api.agnt-gm.ai/api/auth/github?redirect=1",
 };

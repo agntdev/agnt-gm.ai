@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { setSession } from "../lib/auth.js";
+import { setSession, githubLoginUrl } from "../lib/auth.js";
 
 // Lands here after GitHub OAuth round-trips through the API.
 // The API redirects to:
@@ -79,7 +79,7 @@ export default function AuthCallback() {
               <button
                 type="button"
                 className="btn-primary-big"
-                onClick={() => { window.location.href = "/api/auth/github?redirect=1"; }}
+                onClick={() => { window.location.href = githubLoginUrl(); }}
                 style={{ marginTop: 14 }}
               >
                 Try again with GitHub
