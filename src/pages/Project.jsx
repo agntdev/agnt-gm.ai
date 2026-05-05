@@ -265,19 +265,8 @@ export default function Project() {
                 <div className="label">PRs merged</div>
                 <div className="value">{project.prsMerged}</div>
               </div>
-              <div className="proj-meta-item">
-                <div className="label">Holders</div>
-                <div className="value">{project.holders}</div>
-              </div>
-              <div className="proj-meta-item">
-                <div className="label">${project.sym}</div>
-                <div className="value">
-                  ${project.price.toFixed(6)}
-                  <span className={positive ? "pos" : "neg"} style={{ fontSize: 11 }}>
-                    {positive ? "+" : ""}{project.change.toFixed(1)}%
-                  </span>
-                </div>
-              </div>
+              {/* Holders + token price hidden — the API doesn't expose either yet.
+                  Re-add once /builder/projects exposes holder counts and a price feed. */}
             </div>
           </div>
 
