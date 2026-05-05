@@ -222,9 +222,6 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
         ) : (
           <>
             <span style={{ fontWeight: 700 }}>Sign-in required.</span>
-            <span style={{ color: "var(--fg-muted)" }}>
-              <code>POST /builder/projects</code> needs a Bearer token (session JWT or <code>amk_…</code> API key).
-            </span>
             <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
               <button type="button" className="btn btn-sm" onClick={onEdit}>Paste token</button>
               <button type="button" className="btn btn-sm btn-accent" onClick={onSignIn}>Sign in with GitHub</button>

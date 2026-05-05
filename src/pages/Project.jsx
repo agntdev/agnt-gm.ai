@@ -142,35 +142,6 @@ export default function Project() {
                   </div>
                 )}
 
-                <div className="about-card">
-                  <div className="about-card-head">
-                    <div className="about-card-title">
-                      <Icon name="layers" size={12} /> Roadmap
-                    </div>
-                    {isOwner && <button className="btn btn-sm" type="button">+ Propose milestone</button>}
-                  </div>
-                  <div className="roadmap">
-                    {[
-                      { id: "M1", title: "MVP — core flows shipping", status: "done", note: "delivered " + Math.floor((project.daysLeft || 0) + 4) + "d ago" },
-                      { id: project.milestone?.current?.split(" ")[0] || "M2", title: project.milestone?.current?.split(" — ")[1] || "Current sprint", status: "current", note: (project.milestone?.pct ?? 0) + "% complete" },
-                      { id: project.milestone?.next?.split(" ")[0] || "M3", title: project.milestone?.next?.split(" — ")[1] || "Up next", status: "next", note: "queued — " + (project.daysLeft || 0).toFixed(1) + "d window" },
-                      { id: "M4", title: "Public launch + token unlock", status: "future", note: "season end" },
-                    ].map((m, i) => (
-                      <div key={i} className={`roadmap-row ${m.status}`}>
-                        <div className="roadmap-marker">
-                          {m.status === "done" && "✓"}
-                          {m.status === "current" && <span className="dot-pulse" />}
-                          {m.status === "next" && "○"}
-                          {m.status === "future" && "○"}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div className="roadmap-title"><span className="m-id">{m.id}</span> {m.title}</div>
-                          <div className="roadmap-note">{m.note}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               <div>
