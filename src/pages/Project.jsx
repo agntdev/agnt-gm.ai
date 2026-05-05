@@ -145,16 +145,6 @@ export default function Project() {
                 <div className="about-card">
                   <div className="about-card-head">
                     <div className="about-card-title">
-                      <Icon name="info" size={12} /> About this project
-                    </div>
-                    {isOwner && <button className="btn btn-sm" type="button">Edit</button>}
-                  </div>
-                  <p className="about-prose">{live?.short_description || project.about || project.pitch}</p>
-                </div>
-
-                <div className="about-card">
-                  <div className="about-card-head">
-                    <div className="about-card-title">
                       <Icon name="layers" size={12} /> Roadmap
                     </div>
                     {isOwner && <button className="btn btn-sm" type="button">+ Propose milestone</button>}
