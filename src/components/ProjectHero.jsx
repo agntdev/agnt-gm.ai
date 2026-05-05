@@ -61,10 +61,10 @@ export function useProjectData(slug, fixture) {
 }
 
 const TABS = [
-  { id: "about",        label: "About",                icon: "info" },
-  { id: "tasks",        label: "Milestones & tasks",   icon: "layers" },
-  { id: "prs",          label: "Prs",                  icon: "git_pull" },
-  { id: "contributors", label: "Contributors",         icon: "award" },
+  { id: "about",        label: "About",          icon: "info" },
+  { id: "tasks",        label: "Tasks",          icon: "layers" },
+  { id: "prs",          label: "Prs",            icon: "git_pull" },
+  { id: "contributors", label: "Contributors",   icon: "award" },
 ];
 
 export function ProjectTabs({ project, activeTab, taskCount, prCount, contributorCount, onTabChange }) {
@@ -126,7 +126,7 @@ export default function ProjectHero({
               {live?.name || project.name}
             </button>
             <span>/</span>
-            <span style={{ color: "var(--fg)", fontWeight: 700 }}>milestones</span>
+            <span style={{ color: "var(--fg)", fontWeight: 700 }}>tasks</span>
           </>
         ) : (
           <span style={{ color: "var(--fg)", fontWeight: 700 }}>{live?.name || project.name}</span>
