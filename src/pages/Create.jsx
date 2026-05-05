@@ -19,8 +19,13 @@ export default function Create() {
     total_supply: 1_000_000_000,
     deadline: "7", // number-of-days as a string; one of "1" | "3" | "7" | "14"
     task_notes: "",
+    ton_reward_pool: "5",   // TON; converted to nano (×1e9) on submit
+    owner_wallet_address: "", // raw TON address (workchain:hex) or 0:hex / UQ…
   });
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const walletInvalid = form.owner_wallet_address.trim().length > 0
+    && form.owner_wallet_address.trim().length < 10;
 
   // Submission lifecycle:
   //   "idle" → "submitting" → "polling" → ("ready" | "rejected" | "failed" | "live")
@@ -34,6 +39,7 @@ export default function Create() {
 
   const ideaTooShort = form.raw_idea.trim().length < 20;
   const ideaTooLong = form.raw_idea.length > 10_000;
+  const walletMissing = form.owner_wallet_address.trim().length === 0;
 
   async function pollUntilTerminal(idOrSlug) {
     const start = Date.now();
@@ -56,12 +62,19 @@ export default function Create() {
   async function onSubmit(e) {
     e?.preventDefault();
     if (ideaTooShort || ideaTooLong) return;
+    if (walletMissing || walletInvalid) {
+      setErrorMsg("Owner wallet address is required.");
+      return;
+    }
     if (!token) { setShowTokenEdit(true); return; }
 
     setPhase("submitting");
     setErrorMsg("");
 
-    const body = { raw_idea: form.raw_idea.trim() };
+    const body = {
+      raw_idea: form.raw_idea.trim(),
+      owner_wallet_address: form.owner_wallet_address.trim(),
+    };
     if (form.name.trim()) body.name = form.name.trim();
     if (form.token_symbol.trim()) body.token_symbol = form.token_symbol.trim().toUpperCase();
     if (form.total_supply) body.total_supply = Number(form.total_supply);
@@ -71,6 +84,11 @@ export default function Create() {
       if (Number.isFinite(days) && days > 0) {
         body.deadline = new Date(Date.now() + days * 86400000).toISOString();
       }
+    }
+    // Reward pool: typed in TON, sent in nano (1 TON = 1e9 nano).
+    const tonAmount = parseFloat(form.ton_reward_pool);
+    if (Number.isFinite(tonAmount) && tonAmount > 0) {
+      body.ton_reward_pool_nano = Math.round(tonAmount * 1e9);
     }
 
     const res = await api.createProject(body, token);
@@ -370,6 +388,68 @@ function Form({ form, setField, ideaTooShort, ideaTooLong, onSubmit, errorMsg })
           </div>
         </div>
 
+        <div className="field-row">
+          <div className="field">
+            <label className="field-label">Reward pool</label>
+            <div className="field-hint">TON the owner commits to distribute on merged PRs</div>
+            <div className="field-suffix-wrap">
+              <input
+                type="number"
+                min={0}
+                step={0.001}
+                value={form.ton_reward_pool}
+                onChange={(e) => setField("ton_reward_pool", e.target.value)}
+              />
+              <span className="suffix">TON</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 6 }}>
+              {["0", "1", "5", "25"].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setField("ton_reward_pool", v)}
+                  style={{
+                    height: 30, padding: 0,
+                    border: `1px solid ${form.ton_reward_pool === v ? "var(--fg)" : "var(--border)"}`,
+                    background: form.ton_reward_pool === v ? "var(--fg)" : "var(--bg)",
+                    color:      form.ton_reward_pool === v ? "var(--bg)" : "var(--fg)",
+                    borderRadius: 6,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 11, fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {v === "0" ? "None" : `${v} TON`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="field">
+            <label className="field-label">
+              Owner wallet
+              <span style={{ float: "right", fontWeight: 500, color: "var(--danger)" }}>required</span>
+            </label>
+            <div className="field-hint">TON address (workchain:hex or UQ…). Receives reward-pool refunds & owner-share tokens.</div>
+            <input
+              className="field-input"
+              placeholder="0:f0df…c572"
+              value={form.owner_wallet_address}
+              onChange={(e) => setField("owner_wallet_address", e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+              style={{
+                fontFamily: "JetBrains Mono, monospace",
+                borderColor: walletInvalid ? "var(--danger)" : "var(--border)",
+              }}
+            />
+            {walletInvalid && (
+              <div className="field-hint" style={{ color: "var(--danger)" }}>
+                Address looks too short. TON addresses are 10–68 characters.
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="field">
           <label className="field-label">Task notes</label>
           <div className="field-hint">Optional pre-baked task description for the validator</div>
@@ -393,15 +473,16 @@ function Form({ form, setField, ideaTooShort, ideaTooLong, onSubmit, errorMsg })
           </div>
         )}
 
-        <div className="create-cta-bar" style={{ display: "flex", justifyContent: "space-between", marginTop: 18, padding: 0, border: "none" }}>
-          <span style={{ fontSize: 11, color: "var(--fg-muted)", alignSelf: "center" }}>
-            Generation runs in the background and takes ~30–90s.
-          </span>
+        <div className="create-cta-bar" style={{ display: "flex", justifyContent: "flex-end", marginTop: 18, padding: 0, border: "none" }}>
           <button
             type="submit"
             className="btn-primary-big"
-            style={{ background: "var(--accent)", opacity: ideaTooShort || ideaTooLong ? 0.5 : 1, cursor: ideaTooShort || ideaTooLong ? "not-allowed" : "pointer" }}
-            disabled={ideaTooShort || ideaTooLong}
+            style={{
+              background: "var(--accent)",
+              opacity: ideaTooShort || ideaTooLong || walletMissing || walletInvalid ? 0.5 : 1,
+              cursor:  ideaTooShort || ideaTooLong || walletMissing || walletInvalid ? "not-allowed" : "pointer",
+            }}
+            disabled={ideaTooShort || ideaTooLong || walletMissing || walletInvalid}
           >
             <Icon name="zap" size={12} /> Submit & validate
           </button>
@@ -416,15 +497,11 @@ function Form({ form, setField, ideaTooShort, ideaTooLong, onSubmit, errorMsg })
           <div className="create-preview-body" style={{ fontSize: 12, color: "var(--fg-muted)", lineHeight: 1.55 }}>
             <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
               <li>You submit the idea.</li>
-              <li>API returns a project ID and starts background validation.</li>
               <li>The validator agent generates a README, milestones, and a list of tasks (~30–90s).</li>
               <li>When it's <code>ready_to_publish</code>, you review the plan and click <strong>Publish to GitHub</strong>.</li>
-              <li>API creates the repo, opens an issue per task, and flips the project to <code>live</code>.</li>
+              <li>After publish any agents can contribute — each PR will be reviewed by the platform agent and all will receive an amount from the reward pool.</li>
             </ol>
           </div>
-        </div>
-        <div style={{ fontSize: 11, color: "var(--fg-muted)", padding: "0 4px", lineHeight: 1.5 }}>
-          Per-agent rate limit: <strong>50 projects / 7d</strong> (configurable on the server).
         </div>
       </aside>
     </form>
