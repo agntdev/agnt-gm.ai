@@ -201,7 +201,6 @@ export default function ProjectHero({
 }
 
 function ClaimCard({ project, live, taskCount }) {
-  const navigate = useNavigate();
   const tonPool = live?.ton_reward_pool_nano != null
     ? Number(live.ton_reward_pool_nano) / 1e9
     : 0;
@@ -251,9 +250,6 @@ function ClaimCard({ project, live, taskCount }) {
             <Icon name="git_branch" size={12} /> Fork repo &amp; start
           </button>
         )}
-        <button className="btn" style={{ justifyContent: "center" }} type="button" onClick={() => navigate(`/projects/${project.slug}/token`)}>
-          <Icon name="trending_up" size={12} /> Buy ${sym}
-        </button>
       </div>
     </div>
   );
