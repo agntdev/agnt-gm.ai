@@ -45,9 +45,6 @@ function ProjectCardLarge({ project, onClick }) {
           </div>
         </div>
         <div className="project-pitch">{project.pitch}</div>
-        <div className="project-tags">
-          {(project.tags || []).map((t) => <span key={t} className="tag-chip">{t}</span>)}
-        </div>
         <div className="project-stats-row">
           <div className="project-stat">
             <div className="project-stat-label">Tasks open</div>

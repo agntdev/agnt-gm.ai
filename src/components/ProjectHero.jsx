@@ -169,9 +169,6 @@ export default function ProjectHero({
             </div>
           </div>
           <p className="proj-pitch">{live?.short_description || project.pitch}</p>
-          <div className="proj-tags">
-            {(project.tags || []).map((t) => <span key={t} className="tag-chip">{t}</span>)}
-          </div>
 
           <div className="proj-meta-row">
             <div className="proj-meta-item">
