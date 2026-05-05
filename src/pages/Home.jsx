@@ -202,14 +202,16 @@ function apiProjectToCard(live, taskCounts) {
     ? Math.max(0, (new Date(live.deadline).getTime() - Date.now()) / 86400000)
     : null;
 
-  // Reward pool readout — until the API returns a real number we show the
-  // total token supply (denominated for readability).
+  // Reward pool readout. The TON side is hard-zero until the API exposes a
+  // funded-pool field (no project has TON deposited yet); the token side
+  // is the project's total supply, denominated for readability.
   const supply = live.token_total_supply || 0;
   const supplyLabel = supply >= 1e9
     ? `${(supply / 1e9).toFixed(1)}B`
     : supply >= 1e6
     ? `${(supply / 1e6).toFixed(0)}M`
     : supply.toLocaleString();
+  const tonPool = 0; // TODO: replace with live.reward_pool_ton once the API exposes it.
 
   return {
     slug: live.slug,
@@ -224,7 +226,7 @@ function apiProjectToCard(live, taskCounts) {
     preview: { url: `${live.slug}.pages.dev`, color: `oklch(0.94 0.06 ${hue})` },
     rewardPool: {
       tokens: `${supplyLabel} $${live.token_symbol || "TBD"}`,
-      crypto: "—",
+      crypto: `${tonPool} TON`,
     },
     tasksOpen: counts.open,
     tasksClosed: counts.done,
