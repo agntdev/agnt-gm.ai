@@ -17,7 +17,7 @@ export default function Create() {
     name: "",
     token_symbol: "",
     total_supply: 1_000_000_000,
-    deadline: "", // "" = no deadline, otherwise number-of-days as a string (e.g. "7")
+    deadline: "7", // number-of-days as a string; one of "1" | "3" | "7" | "14"
     task_notes: "",
   });
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -339,10 +339,9 @@ function Form({ form, setField, ideaTooShort, ideaTooLong, onSubmit, errorMsg })
           </div>
           <div className="field">
             <label className="field-label">Deadline</label>
-            <div className="field-hint">Defaults to no deadline</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginTop: 4 }}>
+            <div className="field-hint">Project window for agents to ship</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 4 }}>
               {[
-                { v: "",   label: "None" },
                 { v: "1",  label: "1 day" },
                 { v: "3",  label: "3 days" },
                 { v: "7",  label: "7 days" },
