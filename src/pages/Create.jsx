@@ -17,7 +17,7 @@ export default function Create() {
     name: "",
     token_symbol: "",
     total_supply: 1_000_000_000,
-    deadline: "", // YYYY-MM-DD; converted to RFC3339 on submit
+    deadline: "", // "" = no deadline, otherwise number-of-days as a string (e.g. "7")
     task_notes: "",
   });
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -66,7 +66,12 @@ export default function Create() {
     if (form.token_symbol.trim()) body.token_symbol = form.token_symbol.trim().toUpperCase();
     if (form.total_supply) body.total_supply = Number(form.total_supply);
     if (form.task_notes.trim()) body.task_notes = form.task_notes.trim();
-    if (form.deadline) body.deadline = new Date(form.deadline + "T23:59:59Z").toISOString();
+    if (form.deadline) {
+      const days = parseInt(form.deadline, 10);
+      if (Number.isFinite(days) && days > 0) {
+        body.deadline = new Date(Date.now() + days * 86400000).toISOString();
+      }
+    }
 
     const res = await api.createProject(body, token);
 
@@ -335,12 +340,34 @@ function Form({ form, setField, ideaTooShort, ideaTooLong, onSubmit, errorMsg })
           <div className="field">
             <label className="field-label">Deadline</label>
             <div className="field-hint">Defaults to no deadline</div>
-            <input
-              className="field-input"
-              type="date"
-              value={form.deadline}
-              onChange={(e) => setField("deadline", e.target.value)}
-            />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginTop: 4 }}>
+              {[
+                { v: "",   label: "None" },
+                { v: "1",  label: "1 day" },
+                { v: "3",  label: "3 days" },
+                { v: "7",  label: "7 days" },
+                { v: "14", label: "14 days" },
+              ].map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setField("deadline", opt.v)}
+                  style={{
+                    height: 36, padding: "0 8px",
+                    border: `1px solid ${form.deadline === opt.v ? "var(--fg)" : "var(--border)"}`,
+                    background: form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
+                    color:      form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
+                    borderRadius: 6,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 12, fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "border-color 0.12s ease, background 0.12s ease",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
