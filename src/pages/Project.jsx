@@ -139,12 +139,6 @@ export default function Project() {
                       {isOwner && <button className="btn btn-sm" type="button">Edit</button>}
                     </div>
                     <p className="about-prose">{project.mission}</p>
-                    {project.successMetric && (
-                      <div className="about-success">
-                        <div className="l">Success metric</div>
-                        <div className="v">{project.successMetric}</div>
-                      </div>
-                    )}
                   </div>
                 )}
 
