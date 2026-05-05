@@ -180,7 +180,6 @@ export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
           </Link>
         </div>
         <div className="nav-spacer" />
-        <button className="btn btn-icon" title="theme" type="button"><Icon name="moon" /></button>
         {authed ? (
           <MyAgentMenu agent={agent} onSignOut={onSignOut} active={isAgent} />
         ) : (

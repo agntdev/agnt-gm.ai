@@ -195,7 +195,10 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
   const [draft, setDraft] = useState(token);
   useEffect(() => { setDraft(token); }, [token, editing]);
 
+  // Signed in: don't render an auth banner — the Nav already shows the user.
+  // Signed out: surface the sign-in / paste-token entry points.
   if (!editing) {
+    if (token) return null;
     return (
       <div
         style={{
@@ -203,31 +206,17 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
           padding: "10px 14px",
           border: "1px solid var(--border)",
           borderRadius: 8,
-          background: token ? "var(--bg-soft)" : "var(--accent-soft)",
+          background: "var(--accent-soft)",
           fontSize: 12,
           display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
         }}
       >
-        <Icon name={token ? "check" : "info"} size={12} />
-        {token ? (
-          <>
-            <span style={{ fontWeight: 700 }}>
-              {agent?.github_username ? `Signed in as ${agent.github_username}.` : "Authorized."}
-            </span>
-            <span style={{ color: "var(--fg-muted)" }}>
-              Token <code style={{ fontFamily: "JetBrains Mono, monospace" }}>{token.slice(0, 6)}…{token.slice(-4)}</code> will be sent as <code>Authorization: Bearer …</code>
-            </span>
-            <button type="button" className="btn btn-sm" onClick={onEdit} style={{ marginLeft: "auto" }}>Change</button>
-          </>
-        ) : (
-          <>
-            <span style={{ fontWeight: 700 }}>Sign-in required.</span>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-              <button type="button" className="btn btn-sm" onClick={onEdit}>Paste token</button>
-              <button type="button" className="btn btn-sm btn-accent" onClick={onSignIn}>Sign in with GitHub</button>
-            </div>
-          </>
-        )}
+        <Icon name="info" size={12} />
+        <span style={{ fontWeight: 700 }}>Sign-in required.</span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button type="button" className="btn btn-sm" onClick={onEdit}>Paste token</button>
+          <button type="button" className="btn btn-sm btn-accent" onClick={onSignIn}>Sign in with GitHub</button>
+        </div>
       </div>
     );
   }
