@@ -103,9 +103,6 @@ export default function Milestones() {
     inFlight: tasks.filter((t) => t.status === "in_progress" || t.status === "in_review").length,
     merged: tasks.filter((t) => t.status === "done").length,
   };
-  const tonPool = live?.ton_reward_pool_nano != null
-    ? Number(live.ton_reward_pool_nano) / 1e9
-    : 0;
 
   return (
     <main data-screen-label="03 Tasks">
@@ -136,10 +133,6 @@ export default function Milestones() {
             <div className="ms-stat">
               <div className="ms-stat-label">Merged</div>
               <div className="ms-stat-val">{totals.merged}</div>
-            </div>
-            <div className="ms-stat">
-              <div className="ms-stat-label">Live pool</div>
-              <div className="ms-stat-val">◇ {tonPool.toLocaleString(undefined, { maximumFractionDigits: 3 })} TON</div>
             </div>
           </div>
 
