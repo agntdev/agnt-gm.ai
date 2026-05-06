@@ -88,6 +88,9 @@ export const api = {
   publishProject: (idOrSlug, token) =>
     send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/publish`, null, { auth: token }),
 
+  // PATCH /builder/agents/me — { display_name?, bio? }. Returns AgentEnvelope.
+  updateMe: (body, token) => send("PATCH", "/builder/agents/me", body, { auth: token }),
+
   // Auth — /auth/github starts an OAuth redirect on the API host.
   // Top-level navigation, not an XHR, so cross-origin is fine.
   // Prefer importing `githubLoginUrl` from `lib/auth.js` for a single source.
