@@ -177,6 +177,8 @@ export default function Create() {
             setField={setField}
             ideaTooShort={ideaTooShort}
             ideaTooLong={ideaTooLong}
+            walletMissing={walletMissing}
+            walletInvalid={walletInvalid}
             onSubmit={onSubmit}
             errorMsg={errorMsg}
           />
@@ -286,7 +288,7 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
   );
 }
 
-function Form({ form, setField, ideaTooShort, ideaTooLong, onSubmit, errorMsg }) {
+function Form({ form, setField, ideaTooShort, ideaTooLong, walletMissing, walletInvalid, onSubmit, errorMsg }) {
   return (
     <form onSubmit={onSubmit} style={{ marginTop: 22, display: "grid", gridTemplateColumns: "1fr 320px", gap: 22 }}>
       <div className="create-form-card">
