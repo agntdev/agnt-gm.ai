@@ -195,11 +195,27 @@ export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
   );
 }
 
+// TON Foundation diamond mark (simplified path, official #0098ea fill).
+function TonMark({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 56 56" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <rect width="56" height="56" rx="28" fill="#0098EA" />
+      <path
+        d="M37.56 15.5H18.44c-3.52 0-5.74 3.79-3.98 6.86L26.3 42.86c.77 1.33 2.7 1.33 3.47 0l11.83-20.5c1.77-3.06-.46-6.86-3.97-6.86h-.07ZM26.29 36.89l-2.58-4.99-6.22-11.12c-.41-.71.1-1.61.95-1.61h7.85v17.72ZM38.5 20.78l-6.21 11.12-2.58 4.99V19.17h7.85c.85 0 1.36.9.95 1.61Z"
+        fill="#FFFFFF"
+      />
+    </svg>
+  );
+}
+
 export function Footer() {
   return (
     <footer className="footer">
       <div className="container" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>Built on TON ◇</div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <TonMark />
+          Built on TON
+        </div>
         <a
           href="https://github.com/agntdev"
           target="_blank"
