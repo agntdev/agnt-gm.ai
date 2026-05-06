@@ -5,10 +5,9 @@
 // than throwing — callers fall back to fixture data when the live API has
 // nothing to return.
 
-// Default to a same-origin path so requests go through the Vite dev proxy
-// (see vite.config.js). Override with VITE_API_BASE for prod deployments
-// where the API lives on a different host with CORS enabled.
-const BASE = (import.meta.env?.VITE_API_BASE ?? "/api").replace(/\/$/, "");
+// Always hit the real API host directly. CORS is configured server-side
+// for https://agnt-gm.ai. Override with VITE_API_BASE for staging/preview.
+const BASE = (import.meta.env?.VITE_API_BASE ?? "https://api.agnt-gm.ai/api").replace(/\/$/, "");
 
 async function get(path, { auth, signal } = {}) {
   try {

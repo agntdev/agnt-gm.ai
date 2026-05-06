@@ -12,28 +12,39 @@ import { useNavigate } from "react-router-dom";
 import { Icon, ProjectAvatar } from "./atoms.jsx";
 import { api } from "../lib/api.js";
 
-// Fetch routine shared by Project + Milestones. Returns the merged
-// fixture+live project, raw `live`, the cached tasks list, and the
-// resolved owner agent profile.
-export function useProjectData(slug, fixture) {
-  const [project, setProject] = useState(fixture);
+// Fetch routine shared by Project + Milestones. Returns:
+//   live      — raw ProjectOAS, null while loading, false on 404
+//   liveTasks — TaskListItemOAS[] | null
+//   taskCount — number | null
+//   owner     — AgentOAS | null
+//   loading   — true until the first /builder/projects/:slug response lands
+//
+// No fixtures, no fixture flash. Callers should render a loading skeleton
+// while live === null && loading is true, and a 404 view when live === false.
+export function useProjectData(slug) {
   const [live, setLive] = useState(null);
   const [liveTasks, setLiveTasks] = useState(null);
   const [taskCount, setTaskCount] = useState(null);
   const [owner, setOwner] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setProject(fixture);
     setLive(null);
     setLiveTasks(null);
     setTaskCount(null);
     setOwner(null);
+    setLoading(true);
     let cancelled = false;
     api.getProject(slug).then((res) => {
       if (cancelled) return;
       const liveProject = res?.project || res;
-      if (!liveProject?.id) return;
+      if (!liveProject?.id) {
+        setLive(false); // sentinel: project not found
+        setLoading(false);
+        return;
+      }
       setLive(liveProject);
+      setLoading(false);
       if (typeof res?.task_count === "number") setTaskCount(res.task_count);
       if (liveProject.owner_agent_id) {
         api.agent(liveProject.owner_agent_id).then((a) => {
@@ -41,12 +52,6 @@ export function useProjectData(slug, fixture) {
           setOwner(a?.agent || null);
         });
       }
-      setProject((prev) => ({
-        ...prev,
-        ...liveProject,
-        sym: liveProject.token_symbol || prev.sym,
-        name: liveProject.name || prev.name,
-      }));
     });
     api.listProjectTasks(slug).then((r) => {
       if (cancelled) return;
@@ -55,9 +60,9 @@ export function useProjectData(slug, fixture) {
       setTaskCount((prev) => (prev == null ? tasks.length : prev));
     });
     return () => { cancelled = true; };
-  }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [slug]);
 
-  return { project, live, liveTasks, taskCount, owner };
+  return { live, liveTasks, taskCount, owner, loading };
 }
 
 const TABS = [
@@ -102,8 +107,19 @@ export function ProjectTabs({ project, activeTab, taskCount, prCount, contributo
   );
 }
 
+// Build a card-shaped object for ProjectAvatar (it expects `{sym, tone}`).
+// Visual fields are derived from a hash of the slug so the look is stable.
+function djb2(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = (h * 33) ^ str.charCodeAt(i);
+  return h >>> 0;
+}
+function avatarTone(slug) {
+  const hue = djb2(slug || "x") % 360;
+  return { bg: `oklch(0.94 0.07 ${hue})`, fg: `oklch(0.4 0.16 ${hue})` };
+}
+
 export default function ProjectHero({
-  project,
   live,
   taskCount,
   activeTab,
@@ -112,6 +128,10 @@ export default function ProjectHero({
   contributorCount,
 }) {
   const navigate = useNavigate();
+  if (!live) return null;
+
+  const slug = live.slug;
+  const avatarShape = { sym: live.token_symbol || "?", tone: avatarTone(slug) };
 
   return (
     <>
@@ -122,26 +142,26 @@ export default function ProjectHero({
         <span>/</span>
         {activeTab === "tasks-page" ? (
           <>
-            <button onClick={() => navigate(`/projects/${project.slug}`)} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0 }}>
-              {live?.name || project.name}
+            <button onClick={() => navigate(`/projects/${slug}`)} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0 }}>
+              {live.name}
             </button>
             <span>/</span>
             <span style={{ color: "var(--fg)", fontWeight: 700 }}>tasks</span>
           </>
         ) : (
-          <span style={{ color: "var(--fg)", fontWeight: 700 }}>{live?.name || project.name}</span>
+          <span style={{ color: "var(--fg)", fontWeight: 700 }}>{live.name}</span>
         )}
       </div>
 
       <div className="proj-hero">
         <div>
           <div className="proj-title-row">
-            <ProjectAvatar project={project} size={64} />
+            <ProjectAvatar project={avatarShape} size={64} />
             <div style={{ flex: 1 }}>
-              <h1 className="proj-h1">{live?.name || project.name}</h1>
+              <h1 className="proj-h1">{live.name}</h1>
               <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
-                <span className="proj-sym">${live?.token_symbol || project.sym}</span>
-                {live?.github_repo_url ? (
+                <span className="proj-sym">${live.token_symbol || "TBD"}</span>
+                {live.github_repo_url ? (
                   <a
                     href={live.github_repo_url}
                     target="_blank"
@@ -155,7 +175,7 @@ export default function ProjectHero({
                     repo not yet linked
                   </span>
                 )}
-                {live?.status && (
+                {live.status && (
                   <span style={{
                     fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4,
                     background: live.status === "live" ? "var(--accent-soft)" : live.status === "ready_to_publish" ? "oklch(0.96 0.05 80)" : "var(--bg-tint)",
@@ -168,16 +188,9 @@ export default function ProjectHero({
               </div>
             </div>
           </div>
-          <p className="proj-pitch">{live?.short_description || project.pitch}</p>
+          <p className="proj-pitch">{live.short_description}</p>
 
           <div className="proj-meta-row">
-            <div className="proj-meta-item">
-              <div className="label">Active agents</div>
-              <div className="value">
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--accent)", animation: "pulse 1.5s ease-in-out infinite" }} />
-                {project.agentsActive ?? 0}
-              </div>
-            </div>
             <div className="proj-meta-item">
               <div className="label">Tasks</div>
               <div className="value">{taskCount ?? 0}</div>
@@ -185,11 +198,11 @@ export default function ProjectHero({
           </div>
         </div>
 
-        <ClaimCard project={project} live={live} taskCount={taskCount} />
+        <ClaimCard live={live} taskCount={taskCount} />
       </div>
 
       <ProjectTabs
-        project={project}
+        project={live}
         activeTab={activeTab}
         taskCount={taskCount}
         prCount={prCount}
@@ -200,12 +213,12 @@ export default function ProjectHero({
   );
 }
 
-function ClaimCard({ project, live, taskCount }) {
+function ClaimCard({ live, taskCount }) {
   const tonPool = live?.ton_reward_pool_nano != null
     ? Number(live.ton_reward_pool_nano) / 1e9
     : 0;
   const tonPoolLabel = tonPool.toLocaleString(undefined, { maximumFractionDigits: 3 });
-  const sym = live?.token_symbol || project.sym;
+  const sym = live?.token_symbol || "TBD";
 
   return (
     <div className="claim-card">

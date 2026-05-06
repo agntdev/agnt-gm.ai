@@ -1,147 +1,80 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Icon, AgentAvatar, PRRow } from "../components/atoms.jsx";
+import { Icon } from "../components/atoms.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
-import { PROJECTS } from "../data.js";
 import { useAuth } from "../lib/auth.js";
-
-function TaskCard({ task, onClick }) {
-  return (
-    <div className="task-card" onClick={onClick}>
-      <div className="task-hash">#{task.hash}</div>
-      <div className="task-title">{task.title}</div>
-      <div className="task-meta">
-        <span className={`task-label diff-${task.difficulty}`}>{task.difficulty}</span>
-        {task.tags.map((t) => <span key={t} className="task-label">{t}</span>)}
-      </div>
-      {task.claimedBy && (
-        <div className="task-claimed-by">
-          <AgentAvatar agent={task.claimedBy} size={16} />
-          <span>claimed by <span className="agent">{task.claimedBy.name}</span></span>
-        </div>
-      )}
-      <div className="task-reward">
-        <span className="crypto">◇ {task.reward.crypto}</span>
-        <span className="est">~ {task.reward.tokens}</span>
-      </div>
-    </div>
-  );
-}
-
-function TaskBoard({ tasks, onTaskClick }) {
-  const cols = [
-    { id: "open", title: "Open", icon: "circle" },
-    { id: "claimed", title: "Claimed", icon: "user" },
-    { id: "review", title: "In review", icon: "eye" },
-    { id: "merged", title: "Merged", icon: "git_merge" },
-  ];
-  return (
-    <div className="tasks-board">
-      {cols.map((col) => {
-        const items = tasks.filter((t) => t.status === col.id);
-        return (
-          <div key={col.id} className="task-col">
-            <div className="task-col-head">
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Icon name={col.icon} size={11} /> {col.title}
-              </span>
-              <span className="count">{items.length}</span>
-            </div>
-            <div className="task-col-list">
-              {items.map((t) => (
-                <TaskCard key={t.hash} task={t} onClick={() => onTaskClick && onTaskClick(t)} />
-              ))}
-              {items.length === 0 && (
-                <div style={{ fontSize: 11, color: "var(--fg-subtle)", textAlign: "center", padding: 16 }}>
-                  No tasks
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ContribList({ contributors }) {
-  const max = Math.max(...contributors.map((c) => c.score));
-  return (
-    <div className="contrib-list">
-      <div className="contrib-row head">
-        <span>Agent</span>
-        <span>Share of pool</span>
-        <span style={{ textAlign: "right" }}>PRs</span>
-        <span style={{ textAlign: "right" }}>$</span>
-        <span style={{ textAlign: "right" }}>Earned</span>
-      </div>
-      {contributors.map((c, i) => (
-        <div key={i} className="contrib-row">
-          <div className="lb-name">
-            <span className="lb-rank" style={{ width: 18 }}>{i + 1}</span>
-            <AgentAvatar agent={c.agent} size={26} />
-            <div>
-              <div className="lb-name-text">{c.agent.name}</div>
-              <div className="lb-name-meta">{c.agent.model}</div>
-            </div>
-          </div>
-          <div>
-            <div className="contrib-bar">
-              <div className="contrib-bar-fill" style={{ width: `${(c.score / max) * 100}%` }} />
-            </div>
-            <div style={{ fontSize: 10.5, color: "var(--fg-muted)", marginTop: 4, fontWeight: 600 }}>
-              {((c.score / contributors.reduce((s, x) => s + x.score, 0)) * 100).toFixed(1)}%
-            </div>
-          </div>
-          <div className="lb-num">{c.prs}</div>
-          <div className="lb-num">{c.score}</div>
-          <div className="lb-num" style={{ color: "var(--accent-fg)" }}>{c.earned}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function Project() {
   const { slug } = useParams();
-  const fixture = PROJECTS.find((p) => p.slug === slug) || PROJECTS[0];
-  const { project, live, taskCount, owner } = useProjectData(slug, fixture);
+  const navigate = useNavigate();
+  const { live, taskCount, owner, loading } = useProjectData(slug);
   const [tab, setTab] = useState("about");
   const { agent: meAgent } = useAuth();
   const isOwner = !!meAgent && !!live && meAgent.id === live.owner_agent_id;
 
-  if (!project) {
-    return <main className="container"><div style={{ padding: 60 }}>No project selected.</div></main>;
+  if (loading) {
+    return (
+      <main data-screen-label="02 Project Detail">
+        <section className="container">
+          <div style={{ padding: "60px 0", color: "var(--fg-muted)", fontSize: 13, textAlign: "center" }}>
+            Loading project…
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!live) {
+    return (
+      <main data-screen-label="02 Project Detail">
+        <section className="container" style={{ paddingTop: 60 }}>
+          <div style={{
+            padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
+            background: "var(--bg-soft)", textAlign: "center",
+          }}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>Project not found</h2>
+            <p style={{ marginTop: 8, fontSize: 13, color: "var(--fg-muted)" }}>
+              No project at <code style={{ fontFamily: "JetBrains Mono, monospace" }}>{slug}</code>.
+            </p>
+            <button type="button" className="btn" onClick={() => navigate("/")} style={{ marginTop: 14 }}>
+              ← Back to Pulse
+            </button>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
     <main data-screen-label="02 Project Detail">
       <section className="container">
         <ProjectHero
-          project={project}
           live={live}
           taskCount={taskCount}
           activeTab={tab}
           onTabChange={setTab}
-          prCount={project.recentPRs?.length}
-          contributorCount={project.contributors?.length}
+          prCount={0}
+          contributorCount={0}
         />
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
           {tab === "about" && (
             <div className="about-grid">
               <div>
-                {project.mission && (
+                {/* Goal/mission isn't on ProjectOAS yet — placeholder copy
+                    until the API exposes a long-form description. */}
+                {isOwner && (
                   <div className="about-card">
                     <div className="about-card-head">
                       <div className="about-card-title">
                         <Icon name="zap" size={12} /> Goal
                       </div>
-                      {isOwner && <button className="btn btn-sm" type="button">Edit</button>}
+                      <button className="btn btn-sm" type="button">Edit</button>
                     </div>
-                    <p className="about-prose">{project.mission}</p>
+                    <p className="about-prose" style={{ color: "var(--fg-muted)" }}>
+                      Goal copy is editable here once the API exposes a long-form description.
+                    </p>
                   </div>
                 )}
-
               </div>
 
               <div>
@@ -151,35 +84,15 @@ export default function Project() {
             </div>
           )}
 
-          {tab === "tasks" && project.tasks && (
-            <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 800 }}>Open tasks</div>
-                  <div style={{ fontSize: 11.5, color: "var(--fg-muted)", marginTop: 2 }}>
-                    Each task has a unique hash. Branch off main, ship a PR, get paid on merge.
-                  </div>
-                </div>
-              </div>
-              <TaskBoard tasks={project.tasks} />
-            </>
-          )}
-
-          {tab === "prs" && project.recentPRs && (
-            <div>
-              <div style={{ marginBottom: 14, fontSize: 14, fontWeight: 800 }}>Recent pull requests</div>
-              <div className="feed-card">
-                {project.recentPRs.map((pr, i) => (
-                  <PRRow key={i} pr={{ ...pr, project: project.sym }} />
-                ))}
-              </div>
+          {tab === "prs" && (
+            <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13, border: "1px dashed var(--border-strong)", borderRadius: 10, background: "var(--bg-soft)" }}>
+              No PR feed exposed by the API yet.
             </div>
           )}
 
-          {tab === "contributors" && project.contributors && (
-            <div>
-              <div style={{ marginBottom: 14, fontSize: 14, fontWeight: 800 }}>Top contributors</div>
-              <ContribList contributors={project.contributors} />
+          {tab === "contributors" && (
+            <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13, border: "1px dashed var(--border-strong)", borderRadius: 10, background: "var(--bg-soft)" }}>
+              Contributors come from the per-project leaderboard endpoint — not wired yet.
             </div>
           )}
         </div>

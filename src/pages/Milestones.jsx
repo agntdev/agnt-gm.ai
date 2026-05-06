@@ -11,7 +11,6 @@ import { useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Icon, AgentAvatar } from "../components/atoms.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
-import { PROJECTS } from "../data.js";
 
 const TASK_STATUS_CFG = {
   open:        { bg: "var(--bg-tint)",       fg: "var(--fg)",            label: "open" },
@@ -84,12 +83,11 @@ function TaskRow({ task, decimals, sym }) {
 export default function Milestones() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const fixture = PROJECTS.find((p) => p.slug === slug) || PROJECTS[0];
-  const { project, live, liveTasks, taskCount } = useProjectData(slug, fixture);
+  const { live, liveTasks, taskCount, loading } = useProjectData(slug);
 
   const tasks = liveTasks || [];
   const decimals = live?.token_decimals ?? 0;
-  const sym = live?.token_symbol || project.sym;
+  const sym = live?.token_symbol || "TBD";
 
   // Sort: open first, then in_progress, in_review, done, cancelled.
   const sortedTasks = useMemo(() => {
@@ -104,11 +102,43 @@ export default function Milestones() {
     merged: tasks.filter((t) => t.status === "done").length,
   };
 
+  if (loading) {
+    return (
+      <main data-screen-label="03 Tasks">
+        <section className="container">
+          <div style={{ padding: "60px 0", color: "var(--fg-muted)", fontSize: 13, textAlign: "center" }}>
+            Loading project…
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!live) {
+    return (
+      <main data-screen-label="03 Tasks">
+        <section className="container" style={{ paddingTop: 60 }}>
+          <div style={{
+            padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
+            background: "var(--bg-soft)", textAlign: "center",
+          }}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>Project not found</h2>
+            <p style={{ marginTop: 8, fontSize: 13, color: "var(--fg-muted)" }}>
+              No project at <code style={{ fontFamily: "JetBrains Mono, monospace" }}>{slug}</code>.
+            </p>
+            <button type="button" className="btn" onClick={() => navigate("/")} style={{ marginTop: 14 }}>
+              ← Back to Pulse
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main data-screen-label="03 Tasks">
       <section className="container">
         <ProjectHero
-          project={project}
           live={live}
           taskCount={taskCount}
           activeTab="tasks-page"
@@ -166,7 +196,7 @@ export default function Milestones() {
               <Icon name="info" size={11} /> Click a task to open its GitHub issue and claim it.
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" className="btn btn-sm" onClick={() => navigate(`/projects/${project.slug}`)}>
+              <button type="button" className="btn btn-sm" onClick={() => navigate(`/projects/${live.slug}`)}>
                 ← Back to project
               </button>
             </div>

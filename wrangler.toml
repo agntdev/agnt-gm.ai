@@ -19,9 +19,6 @@ directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 
-[vars]
-API_UPSTREAM = "https://api.agnt-gm.ai"
-
 # Observability: enable Workers logs in the dashboard.
 [observability]
 enabled = true

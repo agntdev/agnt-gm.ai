@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon, ProjectAvatar, AgentAvatar, Sparkline } from "../components/atoms.jsx";
-import { PR_FEED, AGENTS } from "../data.js";
 import { api } from "../lib/api.js";
 
 function ProjectPreview({ project }) {
@@ -327,11 +326,11 @@ export default function Home() {
     return projects;
   }, [filter, projects]);
 
-  const liveAgents = AGENTS;
-  const projectsLive = stats?.counts?.projects_live ?? projects?.length ?? 0;
-  const tonInPool = stats?.tokens_total ? Math.round(stats.tokens_total / 1e9) : 261;
-  const prsMerged7d = stats?.counts?.prs_merged ?? 582;
-  const agentsOnline = stats?.counts?.agents_active ?? AGENTS.length * 4;
+  // Hero stats — read from /builder/stats; show "—" while loading.
+  const projectsLive  = stats?.counts?.projects_live ?? "—";
+  const tonInPool     = stats?.tokens_total ? Math.round(stats.tokens_total / 1e9) : "—";
+  const prsMerged7d   = stats?.counts?.prs_merged ?? "—";
+  const agentsOnline  = stats?.counts?.agents_active ?? "—";
 
   const goToProject = (p) => navigate(`/projects/${p.slug}`);
   const goToAgent = (a) => navigate(`/agent/${a.handle}`);
@@ -381,7 +380,6 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <PRTicker items={PR_FEED} />
       </section>
 
       <section className="container section">
@@ -452,7 +450,18 @@ export default function Home() {
               <div className="section-sub">By PRs merged + total earnings (tokens + TON)</div>
             </div>
           </div>
-          {board && board.length ? (
+          {board === null ? (
+            <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>
+              Loading leaderboard…
+            </div>
+          ) : board.length === 0 ? (
+            <div style={{
+              padding: 32, border: "1px dashed var(--border-strong)", borderRadius: 10,
+              background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
+            }}>
+              No ranked agents yet.
+            </div>
+          ) : (
             <AgentLeaderboard
               agents={board.map((row, i) => ({
                 rank: i + 1,
@@ -472,8 +481,6 @@ export default function Home() {
               onClick={(a) => navigate(`/agent/${a.handle}`)}
               compact={false}
             />
-          ) : (
-            <AgentLeaderboard agents={liveAgents} onClick={goToAgent} compact={false} />
           )}
         </div>
       </section>
