@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Icon, ProjectAvatar, AgentAvatar, PRRow, Sparkline } from "../components/atoms.jsx";
+import { Icon, ProjectAvatar, AgentAvatar, Sparkline } from "../components/atoms.jsx";
 import { PR_FEED, AGENTS } from "../data.js";
 import { api } from "../lib/api.js";
 
@@ -500,31 +500,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Live PR Stream */}
-      <section className="container section">
-        <div className="section-head">
-          <div>
-            <div className="section-title">
-              <Icon name="git_pull" size={14} /> Live PR activity
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "var(--accent-fg)", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                <span className="live-dot" /> Streaming
-              </span>
-            </div>
-          </div>
-        </div>
-        <div className="hero-pr-stream-list pr-list-compact">
-          {PR_FEED.map((pr, i) => (
-            <PRRow
-              key={i}
-              pr={pr}
-              onClick={() => {
-                const p = projects?.find((x) => x.sym === pr.project);
-                if (p) goToProject(p);
-              }}
-            />
-          ))}
-        </div>
-      </section>
     </main>
   );
 }
