@@ -94,7 +94,8 @@ export default function Agent() {
   const [agentLoading, setAgentLoading] = useState(true);
   const [holdings, setHoldings] = useState(null);
   const [txs, setTxs] = useState(null);
-  const [tab, setTab] = useState("holdings");
+  const [ownedProjects, setOwnedProjects] = useState(null);
+  const [tab, setTab] = useState("projects");
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +103,7 @@ export default function Agent() {
     setAgentLoading(true);
     setHoldings(null);
     setTxs(null);
+    setOwnedProjects(null);
 
     api.agent(handle).then((res) => {
       if (cancelled) return;
@@ -111,6 +113,13 @@ export default function Agent() {
       if (!a?.id) return;
       api.agentBalance(a.id).then((r) => { if (!cancelled) setHoldings(r?.holdings || []); });
       api.agentTransactions(a.id).then((r) => { if (!cancelled) setTxs(r?.transactions || []); });
+      // Owner projects: API has no owner_agent_id filter so we fetch all and
+      // filter client-side. Pulls the max page (100); paginate if it grows.
+      api.listProjects({ limit: 100 }).then((r) => {
+        if (cancelled) return;
+        const all = r?.projects || [];
+        setOwnedProjects(all.filter((p) => p.owner_agent_id === a.id));
+      });
     });
     return () => { cancelled = true; };
   }, [handle]);
@@ -240,6 +249,7 @@ export default function Agent() {
 
         <div className="tabs-underline" style={{ marginTop: 4 }}>
           {[
+            { id: "projects",     label: "My projects",   icon: "layers" },
             { id: "holdings",     label: "Holdings",      icon: "coins" },
             { id: "transactions", label: "Transactions",  icon: "git_commit" },
           ].map((t) => (
@@ -252,6 +262,7 @@ export default function Agent() {
               <Icon name={t.icon} size={11} />
               {" "}{t.label}
               <span style={{ fontSize: 10, color: "var(--fg-muted)", marginLeft: 6, fontWeight: 600 }}>
+                {t.id === "projects"     && (ownedProjects?.length ?? 0)}
                 {t.id === "holdings"     && (holdings?.length ?? 0)}
                 {t.id === "transactions" && (txs?.length ?? 0)}
               </span>
@@ -260,7 +271,8 @@ export default function Agent() {
         </div>
 
         <div style={{ paddingTop: 22, paddingBottom: 60 }}>
-          {tab === "holdings" && <HoldingsList holdings={holdings} navigate={navigate} />}
+          {tab === "projects"     && <ProjectsList projects={ownedProjects} isMe={isMe} navigate={navigate} />}
+          {tab === "holdings"     && <HoldingsList holdings={holdings} navigate={navigate} />}
           {tab === "transactions" && <TransactionList txs={txs} />}
         </div>
       </section>
@@ -479,6 +491,121 @@ function BioField({ agent, canEdit, onSave }) {
           Edit bio
         </button>
       )}
+    </div>
+  );
+}
+
+const PROJECT_STATUS_CFG = {
+  draft:            { bg: "var(--bg-tint)",     fg: "var(--fg-muted)",   label: "draft" },
+  validating:       { bg: "oklch(0.96 0.05 80)", fg: "#b45309",          label: "validating" },
+  ready_to_publish: { bg: "oklch(0.96 0.05 80)", fg: "#b45309",          label: "ready" },
+  live:             { bg: "var(--accent-soft)", fg: "var(--accent-fg)", label: "live" },
+  completed:        { bg: "var(--bg-tint)",     fg: "var(--fg-muted)",   label: "completed" },
+  rejected:         { bg: "var(--danger-soft)", fg: "var(--danger)",     label: "rejected" },
+  failed:           { bg: "var(--danger-soft)", fg: "var(--danger)",     label: "failed" },
+};
+
+function ProjectsList({ projects, isMe, navigate }) {
+  if (projects === null) {
+    return <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>Loading projects…</div>;
+  }
+  if (projects.length === 0) {
+    return (
+      <div style={{
+        padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
+        background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
+      }}>
+        <div style={{ fontWeight: 700, color: "var(--fg)", marginBottom: 6 }}>
+          {isMe ? "You haven't proposed any projects yet." : "No projects owned by this agent."}
+        </div>
+        {isMe && (
+          <button
+            type="button"
+            onClick={() => navigate("/propose")}
+            style={{ background: "none", border: "none", padding: 0, color: "var(--accent-fg)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+          >
+            Propose a project →
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 2fr) 110px 140px 110px",
+        padding: "10px 16px",
+        background: "var(--bg-soft)",
+        fontSize: 9.5, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 800,
+        borderBottom: "1px solid var(--border)",
+      }}>
+        <span>Project</span>
+        <span style={{ textAlign: "right" }}>Status</span>
+        <span style={{ textAlign: "right" }}>Reward pool</span>
+        <span style={{ textAlign: "right" }}>Created</span>
+      </div>
+      {projects.map((p) => {
+        const status = PROJECT_STATUS_CFG[p.status] || { bg: "var(--bg-tint)", fg: "var(--fg-muted)", label: p.status || "—" };
+        const tonPool = p.ton_reward_pool_nano != null ? Number(p.ton_reward_pool_nano) / 1e9 : 0;
+        const created = p.created_at ? new Date(p.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "—";
+        return (
+          <div
+            key={p.id}
+            onClick={() => navigate(`/projects/${p.slug || p.id}`)}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 2fr) 110px 140px 110px",
+              alignItems: "center",
+              padding: "12px 16px",
+              borderBottom: "1px solid var(--border)",
+              fontSize: 12.5,
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>
+                {p.name || p.slug}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", marginTop: 2 }}>
+                ${p.token_symbol || "TBD"}
+                {p.github_repo_url && (
+                  <>
+                    {" · "}
+                    <a
+                      href={p.github_repo_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ color: "var(--fg-muted)", textDecoration: "none" }}
+                    >
+                      {p.github_repo_url.replace(/^https?:\/\/github\.com\//, "")}
+                    </a>
+                  </>
+                )}
+              </div>
+            </div>
+            <span style={{ textAlign: "right" }}>
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "2px 8px", borderRadius: 999,
+                background: status.bg, color: status.fg,
+                fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
+                textTransform: "uppercase", letterSpacing: "0.05em",
+              }}>
+                {p.status === "live" && <span className="live-dot" />}
+                {status.label}
+              </span>
+            </span>
+            <span style={{ textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: tonPool > 0 ? "var(--accent-fg)" : "var(--fg-muted)" }}>
+              ◇ {tonPool.toLocaleString(undefined, { maximumFractionDigits: 3 })} TON
+            </span>
+            <span style={{ textAlign: "right", fontSize: 11, color: "var(--fg-muted)" }}>
+              {created}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
