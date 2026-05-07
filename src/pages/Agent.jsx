@@ -15,7 +15,7 @@
 //   PATCH /builder/agents/me { display_name?, bio? }
 
 import { useEffect, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../components/atoms.jsx";
 import { api } from "../lib/api.js";
 import { useAuth, setSession } from "../lib/auth.js";
@@ -31,35 +31,6 @@ function fmtDate(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return null;
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
-function fmtRelative(iso) {
-  if (!iso) return null;
-  const d = new Date(iso).getTime();
-  if (!Number.isFinite(d)) return null;
-  const diff = Date.now() - d;
-  const min = Math.round(diff / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.round(hr / 24);
-  return `${day}d ago`;
-}
-
-function fmtToken(amount, decimals = 9) {
-  if (amount == null) return "—";
-  const num = Number(amount) / Math.pow(10, decimals);
-  if (!Number.isFinite(num)) return "—";
-  if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
-  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
-  if (num >= 1e3) return `${(num / 1e3).toFixed(1)}K`;
-  return num.toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
-
-function nanoToTon(nano) {
-  if (nano == null) return 0;
-  return Number(nano) / 1e9;
 }
 
 function StatTile({ label, value, accent }) {
@@ -92,28 +63,23 @@ export default function Agent() {
 
   const [agent, setAgent] = useState(null);
   const [agentLoading, setAgentLoading] = useState(true);
-  const [holdings, setHoldings] = useState(null);
-  const [txs, setTxs] = useState(null);
-  const [ownedProjects, setOwnedProjects] = useState(null);
-
-  // Tab state is mirrored to ?tab=… so deep links from the Nav menu
-  // ("My projects" → /agent/me?tab=projects) land on the right pane.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const validTabs = new Set(["projects", "holdings", "transactions"]);
-  const tab = validTabs.has(searchParams.get("tab")) ? searchParams.get("tab") : "projects";
-  const setTab = (id) => {
-    const next = new URLSearchParams(searchParams);
-    if (id === "projects") next.delete("tab"); else next.set("tab", id);
-    setSearchParams(next, { replace: true });
+  const [allProjects, setAllProjects] = useState(null);
+  // Owner used the Propose form with a wallet not bound to their GitHub
+  // agent? They can paste it here to surface those projects. Persisted to
+  // localStorage so it survives reloads.
+  const [walletOverride, setWalletOverride] = useState(() => {
+    try { return localStorage.getItem("agnt_owner_wallet_override") || ""; } catch { return ""; }
+  });
+  const setWalletOverrideAndPersist = (v) => {
+    setWalletOverride(v);
+    try { v ? localStorage.setItem("agnt_owner_wallet_override", v) : localStorage.removeItem("agnt_owner_wallet_override"); } catch {}
   };
 
   useEffect(() => {
     let cancelled = false;
     setAgent(null);
     setAgentLoading(true);
-    setHoldings(null);
-    setTxs(null);
-    setOwnedProjects(null);
+    setAllProjects(null);
 
     api.agent(handle).then((res) => {
       if (cancelled) return;
@@ -121,26 +87,13 @@ export default function Agent() {
       setAgent(a || null);
       setAgentLoading(false);
       if (!a?.id) return;
-      api.agentBalance(a.id).then((r) => { if (!cancelled) setHoldings(r?.holdings || []); });
-      api.agentTransactions(a.id).then((r) => { if (!cancelled) setTxs(r?.transactions || []); });
-      // Owner projects: API has no owner_agent_id filter, so we fetch all and
-      // filter client-side. Match BOTH owner_agent_id (for projects that came
-      // through the GitHub-linked agent) AND owner_wallet_address (for projects
-      // submitted via /propose with a wallet that wasn't yet bound — the API
-      // auto-creates a wallet-only agent for those, so they wouldn't show up
-      // under the GitHub-linked agent's UUID).
       api.listProjects({ limit: 100 }).then((r) => {
         if (cancelled) return;
-        const all = r?.projects || [];
-        const wallet = (viewer?.id === a.id ? viewer?.ton_wallet_address : null);
-        setOwnedProjects(all.filter((p) =>
-          p.owner_agent_id === a.id ||
-          (wallet && p.owner_wallet_address === wallet)
-        ));
+        setAllProjects(r?.projects || []);
       });
     });
     return () => { cancelled = true; };
-  }, [handle, viewer?.id, viewer?.ton_wallet_address]);
+  }, [handle]);
 
   if (agentLoading) {
     return (
@@ -174,9 +127,24 @@ export default function Agent() {
   }
 
   const status = STATUS_CFG[agent.status] || { bg: "var(--bg-tint)", fg: "var(--fg-muted)", label: agent.status || "—" };
-  const projectsTouched = holdings ? holdings.length : null;
   const isMe = !!viewer && viewer.id === agent.id;
   const displayName = agent.display_name?.trim() || (isMe ? "" : "Unnamed agent");
+
+  // Filter the global project list down to ones owned by this agent.
+  // Match by owner_agent_id, the bound wallet (if /me cached one), and the
+  // owner-supplied wallet override (so users can recover projects submitted
+  // with an unbound wallet).
+  const ownedProjects = (() => {
+    if (allProjects === null) return null;
+    const wallets = new Set();
+    if (isMe && viewer?.ton_wallet_address) wallets.add(viewer.ton_wallet_address);
+    if (isMe && walletOverride.trim()) wallets.add(walletOverride.trim());
+    return allProjects.filter((p) =>
+      p.owner_agent_id === agent.id ||
+      (p.owner_wallet_address && wallets.has(p.owner_wallet_address))
+    );
+  })();
+  const projectsTouched = ownedProjects ? ownedProjects.length : null;
 
   // Save handler used by the inline name + bio editors. Updates local state
   // optimistically AND writes-through to the cached `agnt_agent` so the Nav
@@ -265,33 +233,23 @@ export default function Agent() {
           <StatTile label="Projects"       value={projectsTouched ?? "—"} />
         </div>
 
-        <div className="tabs-underline" style={{ marginTop: 4 }}>
-          {[
-            { id: "projects",     label: "My projects",   icon: "layers" },
-            { id: "holdings",     label: "Holdings",      icon: "coins" },
-            { id: "transactions", label: "Transactions",  icon: "git_commit" },
-          ].map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className={`tab-underline ${tab === t.id ? "active" : ""}`}
-              onClick={() => setTab(t.id)}
-            >
-              <Icon name={t.icon} size={11} />
-              {" "}{t.label}
-              <span style={{ fontSize: 10, color: "var(--fg-muted)", marginLeft: 6, fontWeight: 600 }}>
-                {t.id === "projects"     && (ownedProjects?.length ?? 0)}
-                {t.id === "holdings"     && (holdings?.length ?? 0)}
-                {t.id === "transactions" && (txs?.length ?? 0)}
-              </span>
-            </button>
-          ))}
+        <div style={{ marginTop: 4, padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800 }}>
+            <Icon name="layers" size={12} /> My projects
+            <span style={{ fontSize: 10, color: "var(--fg-muted)", fontWeight: 600 }}>
+              {ownedProjects?.length ?? 0}
+            </span>
+          </div>
         </div>
 
         <div style={{ paddingTop: 22, paddingBottom: 60 }}>
-          {tab === "projects"     && <ProjectsList projects={ownedProjects} isMe={isMe} navigate={navigate} />}
-          {tab === "holdings"     && <HoldingsList holdings={holdings} navigate={navigate} />}
-          {tab === "transactions" && <TransactionList txs={txs} />}
+          <ProjectsList
+            projects={ownedProjects}
+            isMe={isMe}
+            navigate={navigate}
+            walletOverride={walletOverride}
+            onWalletOverrideChange={setWalletOverrideAndPersist}
+          />
         </div>
       </section>
     </main>
@@ -523,31 +481,99 @@ const PROJECT_STATUS_CFG = {
   failed:           { bg: "var(--danger-soft)", fg: "var(--danger)",     label: "failed" },
 };
 
-function ProjectsList({ projects, isMe, navigate }) {
+function ProjectsList({ projects, isMe, navigate, walletOverride, onWalletOverrideChange }) {
   if (projects === null) {
     return <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>Loading projects…</div>;
   }
-  if (projects.length === 0) {
-    return (
-      <div style={{
-        padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
-        background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
-      }}>
-        <div style={{ fontWeight: 700, color: "var(--fg)", marginBottom: 6 }}>
-          {isMe ? "You haven't proposed any projects yet." : "No projects owned by this agent."}
+  return (
+    <>
+      {isMe && (
+        <WalletOverrideRow
+          walletOverride={walletOverride}
+          onChange={onWalletOverrideChange}
+          hasMatches={projects.length > 0}
+        />
+      )}
+      {projects.length === 0 ? (
+        <div style={{
+          padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
+          background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
+        }}>
+          <div style={{ fontWeight: 700, color: "var(--fg)", marginBottom: 6 }}>
+            {isMe ? "No projects matched yet." : "No projects owned by this agent."}
+          </div>
+          {isMe && (
+            <>
+              <div style={{ marginTop: 4, lineHeight: 1.55 }}>
+                If you submitted from <code>/propose</code> with a wallet that wasn't bound to this
+                agent, paste it above to surface those projects.
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/propose")}
+                style={{ marginTop: 10, background: "none", border: "none", padding: 0, color: "var(--accent-fg)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+              >
+                Propose a project →
+              </button>
+            </>
+          )}
         </div>
-        {isMe && (
-          <button
-            type="button"
-            onClick={() => navigate("/propose")}
-            style={{ background: "none", border: "none", padding: 0, color: "var(--accent-fg)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
-          >
-            Propose a project →
-          </button>
-        )}
-      </div>
-    );
-  }
+      ) : (
+        <ProjectsTable projects={projects} navigate={navigate} />
+      )}
+    </>
+  );
+}
+
+function WalletOverrideRow({ walletOverride, onChange, hasMatches }) {
+  const [draft, setDraft] = useState(walletOverride);
+  useEffect(() => { setDraft(walletOverride); }, [walletOverride]);
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); onChange(draft.trim()); }}
+      style={{
+        marginBottom: 14, padding: "10px 14px",
+        border: "1px solid var(--border)", borderRadius: 8,
+        background: walletOverride ? "var(--bg-soft)" : "var(--accent-soft)",
+        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+      }}
+    >
+      <Icon name={walletOverride && hasMatches ? "check" : "info"} size={12} />
+      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)" }}>
+        {walletOverride
+          ? hasMatches ? "Filtering by wallet:" : "No matches for wallet:"
+          : "Match by wallet:"}
+      </span>
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="0:f0df…c572"
+        spellCheck={false}
+        autoComplete="off"
+        style={{
+          flex: 1, minWidth: 240,
+          padding: "6px 10px",
+          border: "1px solid var(--border)", borderRadius: 6,
+          fontFamily: "JetBrains Mono, monospace", fontSize: 11.5,
+          background: "var(--bg)",
+        }}
+      />
+      <button type="submit" className="btn btn-sm">Apply</button>
+      {walletOverride && (
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => { onChange(""); setDraft(""); }}
+          style={{ color: "var(--danger)" }}
+        >
+          Clear
+        </button>
+      )}
+    </form>
+  );
+}
+
+function ProjectsTable({ projects, navigate }) {
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
       <div style={{
@@ -628,158 +654,3 @@ function ProjectsList({ projects, isMe, navigate }) {
   );
 }
 
-function HoldingsList({ holdings, navigate }) {
-  if (holdings === null) {
-    return <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>Loading holdings…</div>;
-  }
-  if (holdings.length === 0) {
-    return (
-      <div style={{
-        padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
-        background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
-      }}>
-        No project token holdings yet.
-      </div>
-    );
-  }
-  return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 2fr) 140px 140px 160px",
-        padding: "10px 16px",
-        background: "var(--bg-soft)",
-        fontSize: 9.5, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 800,
-        borderBottom: "1px solid var(--border)",
-      }}>
-        <span>Project</span>
-        <span style={{ textAlign: "right" }}>Token balance</span>
-        <span style={{ textAlign: "right" }}>TON balance</span>
-        <span style={{ textAlign: "right" }}>Last grant</span>
-      </div>
-      {holdings.map((h) => (
-        <div
-          key={h.project_id}
-          onClick={() => navigate(`/projects/${h.project_slug || h.project_id}`)}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 2fr) 140px 140px 160px",
-            alignItems: "center",
-            padding: "12px 16px",
-            borderBottom: "1px solid var(--border)",
-            fontSize: 12.5,
-            cursor: "pointer",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>
-              {h.project_name || h.project_slug}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", marginTop: 2 }}>
-              ${h.token_symbol}
-              {h.project_github_url && (
-                <>
-                  {" · "}
-                  <a
-                    href={h.project_github_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ color: "var(--fg-muted)", textDecoration: "none" }}
-                  >
-                    {h.project_github_url.replace(/^https?:\/\/github\.com\//, "")}
-                  </a>
-                </>
-              )}
-            </div>
-          </div>
-          <span style={{ textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-            {fmtToken(h.balance_token)}
-          </span>
-          <span style={{ textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: nanoToTon(h.balance_ton_nano) > 0 ? "var(--accent-fg)" : "var(--fg-muted)" }}>
-            ◇ {nanoToTon(h.balance_ton_nano).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-          </span>
-          <span style={{ textAlign: "right", fontSize: 11, color: "var(--fg-muted)" }}>
-            {fmtRelative(h.last_grant_at) || "—"}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TransactionList({ txs }) {
-  if (txs === null) {
-    return <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>Loading transactions…</div>;
-  }
-  if (txs.length === 0) {
-    return (
-      <div style={{
-        padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
-        background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
-      }}>
-        No reward transactions yet.
-      </div>
-    );
-  }
-  return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "120px minmax(0, 2fr) 100px 140px 120px",
-        padding: "10px 16px",
-        background: "var(--bg-soft)",
-        fontSize: 9.5, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 800,
-        borderBottom: "1px solid var(--border)",
-      }}>
-        <span>When</span>
-        <span>Reason</span>
-        <span>Source</span>
-        <span style={{ textAlign: "right" }}>Amount</span>
-        <span style={{ textAlign: "right" }}>Onchain</span>
-      </div>
-      {txs.map((t) => (
-        <div
-          key={t.id}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "120px minmax(0, 2fr) 100px 140px 120px",
-            alignItems: "center",
-            padding: "12px 16px",
-            borderBottom: "1px solid var(--border)",
-            fontSize: 12,
-          }}
-        >
-          <span style={{ color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace" }}>
-            {fmtRelative(t.granted_at) || "—"}
-          </span>
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {t.reason || "—"}
-          </span>
-          <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            {t.source}
-          </span>
-          <span style={{ textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: t.currency === "ton" ? "var(--accent-fg)" : "var(--fg)" }}>
-            {t.currency === "ton" ? "◇ " : ""}
-            {fmtToken(t.amount)}
-            {t.currency === "token" ? " tokens" : t.currency === "ton" ? " TON" : ""}
-          </span>
-          <span style={{ textAlign: "right", fontSize: 11 }}>
-            {t.onchain && t.tx_hash ? (
-              <a
-                href={`https://tonviewer.com/transaction/${t.tx_hash}`}
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: "var(--accent-fg)", fontFamily: "JetBrains Mono, monospace" }}
-              >
-                {t.tx_hash.slice(0, 8)}…
-              </a>
-            ) : (
-              <span style={{ color: "var(--fg-subtle)" }}>off-chain</span>
-            )}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
