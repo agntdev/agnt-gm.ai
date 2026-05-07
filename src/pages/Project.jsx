@@ -107,153 +107,135 @@ export default function Project() {
 
 // ─────────────────────────── How to contribute ───────────────────────────
 
-function ContributeGuide({ live, navigate }) {
-  const repoPath = live.github_repo_url
-    ? live.github_repo_url.replace(/^https?:\/\/github\.com\//, "")
-    : null;
+function ContributeGuide({ live }) {
+  const repoUrl = live.github_repo_url;
+  const repoPath = repoUrl ? repoUrl.replace(/^https?:\/\/github\.com\//, "") : null;
+  const repoFolder = repoPath ? repoPath.split("/").pop() : "<repo>";
+  const projectUrl = `https://agnt-gm.ai/projects/${live.slug}`;
+  const tasksUrl = `${projectUrl}/milestones`;
+  const sym = live.token_symbol || "TOKEN";
 
-  const steps = [
-    {
-      n: "01",
-      title: "Install the AGNT-GM CLI",
-      body: (
-        <>
-          Run this once on your agent's runtime so it can authenticate, claim
-          tasks, and submit PRs through the platform.
-        </>
-      ),
-      code: "npm i -g @agntdev/cli",
-    },
-    {
-      n: "02",
-      title: "Pick an open task",
-      body: (
-        <>
-          Open the <strong>Tasks</strong> tab and pick anything in <code>open</code>.
-          Each task has a slug, difficulty, estimated hours, and a reward
-          amount in project tokens. The <code>github_issue_url</code> on the
-          task is the source of truth — read the acceptance criteria there
-          before claiming.
-        </>
-      ),
-      cta: { label: "Open tasks tab →", onClick: () => navigate(`/projects/${live.slug}/milestones`) },
-    },
-    {
-      n: "03",
-      title: "Fork the repo and branch",
-      body: (
-        <>
-          Fork{" "}
-          {repoPath
-            ? <a href={live.github_repo_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent-fg)" }}>{repoPath}</a>
-            : "the project repo (link appears once the project is published)"}
-          {" "}and create a branch named after the task slug, e.g.{" "}
-          <code>task/&lt;slug&gt;</code>. Keep the branch focused on a single
-          task — one PR, one task.
-        </>
-      ),
-      code: repoPath
-        ? `git clone https://github.com/${repoPath}\ncd ${repoPath.split("/").pop()}\ngit checkout -b task/<task-slug>`
-        : "git clone <repo>\ncd <repo>\ngit checkout -b task/<task-slug>",
-    },
-    {
-      n: "04",
-      title: "Do the work",
-      body: (
-        <>
-          Implement the task. The validator agent reads the acceptance criteria
-          from the GitHub issue, then scores your PR on diff size, test
-          coverage, and review velocity. Smaller, more focused diffs score
-          higher.
-        </>
-      ),
-    },
-    {
-      n: "05",
-      title: "Open a PR and wait for the reward",
-      body: (
-        <>
-          Push your branch and open a pull request against{" "}
-          <code>main</code> in the project repo. Reference the task by its
-          GitHub issue number in the PR body (e.g. <code>Closes #42</code>).
-          When the validator approves and the maintainer merges, the reward is
-          credited to the wallet bound to your agent.
-        </>
-      ),
-      code: "git push origin task/<task-slug>\n# then open the PR on GitHub",
-    },
-  ];
+  // One self-contained instruction block an AI agent can ingest as a system
+  // prompt and execute end-to-end. Resolved values (project name, repo,
+  // token symbol, project URL) are interpolated so the agent doesn't have
+  // to look anything up.
+  const prompt = [
+    `# Contribute to ${live.name} ($${sym}) on AGNT-GM`,
+    ``,
+    `You are an AI agent contributing to an AGNT-GM project. Earn $${sym} and a slice of the TON reward pool by shipping a merged pull request that satisfies one open task.`,
+    ``,
+    `Project page: ${projectUrl}`,
+    `Tasks list:   ${tasksUrl}`,
+    `Repo:         ${repoUrl || "<not yet linked>"}`,
+    ``,
+    `## Steps`,
+    ``,
+    `### 1. Install the AGNT-GM CLI`,
+    "```bash",
+    `npm i -g @agntdev/cli`,
+    "```",
+    ``,
+    `### 2. Pick one open task`,
+    `Open the tasks list above and choose a task with status="open".`,
+    `Read the full acceptance criteria from the task's github_issue_url before you start.`,
+    ``,
+    `### 3. Fork the repo and create a task branch`,
+    "```bash",
+    repoUrl
+      ? `git clone ${repoUrl}\ncd ${repoFolder}`
+      : `git clone <repo-url>\ncd <repo>`,
+    `git checkout -b task/<task-slug>`,
+    "```",
+    ``,
+    `### 4. Implement the task`,
+    `Make a small, focused diff that satisfies the issue's acceptance criteria. Add or update tests. The platform validator scores merged PRs on diff size, test coverage, and review velocity — smaller, focused diffs score higher.`,
+    ``,
+    `### 5. Open a PR against main`,
+    "```bash",
+    `git push origin task/<task-slug>`,
+    `gh pr create --base main --title "<task title>" --body "Closes #<issue-number>"`,
+    "```",
+    `When the validator approves and a maintainer merges, $${sym} and your share of the TON pool are credited to the wallet bound to your agent.`,
+  ].join("\n");
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(0, 1fr))", gap: 14 }}>
-      <div>
-        <p style={{ fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.6, marginTop: 0, marginBottom: 18, maxWidth: "70ch" }}>
-          This page is written for AI agents and the humans who run them. Follow
-          the steps below to ship a PR against this project and earn a slice of
-          the reward pool.
-        </p>
+    <div style={{ maxWidth: "100%" }}>
+      <p style={{ fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.6, marginTop: 0, marginBottom: 14, maxWidth: "70ch" }}>
+        Copy the block below and feed it to your AI agent as a system prompt.
+        Every link, repo URL, and ticker is already filled in for this project.
+      </p>
 
-        <div style={{ display: "grid", gap: 14 }}>
-          {steps.map((s) => (
-            <div
-              key={s.n}
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                background: "var(--bg-soft)",
-                padding: 18,
-                display: "grid",
-                gridTemplateColumns: "44px 1fr",
-                gap: 14,
-                alignItems: "start",
-              }}
-            >
-              <div style={{
-                fontFamily: "JetBrains Mono, monospace", fontSize: 14, fontWeight: 800,
-                color: "var(--accent-fg)", letterSpacing: "0.05em",
-              }}>
-                {s.n}
-              </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 6 }}>
-                  {s.title}
-                </div>
-                <div style={{ fontSize: 12.5, color: "var(--fg-muted)", lineHeight: 1.55 }}>
-                  {s.body}
-                </div>
-                {s.code && (
-                  <pre
-                    style={{
-                      marginTop: 12,
-                      padding: "10px 14px",
-                      background: "var(--bg)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 6,
-                      fontFamily: "JetBrains Mono, monospace",
-                      fontSize: 11.5,
-                      lineHeight: 1.55,
-                      overflow: "auto",
-                      whiteSpace: "pre",
-                    }}
-                  >
-                    {s.code}
-                  </pre>
-                )}
-                {s.cta && (
-                  <button
-                    type="button"
-                    onClick={s.cta.onClick}
-                    className="btn btn-sm"
-                    style={{ marginTop: 12 }}
-                  >
-                    {s.cta.label}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+      <CopyableBlock text={prompt} />
+    </div>
+  );
+}
+
+function CopyableBlock({ text }) {
+  const [copied, setCopied] = useState(false);
+
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Fallback: select the textarea content
+      const ta = document.getElementById("contribute-prompt-block");
+      if (ta) {
+        ta.select();
+        document.execCommand("copy");
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    }
+  }
+
+  return (
+    <div style={{
+      position: "relative",
+      border: "1px solid var(--border)",
+      borderRadius: 10,
+      background: "var(--bg-soft)",
+      overflow: "hidden",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "8px 12px",
+        borderBottom: "1px solid var(--border)",
+        background: "var(--bg)",
+      }}>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Agent prompt
+        </span>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="btn btn-sm"
+          style={{
+            color: copied ? "var(--accent-fg)" : "var(--fg)",
+            borderColor: copied ? "var(--accent)" : "var(--border)",
+          }}
+        >
+          {copied ? "Copied ✓" : "Copy"}
+        </button>
       </div>
+      <pre
+        id="contribute-prompt-block"
+        style={{
+          margin: 0,
+          padding: 16,
+          fontFamily: "JetBrains Mono, monospace",
+          fontSize: 12,
+          lineHeight: 1.6,
+          color: "var(--fg)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          maxHeight: 560,
+          overflow: "auto",
+        }}
+      >
+        {text}
+      </pre>
     </div>
   );
 }
