@@ -1,24 +1,17 @@
 // Agent page — /agent/:handle
 //
-// An *agent* is a software actor that ships PRs and earns rewards. It is
-// LINKED to a GitHub account (for PR authorship verification) but is its
-// own first-class entity with a separate display name and bio.
-//
 // `:handle` accepts either the agent UUID or the linked github_username.
 // We fetch:
-//   GET /builder/agents/:handle               → AgentOAS
-//   GET /builder/agents/:id/balance           → token holdings per project
-//   GET /builder/agents/:id/transactions      → reward-grant ledger
-//
-// When the viewer IS this agent (auth.agent.id === agent.id), the
-// display name and bio are inline-editable and persisted via
-//   PATCH /builder/agents/me { display_name?, bio? }
+//   GET /builder/agents/:handle    → AgentOAS (used for hero metadata)
+//   GET /builder/projects?limit=100 → list, filtered client-side to those
+//                                    owned by this agent (or the viewer's
+//                                    bound wallet, when viewing self)
 
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../components/atoms.jsx";
 import { api } from "../lib/api.js";
-import { useAuth, setSession } from "../lib/auth.js";
+import { useAuth } from "../lib/auth.js";
 
 const STATUS_CFG = {
   active:      { bg: "var(--accent-soft)",  fg: "var(--accent-fg)",   label: "active" },
@@ -64,16 +57,6 @@ export default function Agent() {
   const [agent, setAgent] = useState(null);
   const [agentLoading, setAgentLoading] = useState(true);
   const [allProjects, setAllProjects] = useState(null);
-  // Owner used the Propose form with a wallet not bound to their GitHub
-  // agent? They can paste it here to surface those projects. Persisted to
-  // localStorage so it survives reloads.
-  const [walletOverride, setWalletOverride] = useState(() => {
-    try { return localStorage.getItem("agnt_owner_wallet_override") || ""; } catch { return ""; }
-  });
-  const setWalletOverrideAndPersist = (v) => {
-    setWalletOverride(v);
-    try { v ? localStorage.setItem("agnt_owner_wallet_override", v) : localStorage.removeItem("agnt_owner_wallet_override"); } catch {}
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -128,37 +111,19 @@ export default function Agent() {
 
   const status = STATUS_CFG[agent.status] || { bg: "var(--bg-tint)", fg: "var(--fg-muted)", label: agent.status || "—" };
   const isMe = !!viewer && viewer.id === agent.id;
-  const displayName = agent.display_name?.trim() || (isMe ? "" : "Unnamed agent");
 
   // Filter the global project list down to ones owned by this agent.
-  // Match by owner_agent_id, the bound wallet (if /me cached one), and the
-  // owner-supplied wallet override (so users can recover projects submitted
-  // with an unbound wallet).
+  // Match by owner_agent_id, plus the bound wallet (if /me has cached one)
+  // when viewing your own profile.
   const ownedProjects = (() => {
     if (allProjects === null) return null;
-    const wallets = new Set();
-    if (isMe && viewer?.ton_wallet_address) wallets.add(viewer.ton_wallet_address);
-    if (isMe && walletOverride.trim()) wallets.add(walletOverride.trim());
+    const myWallet = isMe ? viewer?.ton_wallet_address : null;
     return allProjects.filter((p) =>
       p.owner_agent_id === agent.id ||
-      (p.owner_wallet_address && wallets.has(p.owner_wallet_address))
+      (myWallet && p.owner_wallet_address === myWallet)
     );
   })();
   const projectsTouched = ownedProjects ? ownedProjects.length : null;
-
-  // Save handler used by the inline name + bio editors. Updates local state
-  // optimistically AND writes-through to the cached `agnt_agent` so the Nav
-  // refreshes on the next render.
-  async function saveProfile(patch) {
-    if (!isMe || !token) return { ok: false };
-    const res = await api.updateMe(patch, token);
-    if (res.ok && res.data?.agent) {
-      setAgent(res.data.agent);
-      // Re-cache the auth helper's idea of "me" so Nav etc. pick up new name.
-      setSession({ agent: res.data.agent });
-    }
-    return res;
-  }
 
   return (
     <main data-screen-label="Agent profile">
@@ -169,7 +134,7 @@ export default function Agent() {
           </button>
           <span>/</span>
           <span style={{ color: "var(--fg)", fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>
-            {displayName || agent.github_username || agent.id.slice(0, 8)}
+            {agent.github_username || agent.id.slice(0, 8)}
           </span>
         </div>
 
@@ -179,26 +144,24 @@ export default function Agent() {
           <AgentAvatarLarge agent={agent} />
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <NameField agent={agent} canEdit={isMe} onSave={saveProfile} />
+            {agent.github_username ? (
+              <a
+                href={`https://github.com/${agent.github_username}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ textDecoration: "none", color: "inherit" }}
+              >
+                <h1 style={{ margin: 0, fontSize: 28, fontFamily: "JetBrains Mono, monospace", letterSpacing: "-0.01em" }}>
+                  {agent.github_username}
+                </h1>
+              </a>
+            ) : (
+              <h1 style={{ margin: 0, fontSize: 28, fontFamily: "JetBrains Mono, monospace", letterSpacing: "-0.01em", color: "var(--fg-subtle)" }}>
+                {agent.id.slice(0, 8)}
+              </h1>
+            )}
 
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-              {agent.github_username && (
-                <a
-                  href={`https://github.com/${agent.github_username}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    fontSize: 11.5, color: "var(--fg-muted)",
-                    fontFamily: "JetBrains Mono, monospace", textDecoration: "none",
-                    padding: "3px 8px", borderRadius: 999, background: "var(--bg-tint)",
-                  }}
-                  title="GitHub account linked to this agent"
-                >
-                  <GitHubMark />
-                  @{agent.github_username}
-                </a>
-              )}
               <span style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
                 padding: "3px 8px", borderRadius: 999,
@@ -213,8 +176,6 @@ export default function Agent() {
                 {agent.id}
               </code>
             </div>
-
-            <BioField agent={agent} canEdit={isMe} onSave={saveProfile} />
 
             <div style={{ marginTop: 12, fontSize: 11, color: "var(--fg-subtle)", display: "flex", gap: 14, flexWrap: "wrap" }}>
               {agent.github_linked_at && <span>GitHub linked {fmtDate(agent.github_linked_at)}</span>}
@@ -243,13 +204,7 @@ export default function Agent() {
         </div>
 
         <div style={{ paddingTop: 22, paddingBottom: 60 }}>
-          <ProjectsList
-            projects={ownedProjects}
-            isMe={isMe}
-            navigate={navigate}
-            walletOverride={walletOverride}
-            onWalletOverrideChange={setWalletOverrideAndPersist}
-          />
+          <ProjectsList projects={ownedProjects} isMe={isMe} navigate={navigate} />
         </div>
       </section>
     </main>
@@ -257,14 +212,6 @@ export default function Agent() {
 }
 
 // ────────────────────────── pieces ──────────────────────────
-
-function GitHubMark() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.7-3.87-1.36-3.87-1.36-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.35.95.1-.74.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18.92-.26 1.9-.39 2.88-.39.98 0 1.96.13 2.88.39 2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.13v3.16c0 .31.21.68.8.56 4.56-1.52 7.85-5.83 7.85-10.91C23.5 5.65 18.35.5 12 .5z" />
-    </svg>
-  );
-}
 
 function AgentAvatarLarge({ agent }) {
   // Reuse the linked GitHub avatar as the agent's image — agents don't have
@@ -291,185 +238,6 @@ function AgentAvatarLarge({ agent }) {
   );
 }
 
-function NameField({ agent, canEdit, onSave }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(agent.display_name || "");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { setDraft(agent.display_name || ""); }, [agent.display_name]);
-
-  if (editing) {
-    return (
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          const value = draft.trim();
-          if (value.length > 64) { setErr("Name is too long (max 64 characters)."); return; }
-          setBusy(true);
-          const res = await onSave({ display_name: value });
-          setBusy(false);
-          if (!res?.ok) {
-            setErr(res?.data?.error || `HTTP ${res?.status} — couldn't save.`);
-            return;
-          }
-          setEditing(false);
-          setErr("");
-        }}
-        style={{ display: "flex", alignItems: "center", gap: 8 }}
-      >
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          maxLength={64}
-          placeholder="Give your agent a name"
-          style={{
-            fontFamily: "JetBrains Mono, monospace",
-            fontSize: 28,
-            fontWeight: 800,
-            letterSpacing: "-0.01em",
-            padding: "4px 10px",
-            border: "1px solid var(--border-strong)",
-            borderRadius: 8,
-            background: "var(--bg)",
-            color: "var(--fg)",
-            minWidth: 280,
-            flex: 1,
-          }}
-        />
-        <button type="submit" className="btn btn-accent" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => { setEditing(false); setDraft(agent.display_name || ""); setErr(""); }}
-          disabled={busy}
-        >
-          Cancel
-        </button>
-        {err && <span style={{ fontSize: 11, color: "var(--danger)" }}>{err}</span>}
-      </form>
-    );
-  }
-
-  const display = agent.display_name?.trim();
-  return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
-      <h1 style={{ margin: 0, fontSize: 28, fontFamily: "JetBrains Mono, monospace", letterSpacing: "-0.01em" }}>
-        {display || (
-          <span style={{ color: "var(--fg-subtle)", fontWeight: 600 }}>
-            {canEdit ? "Name your agent" : "Unnamed agent"}
-          </span>
-        )}
-      </h1>
-      {canEdit && (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="btn btn-sm"
-          title="Edit name"
-        >
-          {display ? "Rename" : "Set name"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function BioField({ agent, canEdit, onSave }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(agent.bio || "");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { setDraft(agent.bio || ""); }, [agent.bio]);
-
-  if (editing) {
-    return (
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          const value = draft.trim();
-          if (value.length > 280) { setErr("Bio too long (max 280 characters)."); return; }
-          setBusy(true);
-          const res = await onSave({ bio: value });
-          setBusy(false);
-          if (!res?.ok) {
-            setErr(res?.data?.error || `HTTP ${res?.status} — couldn't save.`);
-            return;
-          }
-          setEditing(false);
-          setErr("");
-        }}
-        style={{ marginTop: 12, maxWidth: "60ch" }}
-      >
-        <textarea
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          maxLength={280}
-          rows={3}
-          placeholder="What does this agent do? (max 280 chars)"
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            border: "1px solid var(--border-strong)",
-            borderRadius: 8,
-            background: "var(--bg)",
-            fontSize: 13,
-            lineHeight: 1.55,
-            fontFamily: "inherit",
-            resize: "vertical",
-          }}
-        />
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-          <button type="submit" className="btn btn-accent" disabled={busy}>{busy ? "Saving…" : "Save bio"}</button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => { setEditing(false); setDraft(agent.bio || ""); setErr(""); }}
-            disabled={busy}
-          >
-            Cancel
-          </button>
-          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--fg-muted)" }}>
-            {draft.length} / 280
-          </span>
-        </div>
-        {err && <div style={{ marginTop: 6, fontSize: 11, color: "var(--danger)" }}>{err}</div>}
-      </form>
-    );
-  }
-
-  if (!agent.bio) {
-    return canEdit ? (
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className="btn btn-sm"
-        style={{ marginTop: 12 }}
-      >
-        + Add a bio
-      </button>
-    ) : null;
-  }
-
-  return (
-    <div style={{ marginTop: 12, maxWidth: "60ch" }}>
-      <p style={{ margin: 0, fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.55 }}>
-        {agent.bio}
-      </p>
-      {canEdit && (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="btn btn-sm"
-          style={{ marginTop: 8 }}
-        >
-          Edit bio
-        </button>
-      )}
-    </div>
-  );
-}
 
 const PROJECT_STATUS_CFG = {
   draft:            { bg: "var(--bg-tint)",     fg: "var(--fg-muted)",   label: "draft" },
@@ -481,96 +249,32 @@ const PROJECT_STATUS_CFG = {
   failed:           { bg: "var(--danger-soft)", fg: "var(--danger)",     label: "failed" },
 };
 
-function ProjectsList({ projects, isMe, navigate, walletOverride, onWalletOverrideChange }) {
+function ProjectsList({ projects, isMe, navigate }) {
   if (projects === null) {
     return <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>Loading projects…</div>;
   }
-  return (
-    <>
-      {isMe && (
-        <WalletOverrideRow
-          walletOverride={walletOverride}
-          onChange={onWalletOverrideChange}
-          hasMatches={projects.length > 0}
-        />
-      )}
-      {projects.length === 0 ? (
-        <div style={{
-          padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
-          background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
-        }}>
-          <div style={{ fontWeight: 700, color: "var(--fg)", marginBottom: 6 }}>
-            {isMe ? "No projects matched yet." : "No projects owned by this agent."}
-          </div>
-          {isMe && (
-            <>
-              <div style={{ marginTop: 4, lineHeight: 1.55 }}>
-                If you submitted from <code>/propose</code> with a wallet that wasn't bound to this
-                agent, paste it above to surface those projects.
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate("/propose")}
-                style={{ marginTop: 10, background: "none", border: "none", padding: 0, color: "var(--accent-fg)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
-              >
-                Propose a project →
-              </button>
-            </>
-          )}
+  if (projects.length === 0) {
+    return (
+      <div style={{
+        padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
+        background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
+      }}>
+        <div style={{ fontWeight: 700, color: "var(--fg)", marginBottom: 6 }}>
+          {isMe ? "You haven't proposed any projects yet." : "No projects owned by this agent."}
         </div>
-      ) : (
-        <ProjectsTable projects={projects} navigate={navigate} />
-      )}
-    </>
-  );
-}
-
-function WalletOverrideRow({ walletOverride, onChange, hasMatches }) {
-  const [draft, setDraft] = useState(walletOverride);
-  useEffect(() => { setDraft(walletOverride); }, [walletOverride]);
-  return (
-    <form
-      onSubmit={(e) => { e.preventDefault(); onChange(draft.trim()); }}
-      style={{
-        marginBottom: 14, padding: "10px 14px",
-        border: "1px solid var(--border)", borderRadius: 8,
-        background: walletOverride ? "var(--bg-soft)" : "var(--accent-soft)",
-        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-      }}
-    >
-      <Icon name={walletOverride && hasMatches ? "check" : "info"} size={12} />
-      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)" }}>
-        {walletOverride
-          ? hasMatches ? "Filtering by wallet:" : "No matches for wallet:"
-          : "Match by wallet:"}
-      </span>
-      <input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        placeholder="0:f0df…c572"
-        spellCheck={false}
-        autoComplete="off"
-        style={{
-          flex: 1, minWidth: 240,
-          padding: "6px 10px",
-          border: "1px solid var(--border)", borderRadius: 6,
-          fontFamily: "JetBrains Mono, monospace", fontSize: 11.5,
-          background: "var(--bg)",
-        }}
-      />
-      <button type="submit" className="btn btn-sm">Apply</button>
-      {walletOverride && (
-        <button
-          type="button"
-          className="btn btn-sm"
-          onClick={() => { onChange(""); setDraft(""); }}
-          style={{ color: "var(--danger)" }}
-        >
-          Clear
-        </button>
-      )}
-    </form>
-  );
+        {isMe && (
+          <button
+            type="button"
+            onClick={() => navigate("/propose")}
+            style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "var(--accent-fg)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+          >
+            Propose a project →
+          </button>
+        )}
+      </div>
+    );
+  }
+  return <ProjectsTable projects={projects} navigate={navigate} />;
 }
 
 function ProjectsTable({ projects, navigate }) {

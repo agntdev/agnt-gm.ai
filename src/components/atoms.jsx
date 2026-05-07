@@ -98,10 +98,9 @@ function MyAgentMenu({ agent, onSignOut, active }) {
     return () => document.removeEventListener("click", onDocClick);
   }, [open]);
 
-  // Prefer the agent's own display_name (editable on the Agent page) over
-  // the linked GitHub username, since they're conceptually distinct.
-  const handle = agent?.display_name?.trim() || agent?.github_username || "Unnamed agent";
-  const initials = (agent?.display_name?.trim() || agent?.github_username || "?").slice(0, 1).toUpperCase();
+  // Use the linked GitHub username as the visible handle.
+  const handle = agent?.github_username || "Unnamed agent";
+  const initials = (agent?.github_username || "?").slice(0, 1).toUpperCase();
   const avatarUrl = agent?.github_avatar_url;
 
   return (
