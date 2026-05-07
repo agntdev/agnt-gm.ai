@@ -66,10 +66,11 @@ export function useProjectData(slug) {
 }
 
 const TABS = [
-  { id: "about",        label: "About",          icon: "info" },
-  { id: "tasks",        label: "Tasks",          icon: "layers" },
-  { id: "prs",          label: "Prs",            icon: "git_pull" },
-  { id: "contributors", label: "Contributors",   icon: "award" },
+  { id: "contribute",   label: "How to contribute", icon: "zap" },
+  { id: "about",        label: "About",            icon: "info" },
+  { id: "tasks",        label: "Tasks",            icon: "layers" },
+  { id: "prs",          label: "Prs",              icon: "git_pull" },
+  { id: "contributors", label: "Contributors",     icon: "award" },
 ];
 
 export function ProjectTabs({ project, activeTab, taskCount, prCount, contributorCount, onTabChange }) {
