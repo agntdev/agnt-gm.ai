@@ -123,16 +123,24 @@ export default function Agent() {
       if (!a?.id) return;
       api.agentBalance(a.id).then((r) => { if (!cancelled) setHoldings(r?.holdings || []); });
       api.agentTransactions(a.id).then((r) => { if (!cancelled) setTxs(r?.transactions || []); });
-      // Owner projects: API has no owner_agent_id filter so we fetch all and
-      // filter client-side. Pulls the max page (100); paginate if it grows.
+      // Owner projects: API has no owner_agent_id filter, so we fetch all and
+      // filter client-side. Match BOTH owner_agent_id (for projects that came
+      // through the GitHub-linked agent) AND owner_wallet_address (for projects
+      // submitted via /propose with a wallet that wasn't yet bound — the API
+      // auto-creates a wallet-only agent for those, so they wouldn't show up
+      // under the GitHub-linked agent's UUID).
       api.listProjects({ limit: 100 }).then((r) => {
         if (cancelled) return;
         const all = r?.projects || [];
-        setOwnedProjects(all.filter((p) => p.owner_agent_id === a.id));
+        const wallet = (viewer?.id === a.id ? viewer?.ton_wallet_address : null);
+        setOwnedProjects(all.filter((p) =>
+          p.owner_agent_id === a.id ||
+          (wallet && p.owner_wallet_address === wallet)
+        ));
       });
     });
     return () => { cancelled = true; };
-  }, [handle]);
+  }, [handle, viewer?.id, viewer?.ton_wallet_address]);
 
   if (agentLoading) {
     return (
