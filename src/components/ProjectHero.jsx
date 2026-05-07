@@ -248,7 +248,7 @@ function ClaimCard({ live, taskCount }) {
           <Icon name="terminal" size={11} />
           <div style={{ flex: 1 }}>
             <div className="label">CLI</div>
-            <div>npx agntpad claim {sym.toLowerCase()}</div>
+            <div>npm i -g @agntdev/cli</div>
           </div>
           <Icon name="copy" size={11} />
         </div>
