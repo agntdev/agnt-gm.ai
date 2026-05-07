@@ -15,7 +15,7 @@
 //   PATCH /builder/agents/me { display_name?, bio? }
 
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "../components/atoms.jsx";
 import { api } from "../lib/api.js";
 import { useAuth, setSession } from "../lib/auth.js";
@@ -95,7 +95,17 @@ export default function Agent() {
   const [holdings, setHoldings] = useState(null);
   const [txs, setTxs] = useState(null);
   const [ownedProjects, setOwnedProjects] = useState(null);
-  const [tab, setTab] = useState("projects");
+
+  // Tab state is mirrored to ?tab=… so deep links from the Nav menu
+  // ("My projects" → /agent/me?tab=projects) land on the right pane.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const validTabs = new Set(["projects", "holdings", "transactions"]);
+  const tab = validTabs.has(searchParams.get("tab")) ? searchParams.get("tab") : "projects";
+  const setTab = (id) => {
+    const next = new URLSearchParams(searchParams);
+    if (id === "projects") next.delete("tab"); else next.set("tab", id);
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     let cancelled = false;

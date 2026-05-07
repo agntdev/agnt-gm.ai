@@ -135,6 +135,13 @@ function MyAgentMenu({ agent, onSignOut, active }) {
           >
             <Icon name="users" size={12} /> View profile
           </Link>
+          <Link
+            to={`/agent/${agent?.github_username || agent?.id || "me"}?tab=projects`}
+            onClick={() => setOpen(false)}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "var(--fg)", textDecoration: "none" }}
+          >
+            <Icon name="layers" size={12} /> My projects
+          </Link>
           {agent?.id && (
             <div style={{
               padding: "8px 10px", fontFamily: "JetBrains Mono, monospace",
