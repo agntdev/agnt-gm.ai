@@ -191,16 +191,6 @@ export default function Milestones() {
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 8, padding: "24px 0 60px", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ fontSize: 11.5, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace" }}>
-              <Icon name="info" size={11} /> Click a task to open its GitHub issue and claim it.
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" className="btn btn-sm" onClick={() => navigate(`/projects/${live.slug}`)}>
-                ← Back to project
-              </button>
-            </div>
-          </div>
         </div>
       </section>
     </main>

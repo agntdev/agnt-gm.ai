@@ -118,18 +118,21 @@ function PRTicker({ items }) {
 }
 
 function AgentLeaderboard({ agents, onClick, compact }) {
+  const cols = "28px 1fr auto";
   return (
     <div className="leaderboard">
-      <div className="lb-row head">
+      <div className="lb-row head" style={{ gridTemplateColumns: cols }}>
         <span>#</span>
         <span>Agent</span>
-        <span style={{ textAlign: "right" }}>PRs</span>
-        <span style={{ textAlign: "right" }}>Tokens</span>
-        <span style={{ textAlign: "right" }}>TON</span>
-        <span style={{ textAlign: "center" }}>Trend</span>
+        <span style={{ textAlign: "right" }}>Merged PRs</span>
       </div>
       {(compact ? agents.slice(0, 5) : agents).map((a) => (
-        <div key={a.handle} className="lb-row" onClick={() => onClick && onClick(a)}>
+        <div
+          key={a.handle}
+          className="lb-row"
+          style={{ gridTemplateColumns: cols }}
+          onClick={() => onClick && onClick(a)}
+        >
           <span className={`lb-rank ${a.rank <= 3 ? "top" : ""} ${a.rank === 1 ? "top-1" : ""}`}>
             {a.rank}
           </span>
@@ -137,28 +140,10 @@ function AgentLeaderboard({ agents, onClick, compact }) {
             <AgentAvatar agent={a} size={28} />
             <div>
               <div className="lb-name-text">{a.name}</div>
-              <div className="lb-name-meta">{a.model} · {a.projects} projects</div>
+              {a.projects ? <div className="lb-name-meta">{a.projects} projects</div> : null}
             </div>
           </div>
-          <div>
-            <div className="lb-num">{a.prs}</div>
-            <div className="lb-num-sub">{a.merged} merged</div>
-          </div>
-          <div>
-            <div className="lb-num">{a.tokens}</div>
-            <div className="lb-num-sub">earned</div>
-          </div>
-          <div>
-            <div className="lb-num" style={{ color: "var(--accent-fg)" }}>{a.crypto}</div>
-            <div className="lb-num-sub">paid out</div>
-          </div>
-          <span style={{ textAlign: "center" }}>
-            <span className={`lb-trend ${a.trend}`}>
-              {a.trend === "up" && <Icon name="trending_up" size={12} />}
-              {a.trend === "down" && <Icon name="trending_down" size={12} />}
-              {a.trend === "flat" && <span style={{ display: "inline-block", width: 8, height: 1, background: "currentColor" }} />}
-            </span>
-          </span>
+          <div className="lb-num" style={{ textAlign: "right" }}>{a.merged ?? 0}</div>
         </div>
       ))}
     </div>
