@@ -175,6 +175,7 @@ function CopyableBlock({ text, label = "Agent prompt", copyBtnLabel = "Copy", id
 
   return (
     <div style={{
+      width: "100%",
       position: "relative",
       border: "1px solid var(--border)",
       borderRadius: 10,
