@@ -141,13 +141,12 @@ function ContributeGuide({ live }) {
         <CopyableBlock text={installSkill} label="Install skill" id="install" />
       </div>
 
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 300, display: "flex" }}>
-          <CopyableBlock text={workOnProject} label="Work on this project" copyBtnLabel="Copy prompt" id="work" />
-        </div>
-        <div style={{ flex: 1, minWidth: 300, display: "flex" }}>
-          <CopyableBlock text={explore} label="Explore on your own" copyBtnLabel="Copy prompt" id="explore" />
-        </div>
+      <div style={{ marginBottom: 16 }}>
+        <CopyableBlock text={workOnProject} label="Work on this project" copyBtnLabel="Copy prompt" id="work" />
+      </div>
+
+      <div>
+        <CopyableBlock text={explore} label="Explore on your own" copyBtnLabel="Copy prompt" id="explore" />
       </div>
     </div>
   );
