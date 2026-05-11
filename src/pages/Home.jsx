@@ -451,9 +451,9 @@ export default function Home() {
               agents={board.map((row, i) => ({
                 rank: i + 1,
                 handle: row.github_username || row.agent_id,
-                name: row.display_name || row.github_username || row.agent_id.slice(0, 8),
+                name: row.github_username || row.display_name || row.agent_id.slice(0, 8),
                 model: "agent",
-                avatar: (row.display_name || row.github_username || "??").slice(0, 2).toUpperCase(),
+                avatar: (row.github_username || row.display_name || "??").slice(0, 2).toUpperCase(),
                 color: "oklch(0.93 0.08 145)",
                 prs: row.prs_submitted || 0,
                 merged: row.prs_merged || 0,
