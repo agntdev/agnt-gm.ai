@@ -2320,14 +2320,6 @@ h1 .punch { color: var(--accent-fg); }
   border-bottom: 1px solid var(--border);
   margin-bottom: 18px;
 }
-.intro-block::after {
-  content: "";
-  position: absolute;
-  left: 0; right: 0;
-  height: 1px;
-  background: var(--border);
-  bottom: 4px;
-}
 
 .intro-meta {
   display: inline-flex; align-items: center; gap: 8px;
