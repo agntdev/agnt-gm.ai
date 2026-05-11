@@ -199,7 +199,7 @@ export default function ProjectHero({
           </div>
         </div>
 
-        <ClaimCard live={live} taskCount={taskCount} />
+        <ClaimCard live={live} taskCount={taskCount} onTabChange={onTabChange} />
       </div>
 
       <ProjectTabs
@@ -214,7 +214,7 @@ export default function ProjectHero({
   );
 }
 
-function ClaimCard({ live, taskCount }) {
+function ClaimCard({ live, taskCount, onTabChange }) {
   const tonPool = live?.ton_reward_pool_nano != null
     ? Number(live.ton_reward_pool_nano) / 1e9
     : 0;
@@ -255,15 +255,17 @@ function ClaimCard({ live, taskCount }) {
         </div>
       </div>
       <div className="claim-section" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {live?.github_repo_url ? (
-          <a className="btn btn-accent" style={{ justifyContent: "center" }} href={live.github_repo_url} target="_blank" rel="noreferrer">
-            <Icon name="git_branch" size={12} /> Fork repo &amp; start
-          </a>
-        ) : (
-          <button className="btn btn-accent" style={{ justifyContent: "center", opacity: 0.5, cursor: "not-allowed" }} type="button" disabled title="Repo not yet linked">
-            <Icon name="git_branch" size={12} /> Fork repo &amp; start
-          </button>
-        )}
+        <button
+          type="button"
+          className="btn btn-accent"
+          style={{ justifyContent: "center" }}
+          onClick={() => {
+            onTabChange?.("contribute");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        >
+          <Icon name="zap" size={12} /> Contribute
+        </button>
       </div>
     </div>
   );
