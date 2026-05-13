@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import Icon from "./Icon.jsx";
 import { api } from "../lib/api.js";
-import { getToken } from "../lib/auth.js";
+import { getToken, setSession } from "../lib/auth.js";
 
 export { default as Icon } from "./Icon.jsx";
 
@@ -198,13 +198,30 @@ function MyAgentMenu({ agent, onSignOut, active }) {
 //
 // Bind state is kept in component state — once the round-trip succeeds
 // for the current connection we don't re-bind on every refresh.
+// Compare two TON addresses ignoring format (raw / EQ / UQ). Returns
+// true when they refer to the same account. Strict equality is too
+// brittle because the SDK gives raw 0:hex via useTonAddress(false)
+// while the API stores raw — but if either side comes from a different
+// helper later, we still want them to compare equal.
+function addrEq(a, b) {
+  if (!a || !b) return false;
+  const norm = (s) => String(s).trim().toLowerCase().replace(/^[ue]q/, "");
+  return norm(a) === norm(b);
+}
+
 export function WalletButton() {
-  const tonAddress = useTonAddress();
+  const tonAddress = useTonAddress();          // user-friendly — for display
+  const tonAddressRaw = useTonAddress(false);  // raw `0:hex` — for comparing to API
   const tonWallet = useTonWallet();
   const [tonConnectUI] = useTonConnectUI();
   const [open, setOpen] = useState(false);
   const [bindState, setBindState] = useState("idle"); // idle | pending | done | error
   const [bindError, setBindError] = useState("");
+  // What's currently bound on the API for this agent. Used to detect
+  // the "TC restored a session without proof, API never got bound"
+  // case — TC will happily render the address chip but the agent
+  // record is still walletless.
+  const [boundRaw, setBoundRaw] = useState(null);
   const ref = useRef(null);
   const lastBoundFor = useRef(null);
 
@@ -215,10 +232,24 @@ export function WalletButton() {
     return () => document.removeEventListener("click", onDocClick);
   }, [open]);
 
+  // Pull the agent's currently-bound wallet from /me so we can detect
+  // the "TC connected but API doesn't know about it" mismatch. Re-run
+  // when the connected address changes or a bind round-trip completes,
+  // so the chip flips green the moment the API confirms.
+  useEffect(() => {
+    const token = getToken();
+    if (!token) { setBoundRaw(null); return; }
+    let cancelled = false;
+    api.me(token).then((r) => {
+      if (cancelled) return;
+      setBoundRaw(r?.agent?.ton_wallet_address || null);
+    });
+    return () => { cancelled = true; };
+  }, [tonAddressRaw, bindState]);
+
   // Auto-bind on every fresh connection where the wallet returned a
-  // ton_proof — both for the click-Connect path (where we requested
-  // the proof) and for restored sessions, which won't have one (the
-  // subscription just no-ops in that case).
+  // ton_proof. Restored sessions don't carry a proof, so this no-ops
+  // in that case — startVerify() is the explicit re-bind path.
   useEffect(() => {
     const unsub = tonConnectUI.onStatusChange(async (wallet) => {
       if (!wallet) {
@@ -251,6 +282,11 @@ export function WalletButton() {
       const res = await api.walletBind(body, token);
       if (res.ok) {
         setBindState("done");
+        // Refresh the cached agent profile so the rest of the SPA
+        // (Agent page facts rail, WalletBindCard, etc.) sees the
+        // bound address without a hard reload.
+        const me = await api.me(token);
+        if (me?.agent) setSession({ agent: me.agent });
       } else {
         setBindState("error");
         setBindError(res.data?.error || `bind failed (HTTP ${res.status})`);
@@ -260,12 +296,16 @@ export function WalletButton() {
     return () => unsub();
   }, [tonConnectUI]);
 
-  async function onConnectClick() {
+  // Shared flow: ask the API for a fresh nonce, arm tonConnectUI with
+  // a tonProof request, open the modal. Used by both first-connect and
+  // re-bind ("Verify wallet") paths — re-bind additionally disconnects
+  // the existing session first so the wallet does a clean handshake.
+  async function startConnect({ reverify = false } = {}) {
     const token = getToken();
+    if (reverify && tonConnectUI.connected) {
+      await tonConnectUI.disconnect();
+    }
     if (token) {
-      // Request a server-issued nonce and arm TonConnect's tonProof
-      // item before opening the modal. SDK supports a `loading` state
-      // so the modal can pop instantly even if the nonce fetch is slow.
       tonConnectUI.setConnectRequestParameters({ state: "loading" });
       try {
         const res = await api.walletPayload(token);
@@ -297,7 +337,7 @@ export function WalletButton() {
       <button
         type="button"
         className="btn btn-myagent"
-        onClick={onConnectClick}
+        onClick={() => startConnect()}
         title="Connect TON wallet"
       >
         <TonMark size={14} />
@@ -308,9 +348,20 @@ export function WalletButton() {
 
   const short = `${tonAddress.slice(0, 4)}…${tonAddress.slice(-4)}`;
   const walletName = tonWallet?.device?.appName || tonWallet?.name || "Wallet";
+  const isSignedIn = !!getToken();
+  // "verified" = the API knows this exact address belongs to this agent.
+  // Auto-bind sets bindState=done after a successful round-trip; on
+  // refresh, we recover the same conclusion from /me's bound wallet.
+  const apiSaysVerified = isSignedIn && !!boundRaw && addrEq(boundRaw, tonAddressRaw);
+  const verified = bindState === "done" || apiSaysVerified;
+  // Mismatch = signed in, TC connected, but API has either no wallet
+  // bound or a different one. Surface as amber chip + "Verify wallet"
+  // action in the dropdown.
+  const needsVerify = isSignedIn && !verified && bindState !== "pending";
   const bindLabel = bindState === "pending" ? "Verifying…"
-    : bindState === "done" ? "Verified ✓"
     : bindState === "error" ? "Bind failed"
+    : verified ? "Verified ✓"
+    : needsVerify ? "Not verified — click Verify in menu"
     : "";
 
   return (
@@ -319,11 +370,21 @@ export function WalletButton() {
         type="button"
         className="btn btn-myagent"
         onClick={() => setOpen((v) => !v)}
-        title={tonAddress}
+        title={needsVerify ? `${tonAddress} — not verified on this account` : tonAddress}
+        style={needsVerify ? { borderColor: "oklch(0.75 0.12 80)" } : undefined}
       >
         <TonMark size={14} />
         <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>{short}</span>
-        {bindState === "done" && <span className="live-dot" style={{ marginLeft: 4 }} />}
+        {verified && <span className="live-dot" style={{ marginLeft: 4 }} />}
+        {needsVerify && (
+          <span
+            style={{
+              marginLeft: 4, width: 8, height: 8, borderRadius: 999,
+              background: "oklch(0.75 0.12 80)", display: "inline-block",
+            }}
+            aria-hidden="true"
+          />
+        )}
       </button>
       {open && (
         <div
@@ -355,13 +416,33 @@ export function WalletButton() {
             <div
               style={{
                 fontSize: 11,
-                color: bindState === "error" ? "var(--danger)" : "var(--fg-muted)",
+                color: bindState === "error" ? "var(--danger)"
+                  : verified ? "var(--accent-fg)"
+                  : needsVerify ? "#b45309"
+                  : "var(--fg-muted)",
                 marginBottom: 8,
               }}
               title={bindError || undefined}
             >
               {bindLabel}{bindState === "error" && bindError ? `: ${bindError}` : ""}
             </div>
+          )}
+          {needsVerify && (
+            <button
+              type="button"
+              onClick={() => { setOpen(false); startConnect({ reverify: true }); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                width: "100%", padding: "8px 10px", borderRadius: 6,
+                fontSize: 12, color: "var(--accent-fg)", background: "var(--accent-soft)",
+                border: "1px solid var(--accent)", cursor: "pointer", textAlign: "left",
+                fontFamily: "inherit", fontWeight: 700,
+                marginBottom: 6,
+              }}
+              title="Re-sign the wallet to bind it to your agent"
+            >
+              <TonMark size={12} /> Verify wallet
+            </button>
           )}
           <button
             type="button"
