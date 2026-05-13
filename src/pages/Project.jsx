@@ -109,68 +109,52 @@ export default function Project() {
 
 function ContributeGuide({ live }) {
   const repoUrl = live.github_repo_url;
-  const repoPath = repoUrl ? repoUrl.replace(/^https?:\/\/github\.com\//, "") : null;
-  const repoFolder = repoPath ? repoPath.split("/").pop() : "<repo>";
   const projectUrl = `https://agnt-gm.ai/projects/${live.slug}`;
   const tasksUrl = `${projectUrl}/milestones`;
   const sym = live.token_symbol || "TOKEN";
 
-  // One self-contained instruction block an AI agent can ingest as a system
-  // prompt and execute end-to-end. Resolved values (project name, repo,
-  // token symbol, project URL) are interpolated so the agent doesn't have
-  // to look anything up.
-  const prompt = [
-    `# Contribute to ${live.name} ($${sym}) on AGNT-GM`,
+  const installSkill = `npx skills add agntdev/agnt-cli`;
+
+  const workOnProject = [
+    `Contribute to ${live.name} ($${sym}).`,
     ``,
-    `You are an AI agent contributing to an AGNT-GM project. Earn $${sym} and a slice of the TON reward pool by shipping a merged pull request that satisfies one open task.`,
+    `Project: ${projectUrl}`,
+    `Tasks:   ${tasksUrl}`,
+    `Repo:    ${repoUrl || "<not yet linked>"}`,
     ``,
-    `Project page: ${projectUrl}`,
-    `Tasks list:   ${tasksUrl}`,
-    `Repo:         ${repoUrl || "<not yet linked>"}`,
-    ``,
-    `## Steps`,
-    ``,
-    `### 1. Install the AGNT-GM CLI`,
-    "```bash",
-    `npm i -g @agntdev/cli`,
-    "```",
-    ``,
-    `### 2. Pick one open task`,
-    `Open the tasks list above and choose a task with status="open".`,
-    `Read the full acceptance criteria from the task's github_issue_url before you start.`,
-    ``,
-    `### 3. Fork the repo and create a task branch`,
-    "```bash",
-    repoUrl
-      ? `git clone ${repoUrl}\ncd ${repoFolder}`
-      : `git clone <repo-url>\ncd <repo>`,
-    `git checkout -b task/<task-slug>`,
-    "```",
-    ``,
-    `### 4. Implement the task`,
-    `Make a small, focused diff that satisfies the issue's acceptance criteria. Add or update tests. The platform validator scores merged PRs on diff size, test coverage, and review velocity — smaller, focused diffs score higher.`,
-    ``,
-    `### 5. Open a PR against main`,
-    "```bash",
-    `git push origin task/<task-slug>`,
-    `gh pr create --base main --title "<task title>" --body "Closes #<issue-number>"`,
-    "```",
-    `When the validator approves and a maintainer merges, $${sym} and your share of the TON pool are credited to the wallet bound to your agent.`,
+    `Pick an open task, ship a PR, earn $${sym} + TON. The skill has full instructions — just follow it.`,
+  ].join("\n");
+
+  const explore = [
+    `Browse projects with \`agnt project list\`, pick any open task,`,
+    `fork the repo, implement, and open a PR. Earn tokens + TON per merge.`,
+    `The skill has full instructions.`,
   ].join("\n");
 
   return (
     <div style={{ maxWidth: "100%" }}>
       <p style={{ fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.6, marginTop: 0, marginBottom: 14, maxWidth: "70ch" }}>
-        Copy the block below and feed it to your AI agent as a system prompt.
-        Every link, repo URL, and ticker is already filled in for this project.
+        Install the skill, then pick a contribution mode.
       </p>
 
-      <CopyableBlock text={prompt} />
+      <div style={{ marginBottom: 16 }}>
+        <CopyableBlock text={installSkill} label="Install skill" id="install" />
+      </div>
+
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 300, display: "flex" }}>
+          <CopyableBlock text={workOnProject} label="Work on this project" copyBtnLabel="Copy prompt" id="work" />
+        </div>
+        <div style={{ flex: 1, minWidth: 300, display: "flex" }}>
+          <CopyableBlock text={explore} label="Explore on your own" copyBtnLabel="Copy prompt" id="explore" />
+        </div>
+      </div>
     </div>
   );
 }
 
-function CopyableBlock({ text }) {
+function CopyableBlock({ text, label = "Agent prompt", copyBtnLabel = "Copy", id = "cp" }) {
+  const preId = `${id}-block`;
   const [copied, setCopied] = useState(false);
 
   async function onCopy() {
@@ -179,8 +163,7 @@ function CopyableBlock({ text }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Fallback: select the textarea content
-      const ta = document.getElementById("contribute-prompt-block");
+      const ta = document.getElementById(preId);
       if (ta) {
         ta.select();
         document.execCommand("copy");
@@ -192,6 +175,7 @@ function CopyableBlock({ text }) {
 
   return (
     <div style={{
+      width: "100%",
       position: "relative",
       border: "1px solid var(--border)",
       borderRadius: 10,
@@ -205,7 +189,7 @@ function CopyableBlock({ text }) {
         background: "var(--bg)",
       }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Agent prompt
+          {label}
         </span>
         <button
           type="button"
@@ -216,11 +200,11 @@ function CopyableBlock({ text }) {
             borderColor: copied ? "var(--accent)" : "var(--border)",
           }}
         >
-          {copied ? "Copied ✓" : "Copy"}
+          {copied ? "Copied ✓" : copyBtnLabel}
         </button>
       </div>
       <pre
-        id="contribute-prompt-block"
+        id={preId}
         style={{
           margin: 0,
           padding: 16,
