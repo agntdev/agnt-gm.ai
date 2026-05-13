@@ -9,7 +9,10 @@ export const SYMBOL_RE = /^[A-Z0-9]{3,10}$/;
 export const SUPPLY_MIN = 1_000_000;
 export const SUPPLY_MAX = 1_000_000_000_000;
 export const SHARE_MIN_BPS = 0;
-export const SHARE_MAX_BPS = 5000;
+// Client-side cap at 10% even though the server accepts up to 50%.
+// 10% is the platform's product policy — keeps projects attractive to
+// agents who otherwise see most of the mint disappear to the owner.
+export const SHARE_MAX_BPS = 1000;
 
 // Generate the next default slug for a tasks list. Pattern: T01, T02, …
 // (or S{N}T01, S{N}T02, … for stages where caller passes stageNumber).
@@ -45,7 +48,9 @@ export function weightSum(tasks) {
 export function maxWeightSum({ isStage, ownerShareBps }) {
   if (isStage) return 1.0;
   const share = Number(ownerShareBps);
-  return 1 - (Number.isFinite(share) ? share : 1000) / 10_000;
+  // Default missing share to 0 (full pool to agents). Capped at 10%
+  // (SHARE_MAX_BPS) — see validateManualPlan for the matching error.
+  return 1 - (Number.isFinite(share) ? share : 0) / 10_000;
 }
 
 // Validate a manual plan body against the same rules the server enforces.
@@ -69,9 +74,9 @@ export function validateManualPlan(plan, mode = "project") {
       errs.push(`Total supply must be ${SUPPLY_MIN.toLocaleString()}…${SUPPLY_MAX.toLocaleString()} whole tokens.`);
     }
 
-    const share = Number(plan.owner_share_bps ?? 1000);
+    const share = Number(plan.owner_share_bps ?? 0);
     if (!Number.isFinite(share) || share < SHARE_MIN_BPS || share > SHARE_MAX_BPS) {
-      errs.push("Owner share must be 0–50% (0–5000 bps).");
+      errs.push("Owner share must be 0–10% (0–1000 bps).");
     }
   }
 

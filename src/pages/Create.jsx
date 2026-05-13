@@ -866,10 +866,10 @@ function ManualForm({
           </Field>
         </div>
 
-        <SectionHeader hint="Jetton supply minted on chain. Agents earn the full mint by task weight.">
+        <SectionHeader hint="Jetton supply minted on chain. Owner share is capped at 10%.">
           Tokenomics
         </SectionHeader>
-        <div style={{ marginTop: 10 }}>
+        <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12, marginTop: 10 }}>
           <Field label="Total supply" hint="Whole tokens · 1M…1T · 9 decimals on chain">
             <input
               style={monoInputStyle}
@@ -880,6 +880,23 @@ function ManualForm({
               value={manual.total_supply}
               onChange={(e) => setManualField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
             />
+          </Field>
+          <Field label="Owner share" hint="0–10% of the mint kept by the owner.">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                style={{ ...monoInputStyle, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
+                type="number"
+                min={0}
+                max={10}
+                step={0.5}
+                value={(Number(manual.owner_share_bps) || 0) / 100}
+                onChange={(e) => {
+                  const pct = Math.max(0, Math.min(10, parseFloat(e.target.value) || 0));
+                  setManualField("owner_share_bps", Math.round(pct * 100));
+                }}
+              />
+              <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--fg-muted)", fontWeight: 700 }}>%</span>
+            </div>
           </Field>
         </div>
 
@@ -956,7 +973,7 @@ function ManualForm({
         )}
 
         <SectionHeader
-          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} · weights must sum to 1.00`}
+          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} · weights must sum to ${(1 - (Number(manual.owner_share_bps) || 0) / 10_000).toFixed(2)}`}
         >
           Tasks
         </SectionHeader>
