@@ -180,6 +180,25 @@ export default function ProjectHero({
                     repo not yet linked
                   </span>
                 )}
+                {live.live_url && (
+                  <a
+                    href={live.live_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      padding: "3px 8px", borderRadius: 4,
+                      background: "var(--accent-soft)", color: "var(--accent-fg)",
+                      fontSize: 10.5, fontWeight: 800,
+                      fontFamily: "JetBrains Mono, monospace",
+                      letterSpacing: "0.05em", textTransform: "uppercase",
+                      textDecoration: "none",
+                    }}
+                    title={live.live_url}
+                  >
+                    <Icon name="external" size={10} /> Live site
+                  </a>
+                )}
                 {live.status && (
                   <span style={{
                     fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4,

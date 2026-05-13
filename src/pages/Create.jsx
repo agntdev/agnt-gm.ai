@@ -196,7 +196,6 @@ export default function Create() {
           <ValidatingPanel
             phase={phase}
             project={project}
-            onCancel={reset}
           />
         )}
 
@@ -558,7 +557,7 @@ function Form({
   );
 }
 
-function ValidatingPanel({ phase, project, onCancel }) {
+function ValidatingPanel({ phase, project }) {
   return (
     <div style={{ marginTop: 22, padding: 28, border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-soft)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -576,7 +575,6 @@ function ValidatingPanel({ phase, project, onCancel }) {
           project_id <span style={{ color: "var(--fg)" }}>{project.id}</span> · status <span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>{project.status}</span>
         </div>
       )}
-      <button type="button" className="btn" onClick={onCancel} style={{ marginTop: 14 }}>Cancel & start over</button>
     </div>
   );
 }

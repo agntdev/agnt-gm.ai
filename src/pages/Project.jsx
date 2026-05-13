@@ -353,6 +353,23 @@ function ProjectFactsRail({ live, owner, taskCount }) {
         </span>
       </div>
 
+      {live.live_url && (
+        <div className="fact-row">
+          <span className="l">Live site</span>
+          <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>
+            <a
+              href={live.live_url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "var(--fg)" }}
+              title={live.live_url}
+            >
+              <Icon name="external" size={11} /> {live.live_url.replace(/^https?:\/\//, "")}
+            </a>
+          </span>
+        </div>
+      )}
+
       {taskCount != null && (
         <div className="fact-row">
           <span className="l">Tasks</span>
