@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { Icon } from "../components/atoms.jsx";
 import { api } from "../lib/api.js";
 import { useAuth, setManualToken, githubLoginUrl } from "../lib/auth.js";
@@ -20,12 +21,15 @@ export default function Create() {
     deadline: "7", // number-of-days as a string; one of "1" | "3" | "7" | "14"
     task_notes: "",
     ton_reward_pool: "5",   // TON; converted to nano (×1e9) on submit
-    owner_wallet_address: "", // raw TON address (workchain:hex) or 0:hex / UQ…
   });
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const walletInvalid = form.owner_wallet_address.trim().length > 0
-    && form.owner_wallet_address.trim().length < 10;
+  // Owner wallet comes entirely from TonConnect — no manual entry. Submission
+  // is blocked until a wallet is connected; on submit we pass the user-friendly
+  // address straight to the API.
+  const tonAddress = useTonAddress();
+  const tonWallet = useTonWallet();
+  const [tonConnectUI] = useTonConnectUI();
 
   // Submission lifecycle:
   //   "idle" → "submitting" → "polling" → ("ready" | "rejected" | "failed" | "live")
@@ -39,7 +43,7 @@ export default function Create() {
 
   const ideaTooShort = form.raw_idea.trim().length < 20;
   const ideaTooLong = form.raw_idea.length > 10_000;
-  const walletMissing = form.owner_wallet_address.trim().length === 0;
+  const walletMissing = !tonAddress;
 
   async function pollUntilTerminal(idOrSlug) {
     const start = Date.now();
@@ -62,8 +66,8 @@ export default function Create() {
   async function onSubmit(e) {
     e?.preventDefault();
     if (ideaTooShort || ideaTooLong) return;
-    if (walletMissing || walletInvalid) {
-      setErrorMsg("Owner wallet address is required.");
+    if (walletMissing) {
+      setErrorMsg("Connect a TON wallet to set the owner address.");
       return;
     }
     if (!token) { setShowTokenEdit(true); return; }
@@ -73,7 +77,7 @@ export default function Create() {
 
     const body = {
       raw_idea: form.raw_idea.trim(),
-      owner_wallet_address: form.owner_wallet_address.trim(),
+      owner_wallet_address: tonAddress,
     };
     if (form.name.trim()) body.name = form.name.trim();
     if (form.token_symbol.trim()) body.token_symbol = form.token_symbol.trim().toUpperCase();
@@ -178,9 +182,13 @@ export default function Create() {
             ideaTooShort={ideaTooShort}
             ideaTooLong={ideaTooLong}
             walletMissing={walletMissing}
-            walletInvalid={walletInvalid}
             onSubmit={onSubmit}
             errorMsg={errorMsg}
+            tonConnected={!!tonAddress}
+            tonAddress={tonAddress}
+            tonWalletName={tonWallet?.device?.appName || tonWallet?.name || null}
+            onConnectWallet={() => tonConnectUI.openModal()}
+            onDisconnectWallet={() => tonConnectUI.disconnect()}
           />
         )}
 
@@ -288,7 +296,10 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
   );
 }
 
-function Form({ form, setField, ideaTooShort, ideaTooLong, walletMissing, walletInvalid, onSubmit, errorMsg }) {
+function Form({
+  form, setField, ideaTooShort, ideaTooLong, walletMissing, onSubmit, errorMsg,
+  tonConnected, tonAddress, tonWalletName, onConnectWallet, onDisconnectWallet,
+}) {
   return (
     <form onSubmit={onSubmit} style={{ marginTop: 22, display: "grid", gridTemplateColumns: "1fr 320px", gap: 22 }}>
       <div className="create-form-card">
@@ -431,23 +442,60 @@ function Form({ form, setField, ideaTooShort, ideaTooLong, walletMissing, wallet
               Owner wallet
               <span style={{ float: "right", fontWeight: 500, color: "var(--danger)" }}>required</span>
             </label>
-            <div className="field-hint">TON address (workchain:hex or UQ…). Receives reward-pool refunds & owner-share tokens.</div>
-            <input
-              className="field-input"
-              placeholder="0:f0df…c572"
-              value={form.owner_wallet_address}
-              onChange={(e) => setField("owner_wallet_address", e.target.value)}
-              spellCheck={false}
-              autoComplete="off"
-              style={{
-                fontFamily: "JetBrains Mono, monospace",
-                borderColor: walletInvalid ? "var(--danger)" : "var(--border)",
-              }}
-            />
-            {walletInvalid && (
-              <div className="field-hint" style={{ color: "var(--danger)" }}>
-                Address looks too short. TON addresses are 10–68 characters.
+            <div className="field-hint">
+              {tonConnected
+                ? "Reward-pool refunds and owner-share tokens go to this wallet."
+                : "Connect a TON wallet — its address is recorded as the project owner."}
+            </div>
+            {tonConnected ? (
+              <div
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 12px", marginTop: 4,
+                  border: "1px solid var(--accent)", borderRadius: 6,
+                  background: "var(--accent-soft)",
+                }}
+              >
+                <span className="live-dot" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--accent-fg)", textTransform: "uppercase" }}>
+                    {tonWalletName || "Wallet"} connected
+                  </div>
+                  <div
+                    title={tonAddress}
+                    style={{
+                      marginTop: 2,
+                      fontFamily: "JetBrains Mono, monospace",
+                      fontSize: 11.5, fontWeight: 700,
+                      color: "var(--fg)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {tonAddress}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onDisconnectWallet}
+                  className="btn btn-sm"
+                >
+                  Disconnect
+                </button>
               </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onConnectWallet}
+                className="btn"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  width: "100%", marginTop: 4, height: 38,
+                  background: "var(--bg)", borderColor: "var(--border-strong)",
+                  fontWeight: 700,
+                }}
+              >
+                <Icon name="zap" size={12} /> Connect TON wallet
+              </button>
             )}
           </div>
         </div>
@@ -481,10 +529,10 @@ function Form({ form, setField, ideaTooShort, ideaTooLong, walletMissing, wallet
             className="btn-primary-big"
             style={{
               background: "var(--accent)",
-              opacity: ideaTooShort || ideaTooLong || walletMissing || walletInvalid ? 0.5 : 1,
-              cursor:  ideaTooShort || ideaTooLong || walletMissing || walletInvalid ? "not-allowed" : "pointer",
+              opacity: ideaTooShort || ideaTooLong || walletMissing ? 0.5 : 1,
+              cursor:  ideaTooShort || ideaTooLong || walletMissing ? "not-allowed" : "pointer",
             }}
-            disabled={ideaTooShort || ideaTooLong || walletMissing || walletInvalid}
+            disabled={ideaTooShort || ideaTooLong || walletMissing}
           >
             <Icon name="zap" size={12} /> Submit & validate
           </button>

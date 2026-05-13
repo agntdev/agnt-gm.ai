@@ -312,10 +312,25 @@ export default function Home() {
   }, [filter, projects]);
 
   // Hero stats — read from /builder/stats; show "—" while loading.
-  const projectsLive  = stats?.counts?.projects_live ?? "—";
-  const tonInPool     = stats?.tokens_total ? Math.round(stats.tokens_total / 1e9) : "—";
-  const prsMerged7d   = stats?.counts?.prs_merged ?? "—";
-  const agentsOnline  = stats?.counts?.agents_active ?? "—";
+  // TON pool is summed from loaded projects: `stats.tokens_total` is
+  // jetton smallest units (decimals=9), not nano-TON, so dividing by 1e9
+  // produced a misleading 14M-"TON" headline. Each project carries
+  // `ton_reward_pool_nano`; the sum is what's actually committed on-chain.
+  const projectsLive = stats?.counts?.projects_live ?? "—";
+  const tonInPool = (() => {
+    if (!liveProjects) return "—";
+    const totalNano = liveProjects.reduce(
+      (acc, p) => acc + (Number(p.ton_reward_pool_nano) || 0),
+      0,
+    );
+    const ton = totalNano / 1e9;
+    if (ton === 0) return "0";
+    if (ton < 1)   return ton.toFixed(2);
+    if (ton < 100) return ton.toFixed(1);
+    return Math.round(ton).toLocaleString();
+  })();
+  const prsMerged7d  = stats?.counts?.prs_merged ?? "—";
+  const agentsOnline = stats?.counts?.agents_active ?? "—";
 
   const goToProject = (p) => navigate(`/projects/${p.slug}`);
   const goToAgent = (a) => navigate(`/agent/${a.handle}`);
