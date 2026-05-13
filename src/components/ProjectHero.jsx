@@ -27,13 +27,18 @@ export function useProjectData(slug) {
   const [taskCount, setTaskCount] = useState(null);
   const [owner, setOwner] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    setLive(null);
-    setLiveTasks(null);
-    setTaskCount(null);
-    setOwner(null);
-    setLoading(true);
+    // Only show the loading skeleton on the initial slug load — silent
+    // refreshes (e.g. after a funding tx) shouldn't blow the page away.
+    if (tick === 0) {
+      setLive(null);
+      setLiveTasks(null);
+      setTaskCount(null);
+      setOwner(null);
+      setLoading(true);
+    }
     let cancelled = false;
     api.getProject(slug).then((res) => {
       if (cancelled) return;
@@ -60,9 +65,9 @@ export function useProjectData(slug) {
       setTaskCount((prev) => (prev == null ? tasks.length : prev));
     });
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [slug, tick]);
 
-  return { live, liveTasks, taskCount, owner, loading };
+  return { live, liveTasks, taskCount, owner, loading, refresh: () => setTick((n) => n + 1) };
 }
 
 const TABS = [

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { Icon } from "../components/atoms.jsx";
-import { api } from "../lib/api.js";
+import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
 import { useAuth, setManualToken, githubLoginUrl } from "../lib/auth.js";
 
 const POLL_INTERVAL_MS = 3000;
@@ -72,6 +72,31 @@ export default function Create() {
     setErrorMsg(`Timed out after ${Math.round(POLL_MAX_MS / 60000)} min — backend may still be working. Refresh project page later.`);
   }
 
+  // After the user submits a funding tx via TonConnect, the API's deposit
+  // watcher takes 10–60s to spot the transfer and flip ton_pool_funded_at.
+  // It also fires AutoPublishOnDeposit, which flips the project to `live`
+  // a moment later. Poll until either the funded timestamp lands or status
+  // jumps straight to live — we want the UI to reflect both without making
+  // the owner refresh.
+  async function pollUntilFunded(idOrSlug) {
+    const start = Date.now();
+    while (Date.now() - start < POLL_MAX_MS) {
+      const res = await api.getProject(idOrSlug);
+      if (res?.project) {
+        setProject(res.project);
+        if (res.project.status === "live") { setPhase("live"); return; }
+        if (res.project.ton_pool_funded_at) {
+          // Deposit confirmed. AutoPublishOnDeposit will likely move us to
+          // `live` shortly; meantime put the UI back in the review state so
+          // the publish CTA is unblocked.
+          setPhase("ready");
+          return;
+        }
+      }
+      await new Promise((r) => { pollAbort.current = setTimeout(r, POLL_INTERVAL_MS); });
+    }
+  }
+
   async function onSubmit(e) {
     e?.preventDefault();
     if (ideaTooShort || ideaTooLong) return;
@@ -136,7 +161,18 @@ export default function Create() {
     }
 
     setProject(res.data?.project ?? null);
-    setFundingInstructions(res.data?.funding_instructions ?? null);
+    // The API doesn't always (yet) return funding_instructions; fall back to
+    // a client-side build using the configured platform wallet so the
+    // TonConnect "Pay X TON" button still works. The on-chain deposit
+    // watcher matches by (sender wallet, amount), so no comment/payload is
+    // strictly required — but pass it through if the server provided one.
+    const apiInstr = res.data?.funding_instructions;
+    const poolNano = Number(res.data?.project?.ton_reward_pool_nano) || 0;
+    let instr = apiInstr ?? null;
+    if (!instr && poolNano > 0 && PLATFORM_TON_WALLET) {
+      instr = { address: PLATFORM_TON_WALLET, amount_nano: poolNano };
+    }
+    setFundingInstructions(instr);
     setFundingTxHash(null);
     setFundingErr("");
     setPhase("polling");
@@ -165,6 +201,11 @@ export default function Create() {
       // tonConnect returns `{ boc }`; the SHA-256 of the BoC is the tx hash on chain,
       // but most wallets give us back the BoC, not a hash. Surface what we got.
       setFundingTxHash(result?.boc || "submitted");
+      // Kick off background polling so the UI reflects on-chain confirmation
+      // (and the auto-publish that follows) without forcing a refresh.
+      if (project?.id || project?.slug) {
+        pollUntilFunded(project.id || project.slug);
+      }
     } catch (err) {
       if (err?.message?.toLowerCase()?.includes("reject")) {
         setFundingErr("Transaction rejected in your wallet.");
@@ -746,9 +787,10 @@ function ReviewPanel({
             </>
           ) : (
             <div style={{ fontSize: 12.5, color: "var(--danger)", lineHeight: 1.5 }}>
-              {poolTon} TON committed but the pool isn't funded yet. The funding details from this
-              project's creation aren't in the current session — refresh and resubmit, or contact an
-              admin to fund manually.
+              {poolTon} TON committed but no funding destination is configured for this
+              deployment (set <code>VITE_TON_PLATFORM_WALLET</code> to match the API's
+              <code> PLATFORM_TON_WALLET_ADDRESS</code>), or the API hasn't returned funding
+              instructions yet. Refresh and resubmit, or contact an admin to fund manually.
             </div>
           )}
         </div>
@@ -791,8 +833,19 @@ function LivePanel({ project, onView }) {
           <a href={project.github_repo_url} target="_blank" rel="noreferrer">{project.github_repo_url}</a>
         </div>
       )}
+      {project.live_url && (
+        <div style={{ marginTop: 6, fontFamily: "JetBrains Mono, monospace", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="external" size={12} />
+          <a href={project.live_url} target="_blank" rel="noreferrer">{project.live_url}</a>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
         <button type="button" className="btn-primary-big" onClick={onView}>View project page</button>
+        {project.live_url && (
+          <a href={project.live_url} target="_blank" rel="noreferrer" className="btn-primary-big" style={{ background: "var(--bg)", color: "var(--fg)", border: "1px solid var(--border-strong)", textDecoration: "none" }}>
+            <Icon name="external" size={12} /> Open live site
+          </a>
+        )}
       </div>
     </div>
   );
