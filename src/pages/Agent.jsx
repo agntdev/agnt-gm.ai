@@ -7,8 +7,9 @@
 //                                    owned by this agent (or the viewer's
 //                                    bound wallet, when viewing self)
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { Icon } from "../components/atoms.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
@@ -52,7 +53,7 @@ function StatTile({ label, value, accent }) {
 export default function Agent() {
   const { handle } = useParams();
   const navigate = useNavigate();
-  const { token, agent: viewer } = useAuth();
+  const { token, agent: viewer, refresh: refreshAuth } = useAuth();
 
   const [agent, setAgent] = useState(null);
   const [agentLoading, setAgentLoading] = useState(true);
@@ -194,6 +195,15 @@ export default function Agent() {
           <StatTile label="Projects"       value={projectsTouched ?? "—"} />
         </div>
 
+        {isMe && (
+          <WalletBindCard
+            agent={agent}
+            viewer={viewer}
+            token={token}
+            onBound={refreshAuth}
+          />
+        )}
+
         <div style={{ marginTop: 4, padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800 }}>
             <Icon name="layers" size={12} /> My projects
@@ -275,6 +285,216 @@ function ProjectsList({ projects, isMe, navigate }) {
     );
   }
   return <ProjectsTable projects={projects} navigate={navigate} />;
+}
+
+// ─────────────────────── TonConnect wallet binding ───────────────────────
+
+function shortAddr(addr) {
+  if (!addr) return "";
+  if (addr.length <= 16) return addr;
+  return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
+}
+
+// Card that lets the viewer bind a TON wallet to their agent via TonConnect.
+// Flow:
+//   1. Request a one-shot proof payload from the API.
+//   2. Hand it to TonConnect via `setConnectRequestParameters` and open the
+//      connect modal. (If a wallet is already connected from a previous step,
+//      we disconnect first so the wallet signs a fresh proof for THIS payload.)
+//   3. When the wallet returns with a tonProof envelope, POST it to /wallet/bind.
+//   4. On success, refresh the cached /me so the bound address renders.
+function WalletBindCard({ agent, viewer, token, onBound }) {
+  const [tonConnectUI] = useTonConnectUI();
+  const wallet = useTonWallet();
+  const [phase, setPhase] = useState("idle"); // idle | requesting | signing | binding | bound | error
+  const [errorMsg, setErrorMsg] = useState("");
+  // Capture the payload we asked the wallet to sign — used as a guard so we
+  // only consume tonProof envelopes generated for the current bind attempt
+  // (not stale ones from earlier sessions).
+  const pendingPayload = useRef(null);
+  const boundAddress = agent.ton_wallet_address || viewer?.ton_wallet_address || null;
+  const linkedAt = agent.wallet_linked_at || viewer?.wallet_linked_at || null;
+
+  async function startBind() {
+    if (!token) {
+      setErrorMsg("Sign in first to bind a wallet to your agent.");
+      setPhase("error");
+      return;
+    }
+    setErrorMsg("");
+    setPhase("requesting");
+    try {
+      // If a wallet is already connected (e.g. from the Create flow), drop it
+      // first — TonConnect only emits tonProof on a fresh connect handshake.
+      if (tonConnectUI.connected) {
+        await tonConnectUI.disconnect();
+      }
+      const res = await api.walletPayload(token);
+      const payload = res?.payload;
+      if (!payload) {
+        setErrorMsg("Couldn't get a proof challenge from the server. Try again.");
+        setPhase("error");
+        return;
+      }
+      pendingPayload.current = payload;
+      // setConnectRequestParameters MUST run before openModal so the wallet
+      // receives the tonProof request in the same connect handshake.
+      tonConnectUI.setConnectRequestParameters({
+        state: "ready",
+        value: { tonProof: payload },
+      });
+      setPhase("signing");
+      await tonConnectUI.openModal();
+      // The actual bind step kicks off from the useEffect below once the
+      // wallet pushes its tonProof envelope into `wallet.connectItems`.
+    } catch (err) {
+      setErrorMsg(String(err?.message || err) || "Failed to start TonConnect.");
+      setPhase("error");
+    }
+  }
+
+  // Watch the wallet for an inbound tonProof envelope that matches our pending
+  // payload, then submit it to the bind endpoint.
+  useEffect(() => {
+    if (phase !== "signing") return;
+    if (!wallet?.connectItems?.tonProof) return;
+    const item = wallet.connectItems.tonProof;
+    if ("error" in item) {
+      setErrorMsg(item.error?.message || "Wallet refused to sign the proof.");
+      setPhase("error");
+      return;
+    }
+    const proof = item.proof;
+    if (!proof || proof.payload !== pendingPayload.current) {
+      // Stale envelope (different payload than we asked for) — ignore.
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setPhase("binding");
+      const body = {
+        address: wallet.account.address,
+        network: wallet.account.chain,
+        public_key: wallet.account.publicKey,
+        proof: {
+          timestamp: proof.timestamp,
+          domain: proof.domain,
+          payload: proof.payload,
+          signature: proof.signature,
+          state_init: wallet.account.walletStateInit,
+        },
+      };
+      const res = await api.walletBind(body, token);
+      if (cancelled) return;
+      if (res.ok) {
+        setPhase("bound");
+        pendingPayload.current = null;
+        onBound?.();
+        return;
+      }
+      if (res.status === 409) {
+        setErrorMsg("This wallet is already bound to a different agent.");
+      } else if (res.status === 422) {
+        setErrorMsg("Proof verification failed. Try connecting again.");
+      } else if (res.status === 401) {
+        setErrorMsg("Your session expired. Sign in again, then retry.");
+      } else {
+        setErrorMsg(res.data?.error || res.data?.message || `Bind failed (HTTP ${res.status}).`);
+      }
+      setPhase("error");
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, phase, token, onBound]);
+
+  // Already bound — render a status card with the address.
+  if (boundAddress && phase !== "signing" && phase !== "binding") {
+    return (
+      <div style={{
+        margin: "0 0 24px",
+        padding: "14px 16px",
+        border: "1px solid var(--accent)",
+        borderRadius: 10,
+        background: "var(--accent-soft)",
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+      }}>
+        <Icon name="zap" size={14} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--accent-fg)", textTransform: "uppercase" }}>
+            TON wallet bound
+          </div>
+          <a
+            href={`https://tonviewer.com/${boundAddress}`}
+            target="_blank"
+            rel="noreferrer"
+            title={boundAddress}
+            style={{
+              display: "inline-block", marginTop: 2,
+              fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 700,
+              color: "var(--fg)", textDecoration: "none",
+            }}
+          >
+            {shortAddr(boundAddress)}
+          </a>
+          {linkedAt && (
+            <span style={{ marginLeft: 10, fontSize: 11, color: "var(--fg-muted)" }}>
+              linked {fmtDate(linkedAt)}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const labelByPhase = {
+    idle: "Connect TON wallet",
+    requesting: "Requesting proof…",
+    signing: "Waiting for wallet…",
+    binding: "Binding wallet…",
+    bound: "Wallet bound",
+    error: "Try again",
+  };
+
+  return (
+    <div style={{
+      margin: "0 0 24px",
+      padding: "16px 18px",
+      border: "1px dashed var(--border-strong)",
+      borderRadius: 10,
+      background: "var(--bg-soft)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--fg-muted)", textTransform: "uppercase" }}>
+            Bind a TON wallet
+          </div>
+          <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, maxWidth: "60ch" }}>
+            Connecting a wallet proves you own this address and lets the platform
+            credit reward-pool payouts and owner-share tokens to it.
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn btn-accent"
+          onClick={startBind}
+          disabled={phase === "requesting" || phase === "signing" || phase === "binding"}
+          style={{ minWidth: 180, justifyContent: "center" }}
+        >
+          <Icon name="zap" size={12} /> {labelByPhase[phase] || "Connect TON wallet"}
+        </button>
+      </div>
+
+      {errorMsg && (
+        <div style={{
+          marginTop: 12, padding: 10,
+          border: "1px solid var(--danger)", borderRadius: 6,
+          background: "var(--danger-soft)", color: "var(--danger)",
+          fontSize: 12,
+        }}>
+          {errorMsg}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ProjectsTable({ projects, navigate }) {

@@ -90,6 +90,15 @@ export const api = {
   // PATCH /builder/agents/me — { display_name?, bio? }. Returns AgentEnvelope.
   updateMe: (body, token) => send("PATCH", "/builder/agents/me", body, { auth: token }),
 
+  // TonConnect wallet binding. Two-step:
+  //   1. GET /builder/agents/me/wallet/payload → { payload, expires_in }
+  //      The SPA passes `payload` to the TonConnect SDK as the proof challenge.
+  //   2. POST /builder/agents/me/wallet/bind   → { ok, agent_id, ton_wallet_address }
+  //      Body: { address, network, public_key, proof: { timestamp, domain,
+  //      payload, signature, state_init } } — the verified envelope from the wallet.
+  walletPayload: (token) => get("/builder/agents/me/wallet/payload", { auth: token }),
+  walletBind: (body, token) => send("POST", "/builder/agents/me/wallet/bind", body, { auth: token }),
+
   // Auth — /auth/github starts an OAuth redirect on the API host.
   // Top-level navigation, not an XHR, so cross-origin is fine.
   // Prefer importing `githubLoginUrl` from `lib/auth.js` for a single source.
