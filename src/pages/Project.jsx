@@ -59,6 +59,7 @@ export default function Project() {
           contributorCount={0}
         />
         <FundPoolBanner live={live} isOwner={isOwner} refresh={refresh} />
+        <StagesSection live={live} isOwner={isOwner} refresh={refresh} />
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
           {tab === "contribute" && (
             <ContributeGuide live={live} navigate={navigate} />
@@ -545,7 +546,15 @@ function FundPoolBanner({ live, isOwner, refresh }) {
       ownerWallet.replace(/[^a-z0-9:]/gi, "").toLowerCase();
 
   async function onPay() {
-    if (!PLATFORM_TON_WALLET) {
+    // Prefer the address baked into the project DTO by the API
+    // (POST /builder/projects + GET /builder/projects/:id now return
+    // funding_address). Fall back to the build-time env if older
+    // responses come back without it.
+    const destination = live.funding_address || PLATFORM_TON_WALLET;
+    const amount = live.funding_amount_nano != null
+      ? String(live.funding_amount_nano)
+      : String(poolNano);
+    if (!destination) {
       setError("Platform wallet not configured (VITE_TON_PLATFORM_WALLET).");
       return;
     }
@@ -558,7 +567,7 @@ function FundPoolBanner({ live, isOwner, refresh }) {
       }
       await tonConnectUI.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 360,
-        messages: [{ address: PLATFORM_TON_WALLET, amount: String(poolNano) }],
+        messages: [{ address: destination, amount }],
       });
       setTxSubmitted(true);
     } catch (err) {
@@ -622,5 +631,369 @@ function FundPoolBanner({ live, isOwner, refresh }) {
         )}
       </div>
     </div>
+  );
+}
+
+// ────────────────────────── Stages section ──────────────────────────
+// Multi-round funding (2026-05-13). Renders the project's stage timeline,
+// lets the owner start the next stage when the previous one closes, and
+// surfaces a TonConnect "Fund this stage" CTA when a freshly-created
+// stage is in `pending` state (waiting for the deposit watcher).
+
+const STAGE_STATUS = {
+  pending:  { label: "Awaiting funding", tone: "amber"  },
+  funded:   { label: "Funded",           tone: "accent" },
+  active:   { label: "Active",           tone: "accent" },
+  closed:   { label: "Closed",           tone: "muted"  },
+};
+
+function StagesSection({ live, isOwner, refresh }) {
+  const [stages, setStages] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [reloadTick, setReloadTick] = useState(0);
+  const idOrSlug = live?.slug || live?.id;
+
+  useEffect(() => {
+    if (!idOrSlug) return;
+    let cancelled = false;
+    setLoading(true);
+    api.projectStages(idOrSlug).then((res) => {
+      if (cancelled) return;
+      setStages(res?.stages || []);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [idOrSlug, reloadTick]);
+
+  const reloadStages = () => setReloadTick((n) => n + 1);
+
+  // Background poll while any stage is mid-flight, so the UI flips
+  // pending → funded → active without manual refresh.
+  useEffect(() => {
+    if (!stages) return undefined;
+    const inFlight = stages.some((s) => s.status === "pending" || (s.status === "funded" && !s.activated_at));
+    if (!inFlight) return undefined;
+    const t = setTimeout(reloadStages, 6000);
+    return () => clearTimeout(t);
+  }, [stages]);
+
+  if (loading || stages == null) return null;
+  if (stages.length === 0) return null;
+
+  const last = stages[stages.length - 1];
+  const canStartNext = isOwner && live.status === "live" && last.status === "closed";
+
+  return (
+    <section style={{ marginTop: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800 }}>
+          <Icon name="layers" size={12} /> Stages
+          <span style={{ fontSize: 10, color: "var(--fg-muted)", fontWeight: 600 }}>
+            {stages.length}
+          </span>
+        </div>
+        {canStartNext && <span style={{ fontSize: 11, color: "var(--accent-fg)" }}>Stage {last.stage_number} closed — start the next round below</span>}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+        {stages.map((s, i) => (
+          <StageCard
+            key={s.id}
+            stage={s}
+            isLast={i === stages.length - 1}
+            isOwner={isOwner}
+            refresh={() => { reloadStages(); refresh(); }}
+          />
+        ))}
+      </div>
+
+      {canStartNext && (
+        <CreateStageForm
+          projectIdOrSlug={idOrSlug}
+          nextStageNumber={last.stage_number + 1}
+          onCreated={() => { reloadStages(); refresh(); }}
+        />
+      )}
+    </section>
+  );
+}
+
+function StageCard({ stage, isLast, isOwner, refresh }) {
+  const cfg = STAGE_STATUS[stage.status] || { label: stage.status, tone: "muted" };
+  const tonPool = (Number(stage.ton_reward_pool_nano) || 0) / 1e9;
+  const totalTasks = stage.tasks_count ?? 0;
+  const mergedTasks = stage.tasks_merged ?? 0;
+  const progressPct = totalTasks > 0 ? Math.round((mergedTasks / totalTasks) * 100) : 0;
+
+  const toneBg = cfg.tone === "accent" ? "var(--accent-soft)"
+    : cfg.tone === "amber" ? "oklch(0.96 0.05 80)"
+    : "var(--bg-tint)";
+  const toneFg = cfg.tone === "accent" ? "var(--accent-fg)"
+    : cfg.tone === "amber" ? "#b45309"
+    : "var(--fg-muted)";
+
+  return (
+    <div style={{
+      border: `1px solid ${isLast && cfg.tone !== "muted" ? "var(--border-strong)" : "var(--border)"}`,
+      borderRadius: 10,
+      background: "var(--bg)",
+      overflow: "hidden",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+        padding: "14px 18px",
+        borderBottom: totalTasks > 0 ? "1px solid var(--border)" : "none",
+      }}>
+        <div style={{
+          display: "grid", placeItems: "center",
+          width: 40, height: 40, borderRadius: 10,
+          background: toneBg, color: toneFg,
+          fontFamily: "JetBrains Mono, monospace", fontWeight: 800, fontSize: 16,
+          flexShrink: 0,
+        }}>
+          {stage.stage_number}
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 14, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
+              Stage {stage.stage_number}
+            </span>
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "2px 8px", borderRadius: 999,
+              background: toneBg, color: toneFg,
+              fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
+              textTransform: "uppercase", letterSpacing: "0.05em",
+            }}>
+              {(stage.status === "active" || stage.status === "funded") && <span className="live-dot" />}
+              {cfg.label}
+            </span>
+          </div>
+          {stage.plan_md && (
+            <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--fg-muted)", lineHeight: 1.5, maxWidth: "70ch", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {stage.plan_md.slice(0, 220)}{stage.plan_md.length > 220 ? "…" : ""}
+            </div>
+          )}
+        </div>
+        <div style={{
+          textAlign: "right",
+          fontFamily: "JetBrains Mono, monospace",
+          fontVariantNumeric: "tabular-nums",
+        }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: tonPool > 0 ? "var(--accent-fg)" : "var(--fg-muted)" }}>
+            ◇ {tonPool.toLocaleString(undefined, { maximumFractionDigits: 3 })} TON
+          </div>
+          {stage.jetton_mint_amount > 0 && (
+            <div style={{ fontSize: 10.5, color: "var(--fg-muted)", marginTop: 2 }}>
+              + {Number(stage.jetton_mint_amount).toLocaleString()} jetton units
+            </div>
+          )}
+        </div>
+      </div>
+
+      {totalTasks > 0 && (
+        <div style={{ padding: "10px 18px", display: "flex", alignItems: "center", gap: 14, fontSize: 11.5, color: "var(--fg-muted)" }}>
+          <div style={{ flex: 1, height: 6, background: "var(--bg-tint)", borderRadius: 3, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${progressPct}%`, background: progressPct === 100 ? "var(--accent)" : "var(--accent)", transition: "width 0.2s ease" }} />
+          </div>
+          <div style={{ fontFamily: "JetBrains Mono, monospace", fontVariantNumeric: "tabular-nums" }}>
+            {mergedTasks}/{totalTasks} merged
+          </div>
+        </div>
+      )}
+
+      {stage.status === "pending" && isOwner && (
+        <StageFundCTA stage={stage} refresh={refresh} />
+      )}
+    </div>
+  );
+}
+
+function StageFundCTA({ stage, refresh }) {
+  const tonAddress = useTonAddress();
+  const [tonConnectUI] = useTonConnectUI();
+  const [submitting, setSubmitting] = useState(false);
+  const [txSubmitted, setTxSubmitted] = useState(false);
+  const [error, setError] = useState("");
+
+  const dest = stage.funding_address || PLATFORM_TON_WALLET;
+  const amount = stage.funding_amount_nano != null
+    ? String(stage.funding_amount_nano)
+    : String(stage.ton_reward_pool_nano || 0);
+  const tonAmount = (Number(amount) || 0) / 1e9;
+
+  async function onPay() {
+    if (!dest) {
+      setError("Funding destination unknown for this stage.");
+      return;
+    }
+    setError("");
+    setSubmitting(true);
+    try {
+      if (!tonAddress) {
+        await tonConnectUI.openModal();
+        if (!tonConnectUI.connected) { setSubmitting(false); return; }
+      }
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 360,
+        messages: [{ address: dest, amount }],
+      });
+      setTxSubmitted(true);
+      // Bump the parent stage list quickly — watcher takes ~10-60s.
+      setTimeout(refresh, 6000);
+    } catch (err) {
+      if (err?.message?.toLowerCase()?.includes("reject")) {
+        setError("Transaction rejected in your wallet.");
+      } else {
+        setError(String(err?.message || err) || "Wallet transfer failed.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div style={{
+      padding: "12px 18px",
+      borderTop: "1px solid var(--border)",
+      background: "oklch(0.98 0.025 80)",
+      display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
+    }}>
+      <div style={{ flex: 1, minWidth: 220, fontSize: 12, color: "var(--fg)", lineHeight: 1.5 }}>
+        {txSubmitted
+          ? <>Transaction submitted. Waiting for the deposit watcher to confirm — this stage will flip to <strong>funded</strong> within ~10–60s.</>
+          : <>Send <strong>{tonAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} TON</strong> from the project's owner wallet to fund this stage. Auto-confirms on-chain — no admin needed.</>}
+        {error && <div style={{ marginTop: 6, fontSize: 11.5, color: "var(--danger)" }}>{error}</div>}
+      </div>
+      {!txSubmitted && (
+        <button
+          type="button"
+          className="btn-primary-big"
+          style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
+          disabled={submitting || !dest}
+          onClick={onPay}
+        >
+          <Icon name="zap" size={12} /> {submitting ? "Submitting…" : `Pay ${tonAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} TON`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [pool, setPool] = useState("5");
+  const [mint, setMint] = useState("0");
+  const [brief, setBrief] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function onSubmit(e) {
+    e?.preventDefault();
+    setError("");
+    const poolNano = Math.round((parseFloat(pool) || 0) * 1e9);
+    if (poolNano <= 0) { setError("Reward pool must be > 0 TON."); return; }
+    const mintAmount = Math.round((parseFloat(mint) || 0) * 1e9);
+    if (!token) { setError("Sign in as the project owner first."); return; }
+    setSubmitting(true);
+    const res = await api.createProjectStage(projectIdOrSlug, {
+      ton_reward_pool_nano: poolNano,
+      jetton_mint_amount: mintAmount,
+      plan_brief: brief.trim(),
+    }, token);
+    setSubmitting(false);
+    if (res.status === 401 || res.status === 403) { setError("Only the project owner can start a new stage."); return; }
+    if (res.status === 409) { setError(res.data?.error || "Previous stage is not closed yet."); return; }
+    if (!res.ok) { setError(res.data?.error || `Request failed (HTTP ${res.status}).`); return; }
+    setOpen(false);
+    setBrief("");
+    onCreated?.();
+  }
+
+  if (!open) {
+    return (
+      <div style={{ marginTop: 14 }}>
+        <button
+          type="button"
+          className="btn-primary-big"
+          style={{ background: "var(--accent)" }}
+          onClick={() => setOpen(true)}
+        >
+          <Icon name="plus" size={12} /> Start stage {nextStageNumber}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      style={{
+        marginTop: 14, padding: 18,
+        border: "1px solid var(--border-strong)", borderRadius: 10,
+        background: "var(--bg-soft)",
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", marginBottom: 4 }}>
+        Start stage {nextStageNumber}
+      </div>
+      <p style={{ margin: "2px 0 14px", fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5, maxWidth: "70ch" }}>
+        Stages let you fund the project in rounds. Once created, the stage sits in <code>pending</code> until your deposit lands — then an admin activates it with the new task list.
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+          <span style={{ color: "var(--fg-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
+            Reward pool (TON)
+          </span>
+          <input
+            type="number" min={0} step={0.001} value={pool}
+            onChange={(e) => setPool(e.target.value)}
+            className="field-input"
+            style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 6, fontFamily: "JetBrains Mono, monospace" }}
+          />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+          <span style={{ color: "var(--fg-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
+            Additional mint (tokens, optional)
+          </span>
+          <input
+            type="number" min={0} step={1} value={mint}
+            onChange={(e) => setMint(e.target.value)}
+            className="field-input"
+            style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 6, fontFamily: "JetBrains Mono, monospace" }}
+          />
+        </label>
+      </div>
+
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 12, fontSize: 11 }}>
+        <span style={{ color: "var(--fg-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
+          What ships in this stage?
+        </span>
+        <textarea
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          rows={3}
+          placeholder="e.g. dark mode, mobile sheet, replace REST polling with SSE"
+          style={{ padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 6, fontFamily: "inherit", fontSize: 13, lineHeight: 1.5, resize: "vertical", background: "var(--bg)" }}
+        />
+      </label>
+
+      {error && (
+        <div style={{ marginTop: 10, padding: 10, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+          {error}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        <button type="submit" className="btn-primary-big" style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }} disabled={submitting}>
+          <Icon name="zap" size={12} /> {submitting ? "Creating…" : `Create stage ${nextStageNumber}`}
+        </button>
+        <button type="button" className="btn" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
