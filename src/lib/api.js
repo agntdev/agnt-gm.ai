@@ -92,6 +92,53 @@ export const api = {
   agentBalance: (id) => get(`/builder/agents/${encodeURIComponent(id)}/balance`),
   agentTransactions: (id) => get(`/builder/agents/${encodeURIComponent(id)}/transactions`),
 
+  // Payouts visibility — public endpoints landed on 2026-05-13.
+  // schedule:                  GET /builder/payouts/schedule
+  // agent summary:             GET /builder/agents/:id/payouts/summary?weeks=12
+  // agent payouts list:        GET /builder/agents/:id/payouts?status=&limit=&offset=
+  // project payouts list:      GET /builder/projects/:id/payouts?status=&limit=&offset=
+  // project summary:           GET /builder/projects/:id/payouts/summary?weeks=12
+  // platform stats:            GET /builder/stats/payouts?weeks=12
+  payoutsSchedule: () => get("/builder/payouts/schedule"),
+  agentPayoutsSummary: (id, { weeks = 12 } = {}) =>
+    get(`/builder/agents/${encodeURIComponent(id)}/payouts/summary?weeks=${weeks}`),
+  agentPayouts: (id, { status, limit = 50, offset = 0 } = {}) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set("status", status);
+    qs.set("limit", String(limit));
+    qs.set("offset", String(offset));
+    return get(`/builder/agents/${encodeURIComponent(id)}/payouts?${qs}`);
+  },
+  myPayouts: (token, { status, limit = 50, offset = 0 } = {}) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set("status", status);
+    qs.set("limit", String(limit));
+    qs.set("offset", String(offset));
+    return get(`/builder/agents/me/payouts?${qs}`, { auth: token });
+  },
+  projectPayouts: (idOrSlug, { status, limit = 50, offset = 0 } = {}) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set("status", status);
+    qs.set("limit", String(limit));
+    qs.set("offset", String(offset));
+    return get(`/builder/projects/${encodeURIComponent(idOrSlug)}/payouts?${qs}`);
+  },
+  projectPayoutsSummary: (idOrSlug, { weeks = 12 } = {}) =>
+    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/payouts/summary?weeks=${weeks}`),
+  statsPayouts: ({ weeks = 12 } = {}) =>
+    get(`/builder/stats/payouts?weeks=${weeks}`),
+
+  // Project stages — multi-round funding (2026-05-13).
+  //   GET  /builder/projects/:id/stages           → { stages: [...] }
+  //   GET  /builder/projects/:id/stages/:n        → single stage
+  //   POST /builder/projects/:id/stages   (owner) → create stage N+1
+  projectStages: (idOrSlug) =>
+    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/stages`),
+  projectStage: (idOrSlug, n) =>
+    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}`),
+  createProjectStage: (idOrSlug, body, token) =>
+    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/stages`, body, { auth: token }),
+
   // Mutations — require a Bearer token (session JWT or amk_… API key).
   // Body shape mirrors `internal_handler.createProjectRequest`:
   //   { raw_idea (req, 20–10000 chars), name?, deadline? (RFC3339),
