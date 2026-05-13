@@ -2,7 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { Icon } from "../components/atoms.jsx";
+import {
+  Field,
+  ModeSwitcher,
+  RejectionBanner,
+  SectionHeader,
+  TasksEditor,
+  inputStyle,
+  monoInputStyle,
+} from "../components/manualForm.jsx";
 import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
+import { validateManualPlan } from "../lib/manualPlan.js";
 import { useAuth, setManualToken, githubLoginUrl } from "../lib/auth.js";
 
 const POLL_INTERVAL_MS = 3000;
@@ -23,6 +33,30 @@ export default function Create() {
     ton_reward_pool: "5",   // TON; converted to nano (×1e9) on submit
   });
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Manual-mode plan. Populated only when `mode === "manual"`. Kept in
+  // parallel with the AI-mode `form` state so the user can switch back
+  // and forth without losing what they typed in either mode.
+  const [mode, setMode] = useState("ai"); // "ai" | "manual"
+  const [manual, setManual] = useState(() => ({
+    name: "",
+    token_symbol: "",
+    total_supply: 1_000_000_000,
+    short_description: "",
+    about_of_project: "",
+    goal_of_project: "",
+    plan_md: "",
+    readme_md: "",
+    owner_share_bps: 1000,
+    tasks: [],
+  }));
+  const setManualField = (k, v) => setManual((m) => ({ ...m, [k]: v }));
+
+  // Moderation rejection from the manual-mode flow (server returns 400
+  // with rejection_reason). Surfaced as a top-of-form RejectionBanner.
+  const [moderationReason, setModerationReason] = useState("");
+  // Shake the submit button briefly on client-side validation failure.
+  const [shakeKey, setShakeKey] = useState(0);
 
   // Owner wallet comes entirely from TonConnect — no manual entry. Submission
   // is blocked until a wallet is connected; on submit we pass the user-friendly
@@ -97,14 +131,122 @@ export default function Create() {
     }
   }
 
+  function triggerShake() { setShakeKey((n) => n + 1); }
+
+  function handleApiResponse(res, opts = {}) {
+    if (res.status === 401 || res.status === 403) {
+      setPhase("idle");
+      setErrorMsg(token
+        ? "Authorization rejected by the API. Token may be expired or invalid."
+        : "Authorization required. Sign in or paste a token above.");
+      setShowTokenEdit(true);
+      return false;
+    }
+    if (res.status === 429) { setPhase("idle"); setErrorMsg("Rate limit hit. Try again later (default 50 / 7d)."); return false; }
+    if (res.status === 503) { setPhase("idle"); setErrorMsg("Builder feature is currently disabled on the server."); return false; }
+    if (res.status === 400 && opts.manual && res.data?.rejection_reason) {
+      setPhase("idle");
+      setModerationReason(res.data.rejection_reason);
+      triggerShake();
+      return false;
+    }
+    if (!res.ok) {
+      setPhase("idle");
+      setErrorMsg(res.data?.error || res.data?.message || res.networkError || `HTTP ${res.status} — request failed.`);
+      triggerShake();
+      return false;
+    }
+    return true;
+  }
+
+  function applyCreatedProject(res) {
+    setProject(res.data?.project ?? null);
+    const apiInstr = res.data?.funding_instructions;
+    const poolNano = Number(res.data?.project?.ton_reward_pool_nano) || 0;
+    let instr = apiInstr ?? null;
+    if (!instr && poolNano > 0) {
+      const fundingAddr = res.data?.project?.funding_address || PLATFORM_TON_WALLET;
+      if (fundingAddr) {
+        instr = {
+          address: fundingAddr,
+          amount_nano: res.data?.project?.funding_amount_nano ?? poolNano,
+        };
+      }
+    }
+    setFundingInstructions(instr);
+    setFundingTxHash(null);
+    setFundingErr("");
+  }
+
+  async function onSubmitManual() {
+    setModerationReason("");
+    setErrorMsg("");
+    const errs = validateManualPlan(manual, "project");
+    if (errs.length > 0) {
+      setErrorMsg(errs[0]);
+      triggerShake();
+      return;
+    }
+
+    setPhase("submitting");
+
+    // Build the body. `total_supply` is integer-stored in smallest units
+    // (×1e9) — we splice it in as a raw integer string so values up to
+    // 1T whole tokens (≈1e21 smallest units) survive JSON.stringify.
+    const body = {
+      owner_wallet_address: tonAddress,
+      manual_plan: {
+        name: manual.name.trim(),
+        token_symbol: manual.token_symbol.trim().toUpperCase(),
+        total_supply: "__TS_PLACEHOLDER__",
+        short_description: manual.short_description.trim() || undefined,
+        about_of_project: manual.about_of_project.trim() || undefined,
+        goal_of_project: manual.goal_of_project.trim() || undefined,
+        plan_md: manual.plan_md.trim() || undefined,
+        readme_md: manual.readme_md.trim() || undefined,
+        owner_share_bps: Number(manual.owner_share_bps) || 0,
+        tasks: manual.tasks.map((t) => ({
+          slug: t.slug.trim().toUpperCase(),
+          title: t.title.trim(),
+          body_md: t.body_md,
+          difficulty: t.difficulty || undefined,
+          weight: Number(t.weight),
+          tags: (t.tags && t.tags.length) ? t.tags : undefined,
+        })),
+      },
+    };
+    const tonAmount = parseFloat(form.ton_reward_pool);
+    if (Number.isFinite(tonAmount) && tonAmount > 0) {
+      body.ton_reward_pool_nano = Math.round(tonAmount * 1e9);
+    }
+    if (form.deadline) {
+      const days = parseInt(form.deadline, 10);
+      if (Number.isFinite(days) && days > 0) {
+        body.deadline = new Date(Date.now() + days * 86400000).toISOString();
+      }
+    }
+    const supplyNano = (BigInt(Math.trunc(Number(manual.total_supply))) * 1_000_000_000n).toString();
+    const bodyJson = JSON.stringify(body).replace(`"__TS_PLACEHOLDER__"`, supplyNano);
+
+    const res = await api.createProjectRaw(bodyJson, token);
+    if (!handleApiResponse(res, { manual: true })) return;
+
+    // Manual-mode 201 already lands us on `ready_to_publish` — no
+    // background plan-gen step, so we skip the polling phase entirely.
+    applyCreatedProject(res);
+    setPhase("ready");
+  }
+
   async function onSubmit(e) {
     e?.preventDefault();
-    if (ideaTooShort || ideaTooLong) return;
     if (walletMissing) {
       setErrorMsg("Connect a TON wallet to set the owner address.");
       return;
     }
     if (!token) { setShowTokenEdit(true); return; }
+    if (mode === "manual") return onSubmitManual();
+
+    if (ideaTooShort || ideaTooLong) return;
 
     setPhase("submitting");
     setErrorMsg("");
@@ -143,38 +285,8 @@ export default function Create() {
     }
 
     const res = await api.createProjectRaw(bodyJson, token);
-
-    if (res.status === 401 || res.status === 403) {
-      setPhase("idle");
-      setErrorMsg(token
-        ? "Authorization rejected by the API. Token may be expired or invalid."
-        : "Authorization required. Sign in or paste a token above.");
-      setShowTokenEdit(true);
-      return;
-    }
-    if (res.status === 429) { setPhase("idle"); setErrorMsg("Rate limit hit. Try again later (default 50 / 7d)."); return; }
-    if (res.status === 503) { setPhase("idle"); setErrorMsg("Builder feature is currently disabled on the server."); return; }
-    if (!res.ok) {
-      setPhase("idle");
-      setErrorMsg(res.data?.error || res.data?.message || res.networkError || `HTTP ${res.status} — request failed.`);
-      return;
-    }
-
-    setProject(res.data?.project ?? null);
-    // The API doesn't always (yet) return funding_instructions; fall back to
-    // a client-side build using the configured platform wallet so the
-    // TonConnect "Pay X TON" button still works. The on-chain deposit
-    // watcher matches by (sender wallet, amount), so no comment/payload is
-    // strictly required — but pass it through if the server provided one.
-    const apiInstr = res.data?.funding_instructions;
-    const poolNano = Number(res.data?.project?.ton_reward_pool_nano) || 0;
-    let instr = apiInstr ?? null;
-    if (!instr && poolNano > 0 && PLATFORM_TON_WALLET) {
-      instr = { address: PLATFORM_TON_WALLET, amount_nano: poolNano };
-    }
-    setFundingInstructions(instr);
-    setFundingTxHash(null);
-    setFundingErr("");
+    if (!handleApiResponse(res)) return;
+    applyCreatedProject(res);
     setPhase("polling");
     pollUntilTerminal(res.data?.project?.id || res.data?.project?.slug);
   }
@@ -273,20 +385,60 @@ export default function Create() {
         />
 
         {phase === "idle" && (
-          <Form
-            form={form}
-            setField={setField}
-            ideaTooShort={ideaTooShort}
-            ideaTooLong={ideaTooLong}
-            walletMissing={walletMissing}
-            onSubmit={onSubmit}
-            errorMsg={errorMsg}
-            tonConnected={!!tonAddress}
-            tonAddress={tonAddress}
-            tonWalletName={tonWallet?.device?.appName || tonWallet?.name || null}
-            onConnectWallet={() => tonConnectUI.openModal()}
-            onDisconnectWallet={() => tonConnectUI.disconnect()}
-          />
+          <>
+            <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <ModeSwitcher
+                value={mode}
+                onChange={(m) => { setMode(m); setErrorMsg(""); setModerationReason(""); }}
+                options={[
+                  { value: "ai",     label: "AI plans for me",   icon: "zap" },
+                  { value: "manual", label: "I'll write it",     icon: "layers" },
+                ]}
+              />
+              <span style={{ fontSize: 11.5, color: "var(--fg-subtle)" }}>
+                {mode === "ai"
+                  ? "Describe the idea — the validator agent generates a README, plan, and tasks (~30–90s)."
+                  : "Author the plan + every task yourself. The platform only runs a content-moderation pass before accepting."}
+              </span>
+            </div>
+
+            <RejectionBanner reason={moderationReason} onDismiss={() => setModerationReason("")} />
+
+            {mode === "ai" ? (
+              <Form
+                form={form}
+                setField={setField}
+                ideaTooShort={ideaTooShort}
+                ideaTooLong={ideaTooLong}
+                walletMissing={walletMissing}
+                onSubmit={onSubmit}
+                errorMsg={errorMsg}
+                shakeKey={shakeKey}
+                tonConnected={!!tonAddress}
+                tonAddress={tonAddress}
+                tonWalletName={tonWallet?.device?.appName || tonWallet?.name || null}
+                onConnectWallet={() => tonConnectUI.openModal()}
+                onDisconnectWallet={() => tonConnectUI.disconnect()}
+              />
+            ) : (
+              <ManualForm
+                manual={manual}
+                setManualField={setManualField}
+                setManualTasks={(tasks) => setManualField("tasks", tasks)}
+                form={form}
+                setField={setField}
+                walletMissing={walletMissing}
+                onSubmit={onSubmit}
+                errorMsg={errorMsg}
+                shakeKey={shakeKey}
+                tonConnected={!!tonAddress}
+                tonAddress={tonAddress}
+                tonWalletName={tonWallet?.device?.appName || tonWallet?.name || null}
+                onConnectWallet={() => tonConnectUI.openModal()}
+                onDisconnectWallet={() => tonConnectUI.disconnect()}
+              />
+            )}
+          </>
         )}
 
         {(phase === "submitting" || phase === "polling") && (
@@ -655,6 +807,279 @@ function Form({
           </div>
         </div>
       </aside>
+    </form>
+  );
+}
+
+// ─────────────────────────── ManualForm ───────────────────────────
+//
+// Renders the structured plan: identity → tokenomics → pitch → plan/
+// docs (collapsible) → tasks → pool/deadline/wallet → submit. Same
+// inline-style aesthetic as Form for visual continuity.
+function ManualForm({
+  manual, setManualField, setManualTasks,
+  form, setField,
+  walletMissing, onSubmit, errorMsg, shakeKey,
+  tonConnected, tonAddress, tonWalletName, onConnectWallet, onDisconnectWallet,
+}) {
+  const [docsOpen, setDocsOpen] = useState(false);
+  const canSubmit = !walletMissing && manual.name.trim() && manual.token_symbol.trim() && manual.tasks.length > 0;
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr", gap: 22 }}
+    >
+      <div className="create-form-card">
+        <SectionHeader first hint="Public-facing project name and token ticker.">
+          Identity
+        </SectionHeader>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12, marginTop: 10 }}>
+          <Field label="Project name" hint="Max 200 chars">
+            <input
+              style={inputStyle}
+              value={manual.name}
+              maxLength={200}
+              placeholder="Happy Button v3"
+              onChange={(e) => setManualField("name", e.target.value)}
+            />
+          </Field>
+          <Field label="Token symbol" hint="3–10 chars, A–Z 0–9">
+            <input
+              style={{ ...monoInputStyle, textTransform: "uppercase", textAlign: "center", fontWeight: 800 }}
+              value={manual.token_symbol}
+              maxLength={10}
+              placeholder="HBTN"
+              onChange={(e) => setManualField("token_symbol", e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+            />
+          </Field>
+        </div>
+
+        <SectionHeader hint="On-chain supply and how much of it the owner keeps.">
+          Tokenomics
+        </SectionHeader>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+          <Field label="Total supply" hint="Whole tokens · 1M…1T · 9 decimals on chain">
+            <input
+              style={monoInputStyle}
+              type="number"
+              min={1_000_000}
+              max={1_000_000_000_000}
+              step={1}
+              value={manual.total_supply}
+              onChange={(e) => setManualField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
+            />
+          </Field>
+          <Field label="Owner share" hint="Percentage of mint the owner keeps (0–50%)">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                style={{ ...monoInputStyle, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
+                type="number"
+                min={0}
+                max={50}
+                step={0.5}
+                value={(Number(manual.owner_share_bps) || 0) / 100}
+                onChange={(e) => setManualField("owner_share_bps", Math.round((parseFloat(e.target.value) || 0) * 100))}
+              />
+              <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--fg-muted)", fontWeight: 700 }}>%</span>
+            </div>
+          </Field>
+        </div>
+
+        <SectionHeader hint="Tell agents (and tokenholders) what they're shipping.">
+          Pitch
+        </SectionHeader>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 10 }}>
+          <Field label="Short description" hint="One sentence — shows on the project card.">
+            <input
+              style={inputStyle}
+              maxLength={240}
+              value={manual.short_description}
+              placeholder="A fun click-counter game"
+              onChange={(e) => setManualField("short_description", e.target.value)}
+            />
+          </Field>
+          <Field label="About">
+            <textarea
+              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.55, resize: "vertical" }}
+              rows={3}
+              value={manual.about_of_project}
+              placeholder="Click the button. Win. Stop clicking."
+              onChange={(e) => setManualField("about_of_project", e.target.value)}
+            />
+          </Field>
+          <Field label="Goal">
+            <textarea
+              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.55, resize: "vertical" }}
+              rows={2}
+              value={manual.goal_of_project}
+              placeholder="Top of the addiction leaderboards by week 4."
+              onChange={(e) => setManualField("goal_of_project", e.target.value)}
+            />
+          </Field>
+        </div>
+
+        <SectionHeader hint="Optional. Rendered as Markdown.">
+          Plan & docs
+          <button
+            type="button"
+            onClick={() => setDocsOpen((v) => !v)}
+            style={{
+              marginLeft: 8, padding: "2px 8px",
+              background: "none", border: "1px solid var(--border)", borderRadius: 4,
+              fontFamily: "JetBrains Mono, monospace", fontSize: 9.5,
+              color: "var(--fg-muted)", cursor: "pointer", letterSpacing: "0.06em", textTransform: "uppercase",
+            }}
+            aria-expanded={docsOpen}
+          >
+            {docsOpen ? "− Collapse" : "+ Expand"}
+          </button>
+        </SectionHeader>
+        {docsOpen && (
+          <div className="agnt-fade-in" style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 10 }}>
+            <Field label="plan_md" hint="High-level roadmap / phase plan for agents.">
+              <textarea
+                style={{ ...inputStyle, fontFamily: "JetBrains Mono, monospace", fontSize: 12, lineHeight: 1.55, resize: "vertical" }}
+                rows={6}
+                value={manual.plan_md}
+                placeholder={"## Phase 1: button works\n- Render at /\n- Increments counter\n\n## Phase 2: scoreboard\n…"}
+                onChange={(e) => setManualField("plan_md", e.target.value)}
+              />
+            </Field>
+            <Field label="readme_md" hint="Repo README — written verbatim to GitHub on publish.">
+              <textarea
+                style={{ ...inputStyle, fontFamily: "JetBrains Mono, monospace", fontSize: 12, lineHeight: 1.55, resize: "vertical" }}
+                rows={6}
+                value={manual.readme_md}
+                placeholder={"# Happy Button\n\nA fun click-counter game…"}
+                onChange={(e) => setManualField("readme_md", e.target.value)}
+              />
+            </Field>
+          </div>
+        )}
+
+        <SectionHeader
+          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} · weights must sum to ${(1 - (Number(manual.owner_share_bps) || 0) / 10_000).toFixed(2)}`}
+        >
+          Tasks
+        </SectionHeader>
+        <TasksEditor
+          tasks={manual.tasks}
+          onChange={setManualTasks}
+          isStage={false}
+          ownerShareBps={manual.owner_share_bps}
+        />
+
+        <SectionHeader hint="Pool funds via TonConnect after the plan is accepted.">
+          Reward pool & wallet
+        </SectionHeader>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+          <Field label="Reward pool (TON)" hint="Funded after approval; can be 0.">
+            <div style={{ position: "relative" }}>
+              <input
+                style={monoInputStyle}
+                type="number"
+                min={0}
+                step={0.001}
+                value={form.ton_reward_pool}
+                onChange={(e) => setField("ton_reward_pool", e.target.value)}
+              />
+              <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                TON
+              </span>
+            </div>
+          </Field>
+          <Field label="Deadline" hint="Window for agents to ship.">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+              {[
+                { v: "1",  label: "1d" },
+                { v: "3",  label: "3d" },
+                { v: "7",  label: "7d" },
+                { v: "14", label: "14d" },
+              ].map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setField("deadline", opt.v)}
+                  style={{
+                    height: 36, padding: 0,
+                    border: `1px solid ${form.deadline === opt.v ? "var(--fg)" : "var(--border)"}`,
+                    background: form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
+                    color:      form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
+                    borderRadius: 6,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 11, fontWeight: 800,
+                    cursor: "pointer",
+                    transition: "all 0.12s ease",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field
+            label="Owner wallet"
+            hint={tonConnected ? "Reward-pool refunds and owner-share tokens go here." : "Connect a TON wallet — its address is recorded as the owner."}
+            error={walletMissing ? "Wallet connection required." : undefined}
+          >
+            {tonConnected ? (
+              <div
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 12px",
+                  border: "1px solid var(--accent)", borderRadius: 6,
+                  background: "var(--accent-soft)",
+                }}
+              >
+                <span className="live-dot" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--accent-fg)", textTransform: "uppercase" }}>
+                    {tonWalletName || "Wallet"} connected
+                  </div>
+                  <div title={tonAddress} style={{ marginTop: 2, fontFamily: "JetBrains Mono, monospace", fontSize: 11.5, fontWeight: 700, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {tonAddress}
+                  </div>
+                </div>
+                <button type="button" onClick={onDisconnectWallet} className="btn btn-sm">Disconnect</button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onConnectWallet}
+                className="btn"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", height: 38, background: "var(--bg)", borderColor: "var(--border-strong)", fontWeight: 700 }}
+              >
+                <Icon name="zap" size={12} /> Connect TON wallet
+              </button>
+            )}
+          </Field>
+        </div>
+
+        {errorMsg && (
+          <div className="agnt-fade-in" style={{ marginTop: 14, padding: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+            {errorMsg}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+          <button
+            key={shakeKey}
+            type="submit"
+            className={shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"}
+            style={{
+              background: "var(--accent)",
+              opacity: canSubmit ? 1 : 0.5,
+              cursor:  canSubmit ? "pointer" : "not-allowed",
+            }}
+            disabled={!canSubmit}
+          >
+            <Icon name="zap" size={12} /> Submit for moderation
+          </button>
+        </div>
+      </div>
     </form>
   );
 }

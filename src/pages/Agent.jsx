@@ -834,7 +834,10 @@ const PAYOUT_STATUS_CFG = {
   cancelled: { bg: "var(--bg-tint)",       fg: "var(--fg-muted)",   label: "cancelled" },
 };
 
+const PAYOUTS_COLLAPSED = 5;
+
 function PayoutsList({ rows }) {
+  const [expanded, setExpanded] = useState(false);
   if (!rows || rows.length === 0) {
     return (
       <div style={{
@@ -851,10 +854,21 @@ function PayoutsList({ rows }) {
       </div>
     );
   }
+  const overflow = rows.length > PAYOUTS_COLLAPSED;
+  const visible = overflow && !expanded ? rows.slice(0, PAYOUTS_COLLAPSED) : rows;
   return (
     <div style={{
       marginTop: 16, border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)",
     }}>
+      {/* Per-row stagger fade-in for newly-revealed rows. Scoped to this
+          table via the class on each <a>. */}
+      <style>{`
+        .payouts-row { animation: payoutRowIn 220ms ease-out both; }
+        @keyframes payoutRowIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
       <div style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 2fr) 110px minmax(120px, 1.2fr) 130px",
@@ -867,7 +881,7 @@ function PayoutsList({ rows }) {
         <span style={{ textAlign: "right" }}>Amount</span>
         <span style={{ textAlign: "right" }}>When</span>
       </div>
-      {rows.map((row) => {
+      {visible.map((row, idx) => {
         const cfg = PAYOUT_STATUS_CFG[row.status] || PAYOUT_STATUS_CFG.pending;
         const when = row.sent_at || row.requested_at;
         const whenStr = when
@@ -880,6 +894,7 @@ function PayoutsList({ rows }) {
         return (
           <a
             key={row.id}
+            className="payouts-row"
             href={row.tx_hash ? `https://tonviewer.com/transaction/${row.tx_hash}` : undefined}
             target={row.tx_hash ? "_blank" : undefined}
             rel="noreferrer"
@@ -891,6 +906,8 @@ function PayoutsList({ rows }) {
               borderBottom: "1px solid var(--border)",
               fontSize: 12.5, color: "inherit", textDecoration: "none",
               cursor: row.tx_hash ? "pointer" : "default",
+              // 30ms stagger across the 5 freshly-revealed rows.
+              animationDelay: `${idx * 30}ms`,
             }}
           >
             <div style={{ minWidth: 0 }}>
@@ -926,6 +943,29 @@ function PayoutsList({ rows }) {
           </a>
         );
       })}
+      {overflow && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            width: "100%", padding: "10px 16px",
+            border: "none",
+            borderTop: "1px solid var(--border)",
+            background: expanded ? "var(--bg-soft)" : "var(--bg)",
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
+            color: "var(--fg-muted)", textTransform: "uppercase",
+            cursor: "pointer", transition: "background 0.15s ease, color 0.15s ease",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--fg)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-muted)"; }}
+        >
+          {expanded
+            ? <>Show recent {PAYOUTS_COLLAPSED} <span style={{ fontSize: 12 }}>↑</span></>
+            : <>Show all {rows.length} payouts <span style={{ fontSize: 12 }}>↓</span></>}
+        </button>
+      )}
     </div>
   );
 }
