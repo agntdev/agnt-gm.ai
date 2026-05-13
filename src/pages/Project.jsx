@@ -102,7 +102,7 @@ export default function Project() {
               </div>
 
               <div>
-                <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} />
+                <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} isOwner={isOwner} refresh={refresh} />
                 <TokenRail live={live} />
               </div>
             </div>
@@ -279,7 +279,7 @@ function fmtBigInt(n, decimals = 0) {
   return num.toLocaleString();
 }
 
-function ProjectFactsRail({ live, owner, taskCount }) {
+function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
   if (!live) {
     return (
       <div className="about-facts">
@@ -418,12 +418,90 @@ function ProjectFactsRail({ live, owner, taskCount }) {
         </span>
       </div>
 
+      <AutoMergeRow live={live} isOwner={isOwner} refresh={refresh} />
+
       <div className="fact-row" style={{ borderBottom: "none" }}>
         <span className="l">Project ID</span>
         <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, color: "var(--fg-muted)" }}>
           {live.id}
         </span>
       </div>
+    </div>
+  );
+}
+
+// AutoMergeRow — one row in the facts rail, inline toggle visible only
+// to the project owner. Optimistically flips the chip; on failure it
+// reverts and surfaces the API error in the tooltip.
+function AutoMergeRow({ live, isOwner, refresh }) {
+  const { token } = useAuth();
+  const apiEnabled = !!live.auto_merge_enabled;
+  // Optimistic mirror of the API state. Stays in sync via the `live`
+  // prop after each refresh, but flips immediately on toggle for snappy
+  // feedback.
+  const [enabled, setEnabled] = useState(apiEnabled);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => { setEnabled(apiEnabled); }, [apiEnabled]);
+
+  async function toggle() {
+    if (!isOwner || pending || !token) return;
+    const next = !enabled;
+    setPending(true);
+    setError("");
+    setEnabled(next);
+    const res = await api.setAutoMergePolicy(live.slug || live.id, next, token);
+    setPending(false);
+    if (!res.ok) {
+      setEnabled(!next);
+      setError(res.data?.error || `Failed (HTTP ${res.status}).`);
+      return;
+    }
+    refresh?.();
+  }
+
+  return (
+    <div className="fact-row">
+      <span className="l">Auto review</span>
+      <span className="v" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <span
+          title={enabled
+            ? "Platform reviewer agent auto-merges the first PR that passes all checks."
+            : "Every PR waits for the owner's manual approval."}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "2px 8px", borderRadius: 999,
+            background: enabled ? "var(--accent-soft)" : "var(--bg-tint)",
+            color:      enabled ? "var(--accent-fg)"   : "var(--fg-muted)",
+            fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
+            textTransform: "uppercase", letterSpacing: "0.05em",
+          }}
+        >
+          {enabled && <span className="live-dot" />}
+          {enabled ? "auto" : "manual"}
+        </span>
+        {isOwner && (
+          <button
+            type="button"
+            onClick={toggle}
+            disabled={pending}
+            title={error || (enabled ? "Switch to manual review" : "Switch to auto review")}
+            style={{
+              padding: "2px 8px", borderRadius: 4,
+              border: "1px solid var(--border)",
+              background: "var(--bg)", color: "var(--fg-muted)",
+              fontSize: 10, fontWeight: 800, letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              cursor: pending ? "wait" : "pointer",
+              opacity: pending ? 0.6 : 1,
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          >
+            {pending ? "…" : (enabled ? "→ manual" : "→ auto")}
+          </button>
+        )}
+      </span>
     </div>
   );
 }
