@@ -39,6 +39,15 @@ export default function Create() {
   const [errorMsg, setErrorMsg] = useState("");
   const pollAbort = useRef(null);
 
+  // Funding instructions returned by POST /builder/projects when the pool is
+  // non-zero. Shape (per the API): { address, amount_nano?, comment?, payload? }.
+  // We stash them so the ReviewPanel can render a "Fund pool" TonConnect button
+  // — the field isn't on GET, so we only have it for projects created in this
+  // session.
+  const [fundingInstructions, setFundingInstructions] = useState(null);
+  const [fundingTxHash, setFundingTxHash] = useState(null);
+  const [fundingErr, setFundingErr] = useState("");
+
   useEffect(() => () => { if (pollAbort.current) clearTimeout(pollAbort.current); }, []);
 
   const ideaTooShort = form.raw_idea.trim().length < 20;
@@ -114,8 +123,42 @@ export default function Create() {
     }
 
     setProject(res.data?.project ?? null);
+    setFundingInstructions(res.data?.funding_instructions ?? null);
+    setFundingTxHash(null);
+    setFundingErr("");
     setPhase("polling");
     pollUntilTerminal(res.data?.project?.id || res.data?.project?.slug);
+  }
+
+  async function onFundPool() {
+    if (!fundingInstructions?.address) return;
+    setFundingErr("");
+    try {
+      if (!tonConnectUI.connected) {
+        await tonConnectUI.openModal();
+        if (!tonConnectUI.connected) return;
+      }
+      const amount = fundingInstructions.amount_nano != null
+        ? String(fundingInstructions.amount_nano)
+        : String(project?.ton_reward_pool_nano ?? 0);
+      const message = { address: fundingInstructions.address, amount };
+      // Pass the server-provided BoC payload through if it gave us one (used by
+      // the backend to correlate the transfer to this specific project).
+      if (fundingInstructions.payload) message.payload = fundingInstructions.payload;
+      const result = await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 360,
+        messages: [message],
+      });
+      // tonConnect returns `{ boc }`; the SHA-256 of the BoC is the tx hash on chain,
+      // but most wallets give us back the BoC, not a hash. Surface what we got.
+      setFundingTxHash(result?.boc || "submitted");
+    } catch (err) {
+      if (err?.message?.toLowerCase()?.includes("reject")) {
+        setFundingErr("Transaction rejected in your wallet.");
+      } else {
+        setFundingErr(String(err?.message || err) || "Wallet transfer failed.");
+      }
+    }
   }
 
   async function onPublish() {
@@ -205,7 +248,10 @@ export default function Create() {
             errorMsg={errorMsg}
             publishing={phase === "publishing"}
             onPublish={onPublish}
-            onReset={reset}
+            fundingInstructions={fundingInstructions}
+            fundingTxHash={fundingTxHash}
+            fundingErr={fundingErr}
+            onFundPool={onFundPool}
           />
         )}
 
@@ -579,7 +625,16 @@ function ValidatingPanel({ phase, project }) {
   );
 }
 
-function ReviewPanel({ project, errorMsg, publishing, onPublish, onReset }) {
+function ReviewPanel({
+  project, errorMsg, publishing, onPublish,
+  fundingInstructions, fundingTxHash, fundingErr, onFundPool,
+}) {
+  const poolNano = Number(project.ton_reward_pool_nano) || 0;
+  const needsFunding = poolNano > 0 && !project.ton_pool_funded_at;
+  const funded = !!project.ton_pool_funded_at || !!fundingTxHash;
+  const poolTon = (poolNano / 1e9).toLocaleString(undefined, { maximumFractionDigits: 3 });
+  const canFundFromUI = needsFunding && !!fundingInstructions?.address && !funded;
+
   return (
     <div style={{ marginTop: 22 }}>
       <div style={{ padding: 24, border: "1px solid var(--accent)", borderRadius: 10, background: "var(--accent-soft)" }}>
@@ -616,6 +671,74 @@ function ReviewPanel({ project, errorMsg, publishing, onPublish, onReset }) {
         ))}
       </div>
 
+      {needsFunding && (
+        <div style={{
+          marginTop: 14, padding: 16,
+          border: `1px solid ${funded ? "var(--accent)" : canFundFromUI ? "var(--border-strong)" : "var(--danger)"}`,
+          borderRadius: 10,
+          background: funded ? "var(--accent-soft)" : canFundFromUI ? "var(--bg-soft)" : "var(--danger-soft)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <Icon name="zap" size={14} />
+            <h3 style={{ margin: 0, fontSize: 14, fontFamily: "JetBrains Mono, monospace" }}>
+              {funded ? "Pool funded" : "Fund the reward pool"}
+            </h3>
+          </div>
+          {funded ? (
+            <div style={{ fontSize: 12, color: "var(--fg)" }}>
+              {poolTon} TON committed. Publishing is now unlocked.
+              {fundingTxHash && fundingTxHash !== "submitted" && (
+                <div style={{ marginTop: 6, fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, color: "var(--fg-muted)", wordBreak: "break-all" }}>
+                  tx: {fundingTxHash}
+                </div>
+              )}
+            </div>
+          ) : canFundFromUI ? (
+            <>
+              <div style={{ fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, marginBottom: 12 }}>
+                Send <strong>{poolTon} TON</strong> from your wallet to fund this project's reward
+                pool. Publishing stays disabled until the deposit is confirmed on-chain.
+              </div>
+              <div style={{
+                fontFamily: "JetBrains Mono, monospace", fontSize: 10.5,
+                color: "var(--fg-muted)", marginBottom: 12, wordBreak: "break-all",
+              }}>
+                to: <span style={{ color: "var(--fg)" }}>{fundingInstructions.address}</span>
+                {fundingInstructions.comment && (
+                  <div style={{ marginTop: 2 }}>
+                    comment: <span style={{ color: "var(--fg)" }}>{fundingInstructions.comment}</span>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn-primary-big"
+                style={{ background: "var(--accent)" }}
+                onClick={onFundPool}
+              >
+                <Icon name="zap" size={12} /> Pay {poolTon} TON
+              </button>
+              {fundingErr && (
+                <div style={{ marginTop: 10, padding: 10, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+                  {fundingErr}
+                </div>
+              )}
+              {fundingTxHash === "submitted" && (
+                <div style={{ marginTop: 10, fontSize: 12, color: "var(--fg-muted)" }}>
+                  Transaction submitted to your wallet. Waiting for on-chain confirmation…
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontSize: 12.5, color: "var(--danger)", lineHeight: 1.5 }}>
+              {poolTon} TON committed but the pool isn't funded yet. The funding details from this
+              project's creation aren't in the current session — refresh and resubmit, or contact an
+              admin to fund manually.
+            </div>
+          )}
+        </div>
+      )}
+
       {errorMsg && (
         <div style={{ marginTop: 14, padding: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
           {errorMsg}
@@ -628,11 +751,11 @@ function ReviewPanel({ project, errorMsg, publishing, onPublish, onReset }) {
           className="btn-primary-big"
           style={{ background: "var(--accent)", opacity: publishing ? 0.6 : 1 }}
           onClick={onPublish}
-          disabled={publishing}
+          disabled={publishing || (needsFunding && !funded)}
+          title={needsFunding && !funded ? "Fund the TON reward pool before publishing." : undefined}
         >
           <Icon name="rocket" size={12} /> {publishing ? "Publishing to GitHub…" : "Publish to GitHub"}
         </button>
-        <button type="button" className="btn" onClick={onReset}>Start over</button>
       </div>
     </div>
   );
