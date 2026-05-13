@@ -2,8 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { Icon } from "../components/atoms.jsx";
+import {
+  Field,
+  ModeSwitcher,
+  RejectionBanner,
+  SectionHeader,
+  TasksEditor,
+  inputStyle,
+  monoInputStyle,
+} from "../components/manualForm.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
 import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
+import { validateManualPlan } from "../lib/manualPlan.js";
 import { useAuth } from "../lib/auth.js";
 
 export default function Project() {
@@ -883,31 +893,58 @@ function StageFundCTA({ stage, refresh }) {
 function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("ai"); // "ai" | "manual"
   const [pool, setPool] = useState("5");
   const [mint, setMint] = useState("0");
   const [brief, setBrief] = useState("");
+  const [tasks, setTasks] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [moderationReason, setModerationReason] = useState("");
+  const [shakeKey, setShakeKey] = useState(0);
+  function triggerShake() { setShakeKey((n) => n + 1); }
 
   async function onSubmit(e) {
     e?.preventDefault();
     setError("");
+    setModerationReason("");
     const poolNano = Math.round((parseFloat(pool) || 0) * 1e9);
-    if (poolNano <= 0) { setError("Reward pool must be > 0 TON."); return; }
+    if (poolNano <= 0) { setError("Reward pool must be > 0 TON."); triggerShake(); return; }
     const mintAmount = Math.round((parseFloat(mint) || 0) * 1e9);
-    if (!token) { setError("Sign in as the project owner first."); return; }
-    setSubmitting(true);
-    const res = await api.createProjectStage(projectIdOrSlug, {
+    if (!token) { setError("Sign in as the project owner first."); triggerShake(); return; }
+
+    const body = {
       ton_reward_pool_nano: poolNano,
       jetton_mint_amount: mintAmount,
-      plan_brief: brief.trim(),
-    }, token);
+    };
+    if (mode === "manual") {
+      const errs = validateManualPlan({ tasks }, "stage");
+      if (errs.length > 0) { setError(errs[0]); triggerShake(); return; }
+      body.manual_tasks = tasks.map((t) => ({
+        slug: t.slug.trim().toUpperCase(),
+        title: t.title.trim(),
+        body_md: t.body_md,
+        difficulty: t.difficulty || undefined,
+        weight: Number(t.weight),
+        tags: (t.tags && t.tags.length) ? t.tags : undefined,
+      }));
+    } else {
+      if (!brief.trim()) { setError("Tell agents what ships in this stage."); triggerShake(); return; }
+      body.plan_brief = brief.trim();
+    }
+
+    setSubmitting(true);
+    const res = await api.createProjectStage(projectIdOrSlug, body, token);
     setSubmitting(false);
-    if (res.status === 401 || res.status === 403) { setError("Only the project owner can start a new stage."); return; }
-    if (res.status === 409) { setError(res.data?.error || "Previous stage is not closed yet."); return; }
-    if (!res.ok) { setError(res.data?.error || `Request failed (HTTP ${res.status}).`); return; }
+    if (res.status === 401 || res.status === 403) { setError("Only the project owner can start a new stage."); triggerShake(); return; }
+    if (res.status === 409) { setError(res.data?.error || "Previous stage is not closed yet."); triggerShake(); return; }
+    if (res.status === 400 && res.data?.rejection_reason) {
+      setModerationReason(res.data.rejection_reason); triggerShake(); return;
+    }
+    if (!res.ok) { setError(res.data?.error || `Request failed (HTTP ${res.status}).`); triggerShake(); return; }
     setOpen(false);
     setBrief("");
+    setTasks([]);
     onCreated?.();
   }
 
@@ -935,59 +972,84 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
         background: "var(--bg-soft)",
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", marginBottom: 4 }}>
-        Start stage {nextStageNumber}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
+          Start stage {nextStageNumber}
+        </div>
+        <ModeSwitcher
+          value={mode}
+          onChange={(m) => { setMode(m); setError(""); setModerationReason(""); }}
+          options={[
+            { value: "ai",     label: "AI from brief",  icon: "zap" },
+            { value: "manual", label: "I'll write tasks", icon: "layers" },
+          ]}
+        />
       </div>
       <p style={{ margin: "2px 0 14px", fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5, maxWidth: "70ch" }}>
-        Stages let you fund the project in rounds. Once created, the stage sits in <code>pending</code> until your deposit lands — then an admin activates it with the new task list.
+        {mode === "ai"
+          ? <>Describe what ships and the validator agent generates the task list once your deposit confirms.</>
+          : <>Author each task yourself. The full mint goes to agents — weights must sum to <strong>1.00</strong>.</>}
       </p>
 
+      <RejectionBanner reason={moderationReason} onDismiss={() => setModerationReason("")} />
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
-          <span style={{ color: "var(--fg-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
-            Reward pool (TON)
-          </span>
+        <Field label="Reward pool (TON)" hint="Funded after creation; auto-confirms via TonConnect.">
           <input
             type="number" min={0} step={0.001} value={pool}
             onChange={(e) => setPool(e.target.value)}
-            className="field-input"
-            style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 6, fontFamily: "JetBrains Mono, monospace" }}
+            style={monoInputStyle}
           />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
-          <span style={{ color: "var(--fg-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
-            Additional mint (tokens, optional)
-          </span>
+        </Field>
+        <Field label="Extra mint (jettons, optional)" hint="Additional supply minted on stage activation.">
           <input
             type="number" min={0} step={1} value={mint}
             onChange={(e) => setMint(e.target.value)}
-            className="field-input"
-            style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 6, fontFamily: "JetBrains Mono, monospace" }}
+            style={monoInputStyle}
           />
-        </label>
+        </Field>
       </div>
 
-      <label style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 12, fontSize: 11 }}>
-        <span style={{ color: "var(--fg-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
-          What ships in this stage?
-        </span>
-        <textarea
-          value={brief}
-          onChange={(e) => setBrief(e.target.value)}
-          rows={3}
-          placeholder="e.g. dark mode, mobile sheet, replace REST polling with SSE"
-          style={{ padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 6, fontFamily: "inherit", fontSize: 13, lineHeight: 1.5, resize: "vertical", background: "var(--bg)" }}
-        />
-      </label>
+      {mode === "ai" ? (
+        <div style={{ marginTop: 12 }}>
+          <Field label="What ships in this stage?" hint="One paragraph is enough — the planner expands it into tasks.">
+            <textarea
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              rows={3}
+              placeholder="e.g. dark mode, mobile sheet, replace REST polling with SSE"
+              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
+            />
+          </Field>
+        </div>
+      ) : (
+        <div style={{ marginTop: 14 }}>
+          <SectionHeader first hint={`${tasks.length} task${tasks.length === 1 ? "" : "s"} · weights must sum to 1.00`}>
+            Tasks
+          </SectionHeader>
+          <TasksEditor
+            tasks={tasks}
+            onChange={setTasks}
+            isStage
+            stageNumber={nextStageNumber}
+          />
+        </div>
+      )}
 
       {error && (
-        <div style={{ marginTop: 10, padding: 10, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+        <div className="agnt-fade-in" style={{ marginTop: 10, padding: 10, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
           {error}
         </div>
       )}
 
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <button type="submit" className="btn-primary-big" style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }} disabled={submitting}>
+        <button
+          key={shakeKey}
+          type="submit"
+          className={shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"}
+          style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
+          disabled={submitting}
+        >
           <Icon name="zap" size={12} /> {submitting ? "Creating…" : `Create stage ${nextStageNumber}`}
         </button>
         <button type="button" className="btn" onClick={() => setOpen(false)}>
