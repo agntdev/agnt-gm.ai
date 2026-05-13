@@ -242,17 +242,17 @@ export function PayoutsList({ rows, mode = "agent", collapseAt = 0, emptyText })
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-      <div style={{
+      <div className="agnt-resp-payouts-head" style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 2fr) 110px minmax(120px, 1.2fr) 130px",
         padding: "10px 16px", background: "var(--bg-soft)",
         fontSize: 9.5, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 800,
         borderBottom: "1px solid var(--border)",
       }}>
-        <span>{headerLeft}</span>
-        <span style={{ textAlign: "right" }}>Status</span>
-        <span style={{ textAlign: "right" }}>Amount</span>
-        <span style={{ textAlign: "right" }}>When</span>
+        <span className="agnt-resp-cell-primary">{headerLeft}</span>
+        <span className="agnt-resp-cell-status" style={{ textAlign: "right" }}>Status</span>
+        <span className="agnt-resp-cell-amount" style={{ textAlign: "right" }}>Amount</span>
+        <span className="agnt-resp-cell-when" style={{ textAlign: "right" }}>When</span>
       </div>
       {visible.map((row, idx) => {
         const cfg = PAYOUT_STATUS_CFG[row.status] || PAYOUT_STATUS_CFG.pending;
@@ -271,7 +271,7 @@ export function PayoutsList({ rows, mode = "agent", collapseAt = 0, emptyText })
         return (
           <a
             key={row.id}
-            className="agnt-payouts-row"
+            className="agnt-payouts-row agnt-resp-payouts-row"
             href={row.tx_hash ? `https://tonviewer.com/transaction/${row.tx_hash}` : undefined}
             target={row.tx_hash ? "_blank" : undefined}
             rel="noreferrer"
@@ -286,7 +286,7 @@ export function PayoutsList({ rows, mode = "agent", collapseAt = 0, emptyText })
               animationDelay: `${idx * 30}ms`,
             }}
           >
-            <div style={{ minWidth: 0 }}>
+            <div className="agnt-resp-cell-primary" style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontFamily: "JetBrains Mono, monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {leftPrimary}
               </div>
@@ -294,7 +294,7 @@ export function PayoutsList({ rows, mode = "agent", collapseAt = 0, emptyText })
                 {leftSecondary}
               </div>
             </div>
-            <span style={{ textAlign: "right" }}>
+            <span className="agnt-resp-cell-status" style={{ textAlign: "right" }}>
               <span style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
                 padding: "2px 8px", borderRadius: 999,
@@ -306,14 +306,14 @@ export function PayoutsList({ rows, mode = "agent", collapseAt = 0, emptyText })
                 {cfg.label}
               </span>
             </span>
-            <span style={{
+            <span className="agnt-resp-cell-amount" style={{
               textAlign: "right", fontFamily: "JetBrains Mono, monospace",
               fontVariantNumeric: "tabular-nums", fontWeight: 700,
               color: isTon ? "var(--accent-fg)" : "var(--fg)",
             }}>
               {amountLabel}
             </span>
-            <span style={{ textAlign: "right", fontSize: 11, color: "var(--fg-muted)" }}>
+            <span className="agnt-resp-cell-when" style={{ textAlign: "right", fontSize: 11, color: "var(--fg-muted)" }}>
               {whenStr}
             </span>
           </a>

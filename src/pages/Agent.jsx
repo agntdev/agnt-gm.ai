@@ -470,7 +470,7 @@ function WalletBindCard({ agent, viewer, token, onBound }) {
       borderRadius: 10,
       background: "var(--bg-soft)",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <div className="agnt-resp-wallet-row" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--fg-muted)", textTransform: "uppercase" }}>
             Bind a TON wallet
@@ -507,7 +507,7 @@ function WalletBindCard({ agent, viewer, token, onBound }) {
 
 function ProjectsTable({ projects, navigate }) {
   return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+    <div className="agnt-resp-h-scroll" style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
       <div style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 2fr) 110px 140px 110px",

@@ -48,7 +48,10 @@ export default function Create() {
     goal_of_project: "",
     plan_md: "",
     readme_md: "",
-    owner_share_bps: 1000,
+    // owner_share_bps is forced to 0 in manual mode (agents get 100% of
+    // the mint). The UI used to expose it but it confused most owners,
+    // so we hide it and let the weight budget be a clean 1.00.
+    owner_share_bps: 0,
     tasks: [],
   }));
   const setManualField = (k, v) => setManual((m) => ({ ...m, [k]: v }));
@@ -555,7 +558,7 @@ function Form({
   tonConnected, tonAddress, tonWalletName, onConnectWallet, onDisconnectWallet,
 }) {
   return (
-    <form onSubmit={onSubmit} style={{ marginTop: 22, display: "grid", gridTemplateColumns: "1fr 320px", gap: 22 }}>
+    <form onSubmit={onSubmit} className="agnt-resp-form-grid" style={{ marginTop: 22, display: "grid", gridTemplateColumns: "1fr 320px", gap: 22 }}>
       <div className="create-form-card">
         <h2>What are you building?</h2>
         <p className="create-form-sub">
@@ -842,7 +845,7 @@ function ManualForm({
         <SectionHeader first hint="Public-facing project name and token ticker.">
           Identity
         </SectionHeader>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12, marginTop: 10 }}>
+        <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12, marginTop: 10 }}>
           <Field label="Project name" hint="Max 200 chars">
             <input
               style={inputStyle}
@@ -863,10 +866,10 @@ function ManualForm({
           </Field>
         </div>
 
-        <SectionHeader hint="On-chain supply and how much of it the owner keeps.">
+        <SectionHeader hint="Jetton supply minted on chain. Agents earn the full mint by task weight.">
           Tokenomics
         </SectionHeader>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+        <div style={{ marginTop: 10 }}>
           <Field label="Total supply" hint="Whole tokens · 1M…1T · 9 decimals on chain">
             <input
               style={monoInputStyle}
@@ -877,20 +880,6 @@ function ManualForm({
               value={manual.total_supply}
               onChange={(e) => setManualField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
             />
-          </Field>
-          <Field label="Owner share" hint="Percentage of mint the owner keeps (0–50%)">
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                style={{ ...monoInputStyle, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
-                type="number"
-                min={0}
-                max={50}
-                step={0.5}
-                value={(Number(manual.owner_share_bps) || 0) / 100}
-                onChange={(e) => setManualField("owner_share_bps", Math.round((parseFloat(e.target.value) || 0) * 100))}
-              />
-              <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--fg-muted)", fontWeight: 700 }}>%</span>
-            </div>
           </Field>
         </div>
 
@@ -967,7 +956,7 @@ function ManualForm({
         )}
 
         <SectionHeader
-          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} · weights must sum to ${(1 - (Number(manual.owner_share_bps) || 0) / 10_000).toFixed(2)}`}
+          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} · weights must sum to 1.00`}
         >
           Tasks
         </SectionHeader>
@@ -981,7 +970,7 @@ function ManualForm({
         <SectionHeader hint="Pool funds via TonConnect after the plan is accepted.">
           Reward pool & wallet
         </SectionHeader>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+        <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
           <Field label="Reward pool (TON)" hint="Funded after approval; can be 0.">
             <div style={{ position: "relative" }}>
               <input
@@ -1103,7 +1092,7 @@ function ManualForm({
 // owner approval. Shared between AI and Manual project forms.
 function AutoMergeToggle({ enabled, onChange }) {
   return (
-    <div style={{
+    <div className="agnt-resp-auto-toggle" style={{
       marginTop: 18,
       padding: "12px 14px",
       border: "1px solid var(--border)",
