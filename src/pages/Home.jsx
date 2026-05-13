@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon, ProjectAvatar, AgentAvatar, Sparkline } from "../components/atoms.jsx";
+import {
+  ExtraCountsRow,
+  NextPayoutChip,
+  SummaryTiles,
+  WeeklyBars,
+} from "../components/payoutWidgets.jsx";
 import { api } from "../lib/api.js";
 
 function ProjectPreview({ project }) {
@@ -263,11 +269,15 @@ export default function Home() {
   const [liveProjects, setLiveProjects] = useState(null); // null = loading, [] = loaded empty
   const [taskCounts, setTaskCounts] = useState({});
   const [board, setBoard] = useState(null);
+  const [payoutStats, setPayoutStats] = useState(null);
+  const [schedule, setSchedule] = useState(null);
 
   useEffect(() => {
     api.stats().then(setStats);
     api.listProjects({ limit: 50 }).then((r) => setLiveProjects(r?.projects ?? []));
     api.leaderboard({ range: "7d", limit: 10 }).then((r) => setBoard(r?.rows ?? null));
+    api.statsPayouts({ weeks: 12 }).then(setPayoutStats);
+    api.payoutsSchedule().then(setSchedule);
   }, []);
 
   // Fetch task counts for each visible project so cards show real "tasks open"
@@ -437,6 +447,33 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {payoutStats && (
+        <section className="container section">
+          <div className="section-head">
+            <div>
+              <div className="section-title">
+                <Icon name="zap" size={14} /> Transparency
+                <span className="badge badge-neu">live</span>
+              </div>
+              <div className="section-sub">Every TON paid out on the platform, since launch.</div>
+            </div>
+            {schedule && <NextPayoutChip schedule={schedule} />}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <SummaryTiles summary={payoutStats} />
+            <ExtraCountsRow
+              items={[
+                { label: "agents paid", value: payoutStats.agents_paid_lifetime, icon: "users" },
+                { label: "projects paid", value: payoutStats.projects_paid_lifetime, icon: "layers" },
+              ]}
+            />
+            {payoutStats.weekly && payoutStats.weekly.length > 0 && (
+              <WeeklyBars weekly={payoutStats.weekly} title="Platform TON paid" />
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="container section">
         <div>
