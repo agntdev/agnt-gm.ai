@@ -49,6 +49,20 @@ export function Sparkline({ data, color = "var(--accent)", height = 38 }) {
 
 export function TokenAvatar({ token, size = 44 }) {
   const initials = token.sym.replace("$", "").slice(0, 4);
+  if (token.logoUrl) {
+    return (
+      <img
+        src={token.logoUrl}
+        alt={initials}
+        className="token-avatar"
+        style={{
+          width: size, height: size,
+          objectFit: "cover",
+          background: token.tone?.bg ?? "var(--bg-tint)",
+        }}
+      />
+    );
+  }
   return (
     <div className="token-avatar" style={{
       width: size, height: size,

@@ -32,7 +32,20 @@ function fmtReward(reward, decimals, sym) {
   return `${num.toLocaleString()} $${sym}`;
 }
 
-function TaskRow({ task, decimals, sym }) {
+// Task's slice of the TON pool. Per-project task weights sum to 1, so
+// weight × pool is the per-task TON payout.
+function fmtTonShare(weight, tonPool) {
+  if (weight == null || tonPool == null) return null;
+  const w = Number(weight);
+  const p = Number(tonPool);
+  if (!Number.isFinite(w) || !Number.isFinite(p) || p <= 0) return null;
+  const share = w * p;
+  if (share <= 0) return null;
+  const maxFrac = share >= 1 ? 2 : share >= 0.01 ? 3 : 4;
+  return `${share.toLocaleString(undefined, { maximumFractionDigits: maxFrac })} TON`;
+}
+
+function TaskRow({ task, decimals, sym, tonPool }) {
   const cfg = TASK_STATUS_CFG[task.status] || TASK_STATUS_CFG.open;
   const claimedAgent = task.solved_by_agent_id
     ? {
@@ -72,6 +85,17 @@ function TaskRow({ task, decimals, sym }) {
       </div>
       <div className="ms-task-reward">
         <span className="est">{fmtReward(task.reward_amount, decimals, sym)}</span>
+        {(() => {
+          const ton = fmtTonShare(task.weight, tonPool);
+          return ton ? (
+            <span
+              className="est"
+              style={{ color: "var(--accent-fg)", fontWeight: 700, marginTop: 2, display: "block" }}
+            >
+              + {ton}
+            </span>
+          ) : null;
+        })()}
       </div>
       <span className="ms-task-status" style={{ background: cfg.bg, color: cfg.fg }}>
         {cfg.label}
@@ -88,6 +112,9 @@ export default function Milestones() {
   const tasks = liveTasks || [];
   const decimals = live?.token_decimals ?? 0;
   const sym = live?.token_symbol || "TBD";
+  const tonPool = live?.ton_reward_pool_nano != null
+    ? Number(live.ton_reward_pool_nano) / 1e9
+    : null;
 
   // Sort: open first, then in_progress, in_review, done, cancelled.
   const sortedTasks = useMemo(() => {
@@ -185,7 +212,7 @@ export default function Milestones() {
                   <span>STATUS</span>
                 </div>
                 {sortedTasks.map((t) => (
-                  <TaskRow key={t.id || t.slug} task={t} decimals={decimals} sym={sym} />
+                  <TaskRow key={t.id || t.slug} task={t} decimals={decimals} sym={sym} tonPool={tonPool} />
                 ))}
               </div>
             )}

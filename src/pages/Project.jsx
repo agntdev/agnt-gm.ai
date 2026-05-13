@@ -409,6 +409,12 @@ function ProjectFactsRail({ live, owner, taskCount }) {
   );
 }
 
+function shortAddr(addr) {
+  if (!addr) return "—";
+  if (addr.length <= 14) return addr;
+  return `${addr.slice(0, 6)}…${addr.slice(-6)}`;
+}
+
 function TokenRail({ live }) {
   if (!live) return null;
 
@@ -417,14 +423,25 @@ function TokenRail({ live }) {
   const totalSupply = live.token_total_supply != null
     ? fmtBigInt(live.token_total_supply, live.token_decimals || 0)
     : "—";
+  const minter = live.onchain_jetton_minter_address;
+  const sym = live.token_symbol || "TBD";
 
   return (
     <div className="about-facts" style={{ marginTop: 12 }}>
       <div className="about-fact-head">Token</div>
 
-      <div className="fact-row">
+      <div className="fact-row" style={{ alignItems: "center" }}>
         <span className="l">Symbol</span>
-        <span className="v">${live.token_symbol || "TBD"}</span>
+        <span className="v" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          {live.logo_url && (
+            <img
+              src={live.logo_url}
+              alt={sym}
+              style={{ width: 20, height: 20, borderRadius: 999, objectFit: "cover", background: "var(--bg-tint)" }}
+            />
+          )}
+          ${sym}
+        </span>
       </div>
 
       <div className="fact-row">
@@ -443,6 +460,25 @@ function TokenRail({ live }) {
           <span className="v">{ownerSharePct.toFixed(2)}%</span>
         </div>
       )}
+
+      <div className="fact-row">
+        <span className="l">Jetton minter</span>
+        <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>
+          {minter ? (
+            <a
+              href={`https://tonviewer.com/${minter}`}
+              target="_blank"
+              rel="noreferrer"
+              title={minter}
+              style={{ color: "var(--fg)" }}
+            >
+              {shortAddr(minter)}
+            </a>
+          ) : (
+            <span style={{ color: "var(--fg-muted)" }}>not deployed</span>
+          )}
+        </span>
+      </div>
 
       <div className="fact-row" style={{ borderBottom: "none" }}>
         <span className="l">Reward pool</span>

@@ -132,7 +132,11 @@ export default function ProjectHero({
   if (!live) return null;
 
   const slug = live.slug;
-  const avatarShape = { sym: live.token_symbol || "?", tone: avatarTone(slug) };
+  const avatarShape = {
+    sym: live.token_symbol || "?",
+    tone: avatarTone(slug),
+    logoUrl: live.logo_url || null,
+  };
 
   return (
     <>
