@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import Icon from "./Icon.jsx";
+import { api } from "../lib/api.js";
+import { getToken } from "../lib/auth.js";
 
 export { default as Icon } from "./Icon.jsx";
 
@@ -184,6 +187,201 @@ function MyAgentMenu({ agent, onSignOut, active }) {
   );
 }
 
+// WalletButton — global TonConnect entry point.
+//
+// Two responsibilities:
+//   1. Open the TonConnect modal and surface the connected address.
+//   2. If the user is signed in (Bearer token present) AND the wallet
+//      returned a ton_proof, run the proof-based bind against
+//      /api/builder/agents/me/wallet/{payload,bind} so the API knows
+//      *this* wallet really belongs to *this* agent.
+//
+// Bind state is kept in component state — once the round-trip succeeds
+// for the current connection we don't re-bind on every refresh.
+export function WalletButton() {
+  const tonAddress = useTonAddress();
+  const tonWallet = useTonWallet();
+  const [tonConnectUI] = useTonConnectUI();
+  const [open, setOpen] = useState(false);
+  const [bindState, setBindState] = useState("idle"); // idle | pending | done | error
+  const [bindError, setBindError] = useState("");
+  const ref = useRef(null);
+  const lastBoundFor = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [open]);
+
+  // Auto-bind on every fresh connection where the wallet returned a
+  // ton_proof — both for the click-Connect path (where we requested
+  // the proof) and for restored sessions, which won't have one (the
+  // subscription just no-ops in that case).
+  useEffect(() => {
+    const unsub = tonConnectUI.onStatusChange(async (wallet) => {
+      if (!wallet) {
+        setBindState("idle");
+        setBindError("");
+        lastBoundFor.current = null;
+        return;
+      }
+      const token = getToken();
+      if (!token) return;
+      const proofItem = wallet.connectItems?.tonProof;
+      if (!proofItem || "error" in proofItem) return;
+      const addr = wallet.account?.address;
+      if (!addr || lastBoundFor.current === addr) return;
+      lastBoundFor.current = addr;
+      setBindState("pending");
+      setBindError("");
+      const body = {
+        address: addr,
+        public_key: wallet.account.publicKey,
+        network: wallet.account.chain,
+        proof: {
+          timestamp: proofItem.proof.timestamp,
+          domain: proofItem.proof.domain,
+          payload: proofItem.proof.payload,
+          signature: proofItem.proof.signature,
+          state_init: wallet.account.walletStateInit,
+        },
+      };
+      const res = await api.walletBind(body, token);
+      if (res.ok) {
+        setBindState("done");
+      } else {
+        setBindState("error");
+        setBindError(res.data?.error || `bind failed (HTTP ${res.status})`);
+        lastBoundFor.current = null;
+      }
+    });
+    return () => unsub();
+  }, [tonConnectUI]);
+
+  async function onConnectClick() {
+    const token = getToken();
+    if (token) {
+      // Request a server-issued nonce and arm TonConnect's tonProof
+      // item before opening the modal. SDK supports a `loading` state
+      // so the modal can pop instantly even if the nonce fetch is slow.
+      tonConnectUI.setConnectRequestParameters({ state: "loading" });
+      try {
+        const res = await api.walletPayload(token);
+        if (res?.payload) {
+          tonConnectUI.setConnectRequestParameters({
+            state: "ready",
+            value: { tonProof: res.payload },
+          });
+        } else {
+          tonConnectUI.setConnectRequestParameters(null);
+        }
+      } catch {
+        tonConnectUI.setConnectRequestParameters(null);
+      }
+    }
+    await tonConnectUI.openModal();
+  }
+
+  function onDisconnect() {
+    tonConnectUI.disconnect();
+    setOpen(false);
+    setBindState("idle");
+    setBindError("");
+    lastBoundFor.current = null;
+  }
+
+  if (!tonAddress) {
+    return (
+      <button
+        type="button"
+        className="btn btn-myagent"
+        onClick={onConnectClick}
+        title="Connect TON wallet"
+      >
+        <TonMark size={14} />
+        <span>Connect wallet</span>
+      </button>
+    );
+  }
+
+  const short = `${tonAddress.slice(0, 4)}…${tonAddress.slice(-4)}`;
+  const walletName = tonWallet?.device?.appName || tonWallet?.name || "Wallet";
+  const bindLabel = bindState === "pending" ? "Verifying…"
+    : bindState === "done" ? "Verified ✓"
+    : bindState === "error" ? "Bind failed"
+    : "";
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        className="btn btn-myagent"
+        onClick={() => setOpen((v) => !v)}
+        title={tonAddress}
+      >
+        <TonMark size={14} />
+        <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>{short}</span>
+        {bindState === "done" && <span className="live-dot" style={{ marginLeft: 4 }} />}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0,
+            background: "var(--bg)", border: "1px solid var(--border-strong)",
+            borderRadius: 10, minWidth: 260, padding: 10, zIndex: 50,
+            boxShadow: "0 18px 40px rgba(10,10,10,0.12)",
+          }}
+        >
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            {walletName}
+          </div>
+          <div
+            style={{
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: 11,
+              color: "var(--fg)",
+              wordBreak: "break-all",
+              padding: "6px 8px",
+              borderRadius: 6,
+              background: "var(--bg-soft)",
+              marginBottom: 8,
+            }}
+          >
+            {tonAddress}
+          </div>
+          {bindLabel && (
+            <div
+              style={{
+                fontSize: 11,
+                color: bindState === "error" ? "var(--danger)" : "var(--fg-muted)",
+                marginBottom: 8,
+              }}
+              title={bindError || undefined}
+            >
+              {bindLabel}{bindState === "error" && bindError ? `: ${bindError}` : ""}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onDisconnect}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              width: "100%", padding: "8px 10px", borderRadius: 6,
+              fontSize: 12, color: "var(--danger)", background: "none",
+              border: "none", cursor: "pointer", textAlign: "left",
+              fontFamily: "inherit",
+            }}
+          >
+            <Icon name="x" size={12} /> Disconnect
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
   const { pathname } = useLocation();
   const isHome = pathname === "/" || pathname.startsWith("/projects");
@@ -202,14 +400,17 @@ export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
           </Link>
         </div>
         <div className="nav-spacer" />
-        {authed ? (
-          <MyAgentMenu agent={agent} onSignOut={onSignOut} active={isAgent} />
-        ) : (
-          <button className="btn btn-signin" onClick={onSignIn} title="sign in with GitHub" type="button">
-            <GitHubMark />
-            <span>Sign in</span>
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <WalletButton />
+          {authed ? (
+            <MyAgentMenu agent={agent} onSignOut={onSignOut} active={isAgent} />
+          ) : (
+            <button className="btn btn-signin" onClick={onSignIn} title="sign in with GitHub" type="button">
+              <GitHubMark />
+              <span>Sign in</span>
+            </button>
+          )}
+        </div>
       </div>
     </nav>
   );
