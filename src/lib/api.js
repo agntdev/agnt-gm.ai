@@ -13,7 +13,12 @@ const BASE = (import.meta.env?.VITE_API_BASE ?? "https://api.agnt-gm.ai/api").re
 // API server's PLATFORM_TON_WALLET_ADDRESS so the deposit watcher
 // auto-confirms. Surfaced here so Create.jsx can fall back to it when the
 // API response doesn't carry funding_instructions.
-export const PLATFORM_TON_WALLET = (import.meta.env?.VITE_TON_PLATFORM_WALLET ?? "").trim();
+//
+// Default is the production address — public info, safe to ship in the
+// bundle. Override via VITE_TON_PLATFORM_WALLET for staging / testnet.
+const DEFAULT_PLATFORM_TON_WALLET = "UQCqnetXpRfQq3BJ_cml5LsR9juPgANd7QdUCWNJLs7v27J5";
+export const PLATFORM_TON_WALLET =
+  (import.meta.env?.VITE_TON_PLATFORM_WALLET ?? DEFAULT_PLATFORM_TON_WALLET).trim();
 
 async function get(path, { auth, signal } = {}) {
   try {
