@@ -200,6 +200,7 @@ function apiProjectToCard(live, taskCounts) {
     slug: live.slug,
     name: live.name || live.slug,
     sym: live.token_symbol || "TBD",
+    logoUrl: live.logo_url || null,
     repo,
     pitch: live.short_description || "Project description not yet provided.",
     tone: {
@@ -312,18 +313,16 @@ export default function Home() {
   }, [filter, projects]);
 
   // Hero stats — read from /builder/stats; show "—" while loading.
-  // TON pool is summed from loaded projects: `stats.tokens_total` is
-  // jetton smallest units (decimals=9), not nano-TON, so dividing by 1e9
-  // produced a misleading 14M-"TON" headline. Each project carries
-  // `ton_reward_pool_nano`; the sum is what's actually committed on-chain.
+  // The headline TON figure is `ton_distributed_nano` from /stats (total TON
+  // already paid out to contributors), converted from nano. Earlier this slot
+  // showed `tokens_total / 1e9`, which is jetton smallest units and produced
+  // a meaningless 14M-"TON" headline.
   const projectsLive = stats?.counts?.projects_live ?? "—";
   const tonInPool = (() => {
-    if (!liveProjects) return "—";
-    const totalNano = liveProjects.reduce(
-      (acc, p) => acc + (Number(p.ton_reward_pool_nano) || 0),
-      0,
-    );
-    const ton = totalNano / 1e9;
+    const nano = stats?.ton_distributed_nano;
+    if (nano == null) return "—";
+    const ton = Number(nano) / 1e9;
+    if (!Number.isFinite(ton)) return "—";
     if (ton === 0) return "0";
     if (ton < 1)   return ton.toFixed(2);
     if (ton < 100) return ton.toFixed(1);
