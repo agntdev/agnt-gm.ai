@@ -31,6 +31,7 @@ export default function Create() {
     deadline: "7", // number-of-days as a string; one of "1" | "3" | "7" | "14"
     task_notes: "",
     ton_reward_pool: "5",   // TON; converted to nano (×1e9) on submit
+    auto_merge_enabled: true, // PATCH-able later via /projects/:id/auto-merge
   });
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -225,6 +226,7 @@ export default function Create() {
         body.deadline = new Date(Date.now() + days * 86400000).toISOString();
       }
     }
+    body.auto_merge_enabled = !!form.auto_merge_enabled;
     const supplyNano = (BigInt(Math.trunc(Number(manual.total_supply))) * 1_000_000_000n).toString();
     const bodyJson = JSON.stringify(body).replace(`"__TS_PLACEHOLDER__"`, supplyNano);
 
@@ -269,6 +271,7 @@ export default function Create() {
     if (Number.isFinite(tonAmount) && tonAmount > 0) {
       body.ton_reward_pool_nano = Math.round(tonAmount * 1e9);
     }
+    body.auto_merge_enabled = !!form.auto_merge_enabled;
 
     // Total supply: user enters whole tokens; API stores smallest units
     // (decimals=9). Compute with BigInt so 1B+ defaults don't overflow
@@ -770,6 +773,11 @@ function Form({
           />
         </div>
 
+        <AutoMergeToggle
+          enabled={!!form.auto_merge_enabled}
+          onChange={(v) => setField("auto_merge_enabled", v)}
+        />
+
         {errorMsg && (
           <div style={{ marginTop: 14, padding: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
             {errorMsg}
@@ -1058,6 +1066,11 @@ function ManualForm({
           </Field>
         </div>
 
+        <AutoMergeToggle
+          enabled={!!form.auto_merge_enabled}
+          onChange={(v) => setField("auto_merge_enabled", v)}
+        />
+
         {errorMsg && (
           <div className="agnt-fade-in" style={{ marginTop: 14, padding: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
             {errorMsg}
@@ -1081,6 +1094,84 @@ function ManualForm({
         </div>
       </div>
     </form>
+  );
+}
+
+// AutoMergeToggle — owner-side switch for the platform's automatic PR
+// merge pipeline. When ON, the platform-reviewer agent auto-merges the
+// first PR that passes validation. When OFF, every PR waits for manual
+// owner approval. Shared between AI and Manual project forms.
+function AutoMergeToggle({ enabled, onChange }) {
+  return (
+    <div style={{
+      marginTop: 18,
+      padding: "12px 14px",
+      border: "1px solid var(--border)",
+      borderRadius: 8,
+      background: "var(--bg-soft)",
+      display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+    }}>
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <div style={{
+          fontSize: 10.5, fontWeight: 800, color: "var(--fg-muted)",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          Auto review
+        </div>
+        <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, maxWidth: "60ch" }}>
+          {enabled
+            ? <>The platform reviewer agent auto-merges the first PR that passes all checks. Faster shipping, no owner ping required.</>
+            : <>Every PR waits for your manual review and approval. Slower, but you sign off on every merge.</>}
+        </div>
+      </div>
+      <PillSwitch enabled={enabled} onChange={onChange} />
+    </div>
+  );
+}
+
+// PillSwitch — iOS-style segmented binary control. Tabular-mono labels
+// (ON / OFF) keep widths stable when the user flips it.
+function PillSwitch({ enabled, onChange, onLabel = "ON", offLabel = "OFF", disabled = false }) {
+  return (
+    <div
+      role="switch"
+      aria-checked={enabled}
+      style={{
+        display: "inline-flex", gap: 2,
+        padding: 3,
+        border: "1px solid var(--border)",
+        borderRadius: 999,
+        background: "var(--bg)",
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {[
+        { v: false, label: offLabel },
+        { v: true,  label: onLabel  },
+      ].map((opt) => {
+        const active = opt.v === enabled;
+        return (
+          <button
+            key={String(opt.v)}
+            type="button"
+            disabled={disabled}
+            onClick={() => !disabled && onChange(opt.v)}
+            style={{
+              padding: "5px 12px",
+              border: "none", borderRadius: 999,
+              background: active ? (opt.v ? "var(--accent)" : "var(--fg)") : "transparent",
+              color: active ? "var(--bg)" : "var(--fg-muted)",
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
+              cursor: disabled ? "not-allowed" : "pointer",
+              transition: "background 0.18s ease, color 0.18s ease",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

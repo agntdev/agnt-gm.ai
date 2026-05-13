@@ -11,6 +11,12 @@ import {
   inputStyle,
   monoInputStyle,
 } from "../components/manualForm.jsx";
+import {
+  ExtraCountsRow,
+  PayoutsList,
+  SummaryTiles,
+  WeeklyBars,
+} from "../components/payoutWidgets.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
 import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
 import { validateManualPlan } from "../lib/manualPlan.js";
@@ -96,7 +102,7 @@ export default function Project() {
               </div>
 
               <div>
-                <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} />
+                <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} isOwner={isOwner} refresh={refresh} />
                 <TokenRail live={live} />
               </div>
             </div>
@@ -109,9 +115,7 @@ export default function Project() {
           )}
 
           {tab === "contributors" && (
-            <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13, border: "1px dashed var(--border-strong)", borderRadius: 10, background: "var(--bg-soft)" }}>
-              Contributors come from the per-project leaderboard endpoint — not wired yet.
-            </div>
+            <ProjectPayoutsSection slug={slug} live={live} />
           )}
         </div>
       </section>
@@ -275,7 +279,7 @@ function fmtBigInt(n, decimals = 0) {
   return num.toLocaleString();
 }
 
-function ProjectFactsRail({ live, owner, taskCount }) {
+function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
   if (!live) {
     return (
       <div className="about-facts">
@@ -414,12 +418,90 @@ function ProjectFactsRail({ live, owner, taskCount }) {
         </span>
       </div>
 
+      <AutoMergeRow live={live} isOwner={isOwner} refresh={refresh} />
+
       <div className="fact-row" style={{ borderBottom: "none" }}>
         <span className="l">Project ID</span>
         <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, color: "var(--fg-muted)" }}>
           {live.id}
         </span>
       </div>
+    </div>
+  );
+}
+
+// AutoMergeRow — one row in the facts rail, inline toggle visible only
+// to the project owner. Optimistically flips the chip; on failure it
+// reverts and surfaces the API error in the tooltip.
+function AutoMergeRow({ live, isOwner, refresh }) {
+  const { token } = useAuth();
+  const apiEnabled = !!live.auto_merge_enabled;
+  // Optimistic mirror of the API state. Stays in sync via the `live`
+  // prop after each refresh, but flips immediately on toggle for snappy
+  // feedback.
+  const [enabled, setEnabled] = useState(apiEnabled);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => { setEnabled(apiEnabled); }, [apiEnabled]);
+
+  async function toggle() {
+    if (!isOwner || pending || !token) return;
+    const next = !enabled;
+    setPending(true);
+    setError("");
+    setEnabled(next);
+    const res = await api.setAutoMergePolicy(live.slug || live.id, next, token);
+    setPending(false);
+    if (!res.ok) {
+      setEnabled(!next);
+      setError(res.data?.error || `Failed (HTTP ${res.status}).`);
+      return;
+    }
+    refresh?.();
+  }
+
+  return (
+    <div className="fact-row">
+      <span className="l">Auto review</span>
+      <span className="v" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <span
+          title={enabled
+            ? "Platform reviewer agent auto-merges the first PR that passes all checks."
+            : "Every PR waits for the owner's manual approval."}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "2px 8px", borderRadius: 999,
+            background: enabled ? "var(--accent-soft)" : "var(--bg-tint)",
+            color:      enabled ? "var(--accent-fg)"   : "var(--fg-muted)",
+            fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
+            textTransform: "uppercase", letterSpacing: "0.05em",
+          }}
+        >
+          {enabled && <span className="live-dot" />}
+          {enabled ? "auto" : "manual"}
+        </span>
+        {isOwner && (
+          <button
+            type="button"
+            onClick={toggle}
+            disabled={pending}
+            title={error || (enabled ? "Switch to manual review" : "Switch to auto review")}
+            style={{
+              padding: "2px 8px", borderRadius: 4,
+              border: "1px solid var(--border)",
+              background: "var(--bg)", color: "var(--fg-muted)",
+              fontSize: 10, fontWeight: 800, letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              cursor: pending ? "wait" : "pointer",
+              opacity: pending ? 0.6 : 1,
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          >
+            {pending ? "…" : (enabled ? "→ manual" : "→ auto")}
+          </button>
+        )}
+      </span>
     </div>
   );
 }
@@ -651,10 +733,10 @@ function FundPoolBanner({ live, isOwner, refresh }) {
 // stage is in `pending` state (waiting for the deposit watcher).
 
 const STAGE_STATUS = {
-  pending:  { label: "Awaiting funding", tone: "amber"  },
-  funded:   { label: "Funded",           tone: "accent" },
-  active:   { label: "Active",           tone: "accent" },
-  closed:   { label: "Closed",           tone: "muted"  },
+  pending:  { label: "Awaiting funding",            tone: "amber"  },
+  funded:   { label: "Funded · awaiting activation", tone: "amber"  },
+  active:   { label: "Active",                       tone: "accent" },
+  closed:   { label: "Closed",                       tone: "muted"  },
 };
 
 function StagesSection({ live, isOwner, refresh }) {
@@ -937,7 +1019,19 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
     const res = await api.createProjectStage(projectIdOrSlug, body, token);
     setSubmitting(false);
     if (res.status === 401 || res.status === 403) { setError("Only the project owner can start a new stage."); triggerShake(); return; }
-    if (res.status === 409) { setError(res.data?.error || "Previous stage is not closed yet."); triggerShake(); return; }
+    if (res.status === 409) {
+      // The API surfaces `previous_stage` + `previous_status` for the
+      // "stage N is still open" path. Show them so the owner knows which
+      // stage is blocking and what state it's currently in.
+      const prevN = res.data?.previous_stage;
+      const prevS = res.data?.previous_status;
+      const hint  = prevN != null && prevS
+        ? `Stage ${prevN} is still ${prevS} — wait for it to close before starting stage ${nextStageNumber}.`
+        : (res.data?.error || "Previous stage is not closed yet.");
+      setError(hint);
+      triggerShake();
+      return;
+    }
     if (res.status === 400 && res.data?.rejection_reason) {
       setModerationReason(res.data.rejection_reason); triggerShake(); return;
     }
@@ -1057,5 +1151,90 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
         </button>
       </div>
     </form>
+  );
+}
+
+// ─────────────────────── Project payouts section ───────────────────────
+// Renders on the project page's Contributors tab. Pulls:
+//   GET /builder/projects/:id/payouts/summary?weeks=12  (tiles + chart)
+//   GET /builder/projects/:id/payouts?limit=50          (who got paid)
+// Empty state encourages the first contributor.
+function ProjectPayoutsSection({ slug, live }) {
+  const [summary, setSummary] = useState(null);
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const idOrSlug = slug || live?.id;
+
+  useEffect(() => {
+    if (!idOrSlug) return;
+    let cancelled = false;
+    setLoading(true);
+    setSummary(null);
+    setRows(null);
+    Promise.all([
+      api.projectPayoutsSummary(idOrSlug, { weeks: 12 }),
+      api.projectPayouts(idOrSlug, { limit: 50 }),
+    ]).then(([s, p]) => {
+      if (cancelled) return;
+      setSummary(s || null);
+      setRows(p?.payouts || []);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [idOrSlug]);
+
+  if (loading) {
+    return (
+      <div style={{ padding: "28px 0", color: "var(--fg-muted)", fontSize: 12.5, textAlign: "center" }}>
+        Loading payouts…
+      </div>
+    );
+  }
+  if (!summary) {
+    return (
+      <div style={{
+        padding: 28, border: "1px dashed var(--border)", borderRadius: 10,
+        background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 12.5,
+      }}>
+        No payout data yet for this project.
+      </div>
+    );
+  }
+
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SummaryTiles summary={summary} />
+      <ExtraCountsRow
+        items={[
+          { label: "agents paid", value: summary.agents_paid, icon: "users" },
+          { label: "tasks paid", value: summary.tasks_paid, icon: "layers" },
+        ]}
+      />
+      {summary.weekly && summary.weekly.length > 0 && <WeeklyBars weekly={summary.weekly} />}
+      <div>
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "baseline",
+          padding: "8px 0 12px",
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <Icon name="users" size={12} /> Who got paid
+            <span style={{ fontSize: 10, color: "var(--fg-muted)", fontWeight: 600 }}>
+              {rows?.length ?? 0}
+            </span>
+          </div>
+          {summary.lifetime?.payout_count > (rows?.length || 0) && (
+            <span style={{ fontSize: 10.5, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace" }}>
+              showing most-recent 50 of {summary.lifetime.payout_count}
+            </span>
+          )}
+        </div>
+        <PayoutsList
+          rows={rows}
+          mode="project"
+          collapseAt={10}
+          emptyText="No one has been paid on this project yet — be the first to ship a PR."
+        />
+      </div>
+    </section>
   );
 }

@@ -152,6 +152,11 @@ export const api = {
   publishProject: (idOrSlug, token) =>
     send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/publish`, null, { auth: token }),
 
+  // Owner toggles the PR auto-merge policy. Owner-only on the API.
+  // Body: { enabled: bool }. Response: { ok, project_id, auto_merge_enabled }.
+  setAutoMergePolicy: (idOrSlug, enabled, token) =>
+    send("PATCH", `/builder/projects/${encodeURIComponent(idOrSlug)}/auto-merge`, { enabled }, { auth: token }),
+
   // PATCH /builder/agents/me — { display_name?, bio? }. Returns AgentEnvelope.
   updateMe: (body, token) => send("PATCH", "/builder/agents/me", body, { auth: token }),
 
