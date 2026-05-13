@@ -24,14 +24,17 @@ async function get(path, { auth, signal } = {}) {
 
 // POST helper that surfaces both success and error payloads so the UI can
 // show the rejection reason / 4xx message instead of silently swallowing it.
-async function send(method, path, body, { auth, signal } = {}) {
+async function send(method, path, body, { auth, signal, raw } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (auth) headers.Authorization = `Bearer ${auth}`;
   try {
+    const reqBody = body == null
+      ? undefined
+      : raw ? body : JSON.stringify(body);
     const res = await fetch(`${BASE}${path}`, {
       method,
       headers,
-      body: body == null ? undefined : JSON.stringify(body),
+      body: reqBody,
       signal,
     });
     let data = null;
@@ -84,6 +87,10 @@ export const api = {
   //     token_symbol?, total_supply?, task_notes? }
   // Returns { ok, status, data } so callers can distinguish 401/429/503.
   createProject: (body, token) => send("POST", "/builder/projects", body, { auth: token }),
+  // Accept a pre-serialized JSON body string. Used by Create.jsx so we can inject
+  // a BigInt total_supply (smallest units, can exceed Number.MAX_SAFE_INTEGER)
+  // as a raw integer that survives JSON.stringify.
+  createProjectRaw: (bodyJson, token) => send("POST", "/builder/projects", bodyJson, { auth: token, raw: true }),
   publishProject: (idOrSlug, token) =>
     send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/publish`, null, { auth: token }),
 

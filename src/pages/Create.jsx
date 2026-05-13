@@ -90,7 +90,6 @@ export default function Create() {
     };
     if (form.name.trim()) body.name = form.name.trim();
     if (form.token_symbol.trim()) body.token_symbol = form.token_symbol.trim().toUpperCase();
-    if (form.total_supply) body.total_supply = Number(form.total_supply);
     if (form.task_notes.trim()) body.task_notes = form.task_notes.trim();
     if (form.deadline) {
       const days = parseInt(form.deadline, 10);
@@ -104,7 +103,21 @@ export default function Create() {
       body.ton_reward_pool_nano = Math.round(tonAmount * 1e9);
     }
 
-    const res = await api.createProject(body, token);
+    // Total supply: user enters whole tokens; API stores smallest units
+    // (decimals=9). Compute with BigInt so 1B+ defaults don't overflow
+    // Number.MAX_SAFE_INTEGER, then splice into the JSON as a raw integer.
+    const supplyHuman = String(form.total_supply || "").trim().replace(/[,_\s]/g, "");
+    let bodyJson;
+    if (/^\d+$/.test(supplyHuman) && supplyHuman !== "0") {
+      const supplyNano = (BigInt(supplyHuman) * 1_000_000_000n).toString();
+      const PH = "__TS_PLACEHOLDER__";
+      bodyJson = JSON.stringify({ ...body, total_supply: PH })
+        .replace(`"${PH}"`, supplyNano);
+    } else {
+      bodyJson = JSON.stringify(body);
+    }
+
+    const res = await api.createProjectRaw(bodyJson, token);
 
     if (res.status === 401 || res.status === 403) {
       setPhase("idle");
@@ -405,12 +418,14 @@ function Form({
         <div className="field-row">
           <div className="field">
             <label className="field-label">Total supply</label>
+            <div className="field-hint">Whole tokens. Minted on chain with 9 decimals.</div>
             <input
               className="field-input"
               type="number"
               min={1000}
+              step={1}
               value={form.total_supply}
-              onChange={(e) => setField("total_supply", Number(e.target.value))}
+              onChange={(e) => setField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
             />
           </div>
           <div className="field">
