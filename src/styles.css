@@ -2268,6 +2268,16 @@ h1 .punch { color: var(--accent-fg); }
   min-width: 0;
 }
 
+/* Compact variant — used for the details panel hoisted above the tabs.
+   Tighter padding + smaller header so the panel doesn't push the
+   contribute guide down by a full screen. */
+.about-facts-compact .about-fact-head {
+  padding: 8px 12px; font-size: 10px; letter-spacing: 0.08em;
+}
+.about-facts-compact .fact-row {
+  padding: 5px 12px; font-size: 11px;
+}
+
 /* === Compact hero stats (feed-first) === */
 .hero-feed-grid {
   display: grid; grid-template-columns: minmax(0, 1fr) 340px;

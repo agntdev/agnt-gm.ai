@@ -285,7 +285,7 @@ function fmtBigInt(n, decimals = 0) {
 function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
   if (!live) {
     return (
-      <div className="about-facts">
+      <div className="about-facts about-facts-compact">
         <div className="about-fact-head">Project details</div>
         <div className="fact-row" style={{ borderBottom: "none", color: "var(--fg-muted)", fontSize: 12 }}>
           Loading…
@@ -300,8 +300,8 @@ function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
     : null;
 
   return (
-    <div className="about-facts">
-      <div className="about-fact-head">Project facts</div>
+    <div className="about-facts about-facts-compact">
+      <div className="about-fact-head">Project details</div>
 
       <div className="fact-row">
         <span className="l">Status</span>
