@@ -298,13 +298,14 @@ export function WalletButton() {
 
   // Shared flow: ask the API for a fresh nonce, arm tonConnectUI with
   // a tonProof request, open the modal. Used by both first-connect and
-  // re-bind ("Verify wallet") paths — re-bind additionally disconnects
-  // the existing session first so the wallet does a clean handshake.
+  // re-bind ("Verify wallet") paths.
+  //
+  // Order matters on the re-verify path: we fetch the payload BEFORE
+  // disconnecting the existing session so the user doesn't watch their
+  // wallet chip empty for the full network round-trip. Disconnect
+  // happens immediately before openModal so the gap is imperceptible.
   async function startConnect({ reverify = false } = {}) {
     const token = getToken();
-    if (reverify && tonConnectUI.connected) {
-      await tonConnectUI.disconnect();
-    }
     if (token) {
       tonConnectUI.setConnectRequestParameters({ state: "loading" });
       try {
@@ -320,6 +321,13 @@ export function WalletButton() {
       } catch {
         tonConnectUI.setConnectRequestParameters(null);
       }
+    }
+    // TonConnect only emits ton_proof on a *fresh* handshake. If we're
+    // re-verifying an existing session, drop it now (just before the
+    // modal opens) so the wallet redoes the connect step and includes
+    // the proof item we just armed.
+    if (reverify && tonConnectUI.connected) {
+      await tonConnectUI.disconnect();
     }
     await tonConnectUI.openModal();
   }

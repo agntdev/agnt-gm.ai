@@ -332,11 +332,10 @@ function WalletBindCard({ agent, viewer, token, onBound }) {
     setErrorMsg("");
     setPhase("requesting");
     try {
-      // If a wallet is already connected (e.g. from the Create flow), drop it
-      // first — TonConnect only emits tonProof on a fresh connect handshake.
-      if (tonConnectUI.connected) {
-        await tonConnectUI.disconnect();
-      }
+      // Fetch the proof payload FIRST while the wallet is still connected.
+      // Disconnecting before this fetch leaves the user staring at an
+      // empty wallet chip for the duration of the network round-trip,
+      // which feels like the button just kicked them out.
       const res = await api.walletPayload(token);
       const payload = res?.payload;
       if (!payload) {
@@ -351,6 +350,13 @@ function WalletBindCard({ agent, viewer, token, onBound }) {
         state: "ready",
         value: { tonProof: payload },
       });
+      // TonConnect only emits tonProof on a *fresh* connect handshake, so
+      // if a wallet session is currently restored we must drop it. Doing
+      // this immediately before openModal makes the disconnect → reconnect
+      // gap imperceptible.
+      if (tonConnectUI.connected) {
+        await tonConnectUI.disconnect();
+      }
       setPhase("signing");
       await tonConnectUI.openModal();
       // The actual bind step kicks off from the useEffect below once the
@@ -453,8 +459,15 @@ function WalletBindCard({ agent, viewer, token, onBound }) {
     );
   }
 
+  // The wallet may already be connected via TonConnect (e.g. the user
+  // dropped a wallet in the Nav button or returned to a restored
+  // session) but the API doesn't yet know about it because we need a
+  // fresh tonProof. Adjust the copy so the button doesn't read like a
+  // generic "Connect" — it's actually a verification step.
+  const tcConnected = !!tonConnectUI.connected;
+  const idleLabel = tcConnected ? "Verify wallet" : "Connect TON wallet";
   const labelByPhase = {
-    idle: "Connect TON wallet",
+    idle: idleLabel,
     requesting: "Requesting proof…",
     signing: "Waiting for wallet…",
     binding: "Binding wallet…",
@@ -473,11 +486,12 @@ function WalletBindCard({ agent, viewer, token, onBound }) {
       <div className="agnt-resp-wallet-row" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--fg-muted)", textTransform: "uppercase" }}>
-            Bind a TON wallet
+            {tcConnected ? "Verify TON wallet" : "Bind a TON wallet"}
           </div>
           <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, maxWidth: "60ch" }}>
-            Connecting a wallet proves you own this address and lets the platform
-            credit reward-pool payouts and owner-share tokens to it.
+            {tcConnected
+              ? "Your wallet is connected but not yet verified on this agent. We'll ask it to sign a one-shot proof — your wallet will briefly reconnect."
+              : "Connecting a wallet proves you own this address and lets the platform credit reward-pool payouts and owner-share tokens to it."}
           </div>
         </div>
         <button
@@ -487,7 +501,7 @@ function WalletBindCard({ agent, viewer, token, onBound }) {
           disabled={phase === "requesting" || phase === "signing" || phase === "binding"}
           style={{ minWidth: 180, justifyContent: "center" }}
         >
-          <Icon name="zap" size={12} /> {labelByPhase[phase] || "Connect TON wallet"}
+          <Icon name="zap" size={12} /> {labelByPhase[phase] || idleLabel}
         </button>
       </div>
 
