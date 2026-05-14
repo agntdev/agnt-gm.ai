@@ -12,6 +12,112 @@ import Launched from "./pages/Launched.jsx";
 import Auth from "./pages/Auth.jsx";
 import AuthCallback from "./pages/AuthCallback.jsx";
 
+// Mobile overrides for the heavier inline-styled grids in /propose,
+// /projects/:slug and /agent/:handle. Plain inline styles can't carry
+// media queries, so we stamp class hooks onto the offending containers
+// and override them once here.
+const RESPONSIVE_CSS = `
+  /* Two-column form sections collapse to a single column on tablet
+     and below. Covers Create.jsx (AI form's 1fr+sidebar; ManualForm's
+     identity + reward pool grids) and CreateStageForm's pool/mint pair. */
+  @media (max-width: 880px) {
+    .agnt-resp-form-grid,
+    .agnt-resp-2col {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  /* TasksEditor per-task meta row (weight · difficulty · tags) stacks. */
+  @media (max-width: 640px) {
+    .agnt-resp-task-meta {
+      grid-template-columns: 1fr !important;
+      gap: 8px !important;
+    }
+    /* Task header row keeps slug + title side-by-side but shrinks the
+       slug column so the title input keeps its breathing room. */
+    .agnt-resp-task-head {
+      grid-template-columns: 72px minmax(0, 1fr) auto !important;
+    }
+  }
+
+  /* PayoutsList — restack the fixed 4-column grid into a two-row card on
+     phones so it never needs horizontal scrolling. Cells are tagged with
+     grid-area names so the same DOM renders top/bottom on mobile and
+     left-to-right on desktop. */
+  @media (max-width: 640px) {
+    .agnt-resp-payouts-row,
+    .agnt-resp-payouts-head {
+      grid-template-columns: minmax(0, 1fr) auto !important;
+      grid-template-areas:
+        "primary amount"
+        "status  when" !important;
+      row-gap: 6px;
+      padding: 10px 14px !important;
+    }
+    .agnt-resp-cell-primary { grid-area: primary; min-width: 0; }
+    .agnt-resp-cell-status  { grid-area: status; justify-self: start; text-align: left !important; }
+    .agnt-resp-cell-amount  { grid-area: amount; }
+    .agnt-resp-cell-when    { grid-area: when; }
+  }
+
+  /* My-projects table on the Agent page — horizontal scroll within
+     the table card rather than the whole viewport. */
+  @media (max-width: 640px) {
+    .agnt-resp-h-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .agnt-resp-h-scroll > * {
+      min-width: 520px;
+    }
+  }
+
+  /* AutoMergeToggle: pill switch drops below the description copy. */
+  @media (max-width: 520px) {
+    .agnt-resp-auto-toggle {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+    }
+  }
+
+  /* Stage card head — TON price label drops below the title row on tiny
+     viewports, keeping the round number badge and the status pill on
+     line 1. */
+  @media (max-width: 520px) {
+    .agnt-resp-stage-head {
+      align-items: flex-start !important;
+    }
+    .agnt-resp-stage-head > :last-child {
+      text-align: left !important;
+      width: 100%;
+    }
+  }
+
+  /* FundPoolBanner + StageFundCTA — the "Pay X TON" button drops below
+     the copy on phones, full-width. */
+  @media (max-width: 520px) {
+    .agnt-resp-banner > :last-child {
+      width: 100%;
+    }
+    .agnt-resp-banner > :last-child button {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
+  /* AGENT page wallet bind card — title + button stack vertically. */
+  @media (max-width: 520px) {
+    .agnt-resp-wallet-row {
+      flex-direction: column !important;
+      align-items: stretch !important;
+    }
+    .agnt-resp-wallet-row > button {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+`;
+
 export default function App() {
   const { pathname } = useLocation();
   const auth = useAuth();
@@ -20,6 +126,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <style>{RESPONSIVE_CSS}</style>
       {!isAuthRoute && (
         <Nav
           authed={auth.authed}

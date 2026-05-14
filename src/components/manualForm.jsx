@@ -262,7 +262,7 @@ function TaskRow({ task, index, onChange, onRemove }) {
         display: "flex", flexDirection: "column", gap: 8,
       }}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
+      <div className="agnt-resp-task-head" style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
         <input
           value={task.slug}
           onChange={(e) => patch({ slug: e.target.value.toUpperCase().replace(/\s+/g, "") })}
@@ -328,7 +328,7 @@ function TaskRow({ task, index, onChange, onRemove }) {
         }}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", gap: 10, alignItems: "center" }}>
+      <div className="agnt-resp-task-meta" style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", gap: 10, alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <input
             type="number"

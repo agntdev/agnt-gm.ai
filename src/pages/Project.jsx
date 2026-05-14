@@ -675,6 +675,7 @@ function FundPoolBanner({ live, isOwner, refresh }) {
 
   return (
     <div
+      className="agnt-resp-banner"
       style={{
         marginTop: 16, padding: 18,
         border: "1px solid var(--border-strong)", borderRadius: 10,
@@ -831,7 +832,7 @@ function StageCard({ stage, isLast, isOwner, refresh }) {
       background: "var(--bg)",
       overflow: "hidden",
     }}>
-      <div style={{
+      <div className="agnt-resp-stage-head" style={{
         display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
         padding: "14px 18px",
         borderBottom: totalTasks > 0 ? "1px solid var(--border)" : "none",
@@ -945,7 +946,7 @@ function StageFundCTA({ stage, refresh }) {
   }
 
   return (
-    <div style={{
+    <div className="agnt-resp-banner" style={{
       padding: "12px 18px",
       borderTop: "1px solid var(--border)",
       background: "oklch(0.98 0.025 80)",
