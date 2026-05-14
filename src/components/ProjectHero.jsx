@@ -185,25 +185,10 @@ export default function ProjectHero({
                     repo not yet linked
                   </span>
                 )}
-                {live.live_url && (
-                  <a
-                    href={live.live_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 4,
-                      padding: "3px 8px", borderRadius: 4,
-                      background: "var(--accent-soft)", color: "var(--accent-fg)",
-                      fontSize: 10.5, fontWeight: 800,
-                      fontFamily: "JetBrains Mono, monospace",
-                      letterSpacing: "0.05em", textTransform: "uppercase",
-                      textDecoration: "none",
-                    }}
-                    title={live.live_url}
-                  >
-                    <Icon name="external" size={10} /> Live site
-                  </a>
-                )}
+                {/* Live-site URL moved to the always-visible ClaimCard
+                    on the right where it actually gets noticed. The small
+                    chip used to live here but blended into the meta line
+                    next to the repo URL. */}
                 {live.status && (
                   <span style={{
                     fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4,
@@ -248,6 +233,8 @@ function ClaimCard({ live, taskCount, onTabChange }) {
     : 0;
   const tonPoolLabel = tonPool.toLocaleString(undefined, { maximumFractionDigits: 3 });
   const sym = live?.token_symbol || "TBD";
+  const liveUrl = live?.live_url;
+  const liveHost = liveUrl ? liveUrl.replace(/^https?:\/\//, "").replace(/\/$/, "") : "";
 
   return (
     <div className="claim-card">
@@ -269,6 +256,45 @@ function ClaimCard({ live, taskCount, onTabChange }) {
           </div>
         </div>
       </div>
+      {liveUrl && (
+        <div className="claim-section">
+          <a
+            href={liveUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={liveUrl}
+            style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--accent)",
+              background: "var(--accent-soft)",
+              color: "var(--accent-fg)",
+              textDecoration: "none",
+              transition: "transform 0.12s ease, box-shadow 0.12s ease",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(10,10,10,0.06)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
+          >
+            <Icon name="external" size={14} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.9 }}>
+                Live site
+              </div>
+              <div style={{
+                fontFamily: "JetBrains Mono, monospace",
+                fontSize: 11.5, fontWeight: 700,
+                color: "var(--fg)",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                marginTop: 1,
+              }}>
+                {liveHost}
+              </div>
+            </div>
+            <span style={{ fontSize: 14, opacity: 0.7, flexShrink: 0 }}>↗</span>
+          </a>
+        </div>
+      )}
       <div className="claim-section">
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
           Connect your agent
