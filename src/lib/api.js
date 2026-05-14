@@ -166,7 +166,23 @@ export const api = {
   //   2. POST /builder/agents/me/wallet/bind   → { ok, agent_id, ton_wallet_address }
   //      Body: { address, network, public_key, proof: { timestamp, domain,
   //      payload, signature, state_init } } — the verified envelope from the wallet.
-  walletPayload: (token) => get("/builder/agents/me/wallet/payload", { auth: token }),
+  // walletPayload uses a verbose GET so the caller can see WHY the
+  // call failed (401 expired token, 503 misconfigured backend, CORS, …)
+  // rather than just a swallowed null. We avoid send() because that
+  // helper always sets Content-Type: application/json which triggers a
+  // CORS preflight on GET — overkill for a one-line auth check.
+  walletPayload: async (token) => {
+    try {
+      const res = await fetch(`${BASE}/builder/agents/me/wallet/payload`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      let data = null;
+      try { data = await res.json(); } catch { /* empty body */ }
+      return { ok: res.ok, status: res.status, data };
+    } catch (err) {
+      return { ok: false, status: 0, data: null, networkError: String(err) };
+    }
+  },
   walletBind: (body, token) => send("POST", "/builder/agents/me/wallet/bind", body, { auth: token }),
 
   // Auth — /auth/github starts an OAuth redirect on the API host.

@@ -133,7 +133,7 @@ function MyAgentMenu({ agent, onSignOut, active }) {
         ) : (
           <span className="myagent-avatar">{initials}</span>
         )}
-        <span>{handle}</span>
+        <span className="nav-resp-label">{handle}</span>
       </button>
       {open && (
         <div
@@ -310,12 +310,16 @@ export function WalletButton() {
       tonConnectUI.setConnectRequestParameters({ state: "loading" });
       try {
         const res = await api.walletPayload(token);
-        if (res?.payload) {
+        const payload = res?.data?.payload;
+        if (payload) {
           tonConnectUI.setConnectRequestParameters({
             state: "ready",
-            value: { tonProof: res.payload },
+            value: { tonProof: payload },
           });
         } else {
+          // No proof challenge — fall back to a plain (no-proof) connect
+          // so the user still gets a wallet attached. Bind to the agent
+          // can be retried later via the Agent page.
           tonConnectUI.setConnectRequestParameters(null);
         }
       } catch {
@@ -349,7 +353,7 @@ export function WalletButton() {
         title="Connect TON wallet"
       >
         <TonMark size={14} />
-        <span>Connect wallet</span>
+        <span className="nav-resp-label">Connect wallet</span>
       </button>
     );
   }
@@ -482,10 +486,10 @@ export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
         <Logo />
         <div className="nav-links">
           <Link className={`nav-link ${isHome ? "active" : ""}`} to="/">
-            <Icon name="layers" /> Pulse
+            <Icon name="layers" /> <span className="nav-resp-label">Pulse</span>
           </Link>
           <Link className={`nav-link ${isCreate ? "active" : ""}`} to="/propose">
-            <Icon name="plus" /> Propose project
+            <Icon name="plus" /> <span className="nav-resp-label">Propose project</span>
           </Link>
         </div>
         <div className="nav-spacer" />
@@ -496,7 +500,7 @@ export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
           ) : (
             <button className="btn btn-signin" onClick={onSignIn} title="sign in with GitHub" type="button">
               <GitHubMark />
-              <span>Sign in</span>
+              <span className="nav-resp-label">Sign in</span>
             </button>
           )}
         </div>

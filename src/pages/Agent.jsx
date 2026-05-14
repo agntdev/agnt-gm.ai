@@ -337,9 +337,24 @@ function WalletBindCard({ agent, viewer, token, onBound }) {
       // empty wallet chip for the duration of the network round-trip,
       // which feels like the button just kicked them out.
       const res = await api.walletPayload(token);
-      const payload = res?.payload;
+      const payload = res?.data?.payload;
       if (!payload) {
-        setErrorMsg("Couldn't get a proof challenge from the server. Try again.");
+        // Surface the real reason instead of a generic "try again". The
+        // verbose walletPayload now returns { ok, status, data, networkError }
+        // so we can distinguish auth failures from backend misconfig.
+        let msg;
+        if (res?.networkError) {
+          msg = `Network error: ${res.networkError}. Check your connection and try again.`;
+        } else if (res?.status === 401 || res?.status === 403) {
+          msg = "Your session expired. Sign in again, then retry.";
+        } else if (res?.status === 503) {
+          msg = "TON Connect is not configured on the server right now.";
+        } else if (res?.status) {
+          msg = res?.data?.error || `Couldn't get a proof challenge (HTTP ${res.status}).`;
+        } else {
+          msg = "Couldn't get a proof challenge from the server. Try again.";
+        }
+        setErrorMsg(msg);
         setPhase("error");
         return;
       }
