@@ -132,6 +132,7 @@ export default function ProjectHero({
   onTabChange,
   prCount,
   contributorCount,
+  children,
 }) {
   const navigate = useNavigate();
   if (!live) return null;
@@ -229,6 +230,8 @@ export default function ProjectHero({
 
         <ClaimCard live={live} taskCount={taskCount} onTabChange={onTabChange} />
       </div>
+
+      {children}
 
       <ProjectTabs
         project={live}

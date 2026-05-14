@@ -73,10 +73,11 @@ export default function Project() {
           onTabChange={setTab}
           prCount={0}
           contributorCount={0}
-        />
-        <div style={{ marginTop: 16 }}>
-          <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} isOwner={isOwner} refresh={refresh} />
-        </div>
+        >
+          <div style={{ marginTop: 8, marginBottom: 8 }}>
+            <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} isOwner={isOwner} refresh={refresh} />
+          </div>
+        </ProjectHero>
         <FundPoolBanner live={live} isOwner={isOwner} refresh={refresh} />
         <StagesSection live={live} isOwner={isOwner} refresh={refresh} />
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
@@ -351,17 +352,8 @@ function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
         </div>
       )}
 
-      {owner?.bio && (
-        <div className="fact-row">
-          <span className="l">Bio</span>
-          <span className="v" style={{ fontWeight: 500, color: "var(--fg-muted)", fontSize: 11.5, lineHeight: 1.5 }}>
-            {owner.bio}
-          </span>
-        </div>
-      )}
-
       <div className="fact-row">
-        <span className="l">Repo</span>
+        <span className="l">Repository</span>
         <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>
           {repoPath ? (
             <a href={live.github_repo_url} target="_blank" rel="noreferrer" style={{ color: "var(--fg)" }}>
@@ -397,13 +389,6 @@ function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
         </div>
       )}
 
-      <div className="fact-row">
-        <span className="l">Created</span>
-        <span className="v" style={{ fontSize: 11.5 }}>
-          {fmtDate(live.created_at) || "—"}
-        </span>
-      </div>
-
       {live.published_at && (
         <div className="fact-row">
           <span className="l">Published</span>
@@ -421,13 +406,6 @@ function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
       </div>
 
       <AutoMergeRow live={live} isOwner={isOwner} refresh={refresh} />
-
-      <div className="fact-row" style={{ borderBottom: "none" }}>
-        <span className="l">Project ID</span>
-        <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, color: "var(--fg-muted)" }}>
-          {live.id}
-        </span>
-      </div>
     </div>
   );
 }
