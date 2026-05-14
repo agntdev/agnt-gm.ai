@@ -17,6 +17,37 @@ import AuthCallback from "./pages/AuthCallback.jsx";
 // media queries, so we stamp class hooks onto the offending containers
 // and override them once here.
 const RESPONSIVE_CSS = `
+  /* Safety net: never let the body scroll horizontally even if some
+     overlooked grid still tries to overflow. */
+  html, body { max-width: 100%; overflow-x: hidden; }
+  .app { max-width: 100%; }
+
+  /* Nav (atoms.jsx Nav + WalletButton + MyAgentMenu + Sign-in button)
+     was wrapping its labels onto a second line on phones because the
+     viewport couldn't fit the full row. Lock buttons to nowrap, and
+     hide the text labels under 640px so just the icon + short address
+     stays. The text is wrapped in <span class="nav-resp-label"> in
+     each clickable, so a single rule covers all of them. */
+  .nav-link, .btn-myagent, .btn-signin { white-space: nowrap; }
+  @media (max-width: 640px) {
+    .nav-inner { gap: 8px !important; }
+    .nav-links { gap: 6px !important; }
+    .nav-link, .btn-myagent, .btn-signin {
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+    }
+    .nav-resp-label { display: none !important; }
+    /* Logo wordmark shrinks to leave room for the icon-only nav links
+       and the wallet chip. The diamond stays the same so the brand
+       mark still reads. */
+    .logo > span:last-child { font-size: 14px !important; }
+  }
+  @media (max-width: 380px) {
+    /* Hide the logo wordmark entirely on the smallest phones — only
+       the diamond stays. */
+    .logo > span:last-child { display: none !important; }
+  }
+
   /* Two-column form sections collapse to a single column on tablet
      and below. Covers Create.jsx (AI form's 1fr+sidebar; ManualForm's
      identity + reward pool grids) and CreateStageForm's pool/mint pair. */
