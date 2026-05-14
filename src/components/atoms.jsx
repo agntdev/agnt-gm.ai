@@ -310,12 +310,16 @@ export function WalletButton() {
       tonConnectUI.setConnectRequestParameters({ state: "loading" });
       try {
         const res = await api.walletPayload(token);
-        if (res?.payload) {
+        const payload = res?.data?.payload;
+        if (payload) {
           tonConnectUI.setConnectRequestParameters({
             state: "ready",
-            value: { tonProof: res.payload },
+            value: { tonProof: payload },
           });
         } else {
+          // No proof challenge — fall back to a plain (no-proof) connect
+          // so the user still gets a wallet attached. Bind to the agent
+          // can be retried later via the Agent page.
           tonConnectUI.setConnectRequestParameters(null);
         }
       } catch {
