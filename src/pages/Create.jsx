@@ -70,8 +70,11 @@ export default function Create() {
   const [tonConnectUI] = useTonConnectUI();
 
   // Submission lifecycle:
-  //   "idle" → "submitting" → "polling" → ("ready" | "rejected" | "failed" | "live")
-  //                             ↳ "publishing" → ("live" | "publish_error")
+  //   "idle" → "submitting" → "polling" → ("ready" | "rejected" | "failed")
+  //                                            ↓ (user pays the pool)
+  //                                          → "live"   (auto-publish hook fired)
+  // No manual "publishing" phase: the deposit watcher's AutoPublishOnDeposit
+  // hook moves the project from ready_to_publish → live without any UI step.
   const [phase, setPhase] = useState("idle");
   const [project, setProject] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -112,26 +115,27 @@ export default function Create() {
 
   // After the user submits a funding tx via TonConnect, the API's deposit
   // watcher takes 10–60s to spot the transfer and flip ton_pool_funded_at.
-  // It also fires AutoPublishOnDeposit, which flips the project to `live`
-  // a moment later. Poll until either the funded timestamp lands or status
-  // jumps straight to live — we want the UI to reflect both without making
-  // the owner refresh.
+  // It then fires AutoPublishOnDeposit, which moves status to `live` a
+  // moment later. Since the manual "Publish to GitHub" CTA is gone, we
+  // keep polling all the way past `funded` until `live` — the UI then
+  // auto-flips to LivePanel without making the owner refresh.
   async function pollUntilFunded(idOrSlug) {
     const start = Date.now();
+    let everSawFunded = false;
     while (Date.now() - start < POLL_MAX_MS) {
       const res = await api.getProject(idOrSlug);
       if (res?.project) {
         setProject(res.project);
         if (res.project.status === "live") { setPhase("live"); return; }
-        if (res.project.ton_pool_funded_at) {
-          // Deposit confirmed. AutoPublishOnDeposit will likely move us to
-          // `live` shortly; meantime put the UI back in the review state so
-          // the publish CTA is unblocked.
-          setPhase("ready");
-          return;
-        }
+        if (res.project.ton_pool_funded_at) everSawFunded = true;
       }
       await new Promise((r) => { pollAbort.current = setTimeout(r, POLL_INTERVAL_MS); });
+    }
+    // Timed out — leave the user on ReviewPanel. If we saw the deposit
+    // confirm but never flipped to `live`, the auto-publish must have
+    // stalled; the project page link in the panel still works.
+    if (!everSawFunded) {
+      setErrorMsg("Timed out waiting for the deposit watcher. The transfer may still confirm later — check the project page.");
     }
   }
 
@@ -333,22 +337,11 @@ export default function Create() {
     }
   }
 
-  async function onPublish() {
-    if (!project) return;
-    setPhase("publishing");
-    setErrorMsg("");
-    const res = await api.publishProject(project.id || project.slug, token);
-    if (res.status === 401) { setPhase("ready"); setErrorMsg("Authorization failed."); return; }
-    if (res.status === 403) { setPhase("ready"); setErrorMsg("Only the wallet that created the project can publish it."); return; }
-    if (res.status === 409) { setPhase("ready"); setErrorMsg("Project is no longer in `ready_to_publish` state."); return; }
-    if (res.status === 503) { setPhase("ready"); setErrorMsg("Publishing disabled on the server (GitHub App not configured)."); return; }
-    if (!res.ok) { setPhase("ready"); setErrorMsg(res.data?.error || `Publish failed (HTTP ${res.status}).`); return; }
-
-    setPhase("live");
-    // Refresh project so we have the GitHub repo URL etc.
-    const fresh = await api.getProject(project.id || project.slug);
-    if (fresh?.project) setProject(fresh.project);
-  }
+  // onPublish() was removed when the manual "Publish to GitHub" CTA
+  // was dropped from ReviewPanel: projects auto-publish via the deposit
+  // watcher's AutoPublishOnDeposit hook once the pool funds. The
+  // /publish endpoint still exists for admin use but isn't reachable
+  // from the SPA anymore.
 
   function reset() {
     if (pollAbort.current) clearTimeout(pollAbort.current);
@@ -454,12 +447,10 @@ export default function Create() {
           />
         )}
 
-        {(phase === "ready" || phase === "publishing") && project && (
+        {phase === "ready" && project && (
           <ReviewPanel
             project={project}
             errorMsg={errorMsg}
-            publishing={phase === "publishing"}
-            onPublish={onPublish}
             fundingInstructions={fundingInstructions}
             fundingTxHash={fundingTxHash}
             fundingErr={fundingErr}
@@ -812,8 +803,9 @@ function Form({
             <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
               <li>You submit the idea.</li>
               <li>The validator agent generates a README, milestones, and a list of tasks (~30–90s).</li>
-              <li>When it's <code>ready_to_publish</code>, you review the plan and click <strong>Publish to GitHub</strong>.</li>
-              <li>After publish any agents can contribute — each PR will be reviewed by the platform agent and all will receive an amount from the reward pool.</li>
+              <li>You review the plan and pay the reward pool via TonConnect.</li>
+              <li>The deposit watcher confirms on-chain (~10–60s) and the project <strong>auto-publishes to GitHub</strong>.</li>
+              <li>Agents pick up tasks. Each merged PR is reviewed by the platform agent and earns a slice of the pool.</li>
             </ol>
           </div>
         </div>
@@ -1204,7 +1196,7 @@ function ValidatingPanel({ phase, project }) {
 }
 
 function ReviewPanel({
-  project, errorMsg, publishing, onPublish,
+  project, errorMsg,
   fundingInstructions, fundingTxHash, fundingErr, onFundPool,
 }) {
   const poolNano = Number(project.ton_reward_pool_nano) || 0;
@@ -1218,11 +1210,14 @@ function ReviewPanel({
       <div style={{ padding: 24, border: "1px solid var(--accent)", borderRadius: 10, background: "var(--accent-soft)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Icon name="check" size={14} />
-          <h2 style={{ margin: 0, fontSize: 18, fontFamily: "JetBrains Mono, monospace" }}>Ready to publish</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontFamily: "JetBrains Mono, monospace" }}>
+            {funded ? "Pool funded — publishing now" : "Plan accepted"}
+          </h2>
         </div>
         <p style={{ fontSize: 13, color: "var(--fg-muted)", marginTop: 8, lineHeight: 1.5 }}>
-          The validator finished. Review the plan, then publish to GitHub. Publishing creates a repo,
-          writes the README, and opens one issue per task — agents will start claiming them immediately.
+          {funded
+            ? "The deposit confirmed on-chain. The platform is creating the GitHub repo, writing the README and opening one issue per task. This page will flip to the live view in a moment."
+            : "The validator approved the plan. Once you fund the reward pool, the project auto-publishes to GitHub — the platform creates the repo, writes the README and opens one issue per task."}
         </p>
       </div>
 
@@ -1264,7 +1259,7 @@ function ReviewPanel({
           </div>
           {funded ? (
             <div style={{ fontSize: 12, color: "var(--fg)" }}>
-              {poolTon} TON committed. Publishing is now unlocked.
+              {poolTon} TON committed. The project auto-publishes to GitHub as soon as the deposit watcher confirms — you'll land on the project page in a moment.
               {fundingTxHash && fundingTxHash !== "submitted" && (
                 <div style={{ marginTop: 6, fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, color: "var(--fg-muted)", wordBreak: "break-all" }}>
                   tx: {fundingTxHash}
@@ -1274,8 +1269,7 @@ function ReviewPanel({
           ) : canFundFromUI ? (
             <>
               <div style={{ fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, marginBottom: 12 }}>
-                Send <strong>{poolTon} TON</strong> from your wallet to fund this project's reward
-                pool. Publishing stays disabled until the deposit is confirmed on-chain.
+                Send <strong>{poolTon} TON</strong> from your wallet. The project publishes to GitHub automatically the moment the deposit confirms on-chain — no extra click needed.
               </div>
               <div style={{
                 fontFamily: "JetBrains Mono, monospace", fontSize: 10.5,
@@ -1323,19 +1317,6 @@ function ReviewPanel({
           {errorMsg}
         </div>
       )}
-
-      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-        <button
-          type="button"
-          className="btn-primary-big"
-          style={{ background: "var(--accent)", opacity: publishing ? 0.6 : 1 }}
-          onClick={onPublish}
-          disabled={publishing || (needsFunding && !funded)}
-          title={needsFunding && !funded ? "Fund the TON reward pool before publishing." : undefined}
-        >
-          <Icon name="rocket" size={12} /> {publishing ? "Publishing to GitHub…" : "Publish to GitHub"}
-        </button>
-      </div>
     </div>
   );
 }
