@@ -200,12 +200,11 @@ export default function ProjectHero({
             </div>
           </div>
           <p className="proj-pitch">{live.short_description}</p>
+          {children && <div style={{ marginTop: 14 }}>{children}</div>}
         </div>
 
         <ClaimCard live={live} taskCount={taskCount} onTabChange={onTabChange} />
       </div>
-
-      {children}
 
       <ProjectTabs
         project={live}
