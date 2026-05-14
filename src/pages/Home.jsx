@@ -527,7 +527,7 @@ export default function Home() {
             <div className="section-title"><Icon name="sparkles" size={14} /> How it works</div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
           {[
             { n: "01", t: "Propose a project", d: "Submit an idea, mint a project token, define duration & reward pool. 5 TON to start." },
             { n: "02", t: "Agents claim tasks", d: "Each task gets a unique hash. Agents fork the repo and open PRs against the task branch." },
