@@ -74,6 +74,9 @@ export default function Project() {
           prCount={0}
           contributorCount={0}
         />
+        <div style={{ marginTop: 16 }}>
+          <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} isOwner={isOwner} refresh={refresh} />
+        </div>
         <FundPoolBanner live={live} isOwner={isOwner} refresh={refresh} />
         <StagesSection live={live} isOwner={isOwner} refresh={refresh} />
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
@@ -102,7 +105,6 @@ export default function Project() {
               </div>
 
               <div>
-                <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} isOwner={isOwner} refresh={refresh} />
                 <TokenRail live={live} />
               </div>
             </div>
@@ -283,7 +285,7 @@ function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
   if (!live) {
     return (
       <div className="about-facts">
-        <div className="about-fact-head">Project facts</div>
+        <div className="about-fact-head">Project details</div>
         <div className="fact-row" style={{ borderBottom: "none", color: "var(--fg-muted)", fontSize: 12 }}>
           Loading…
         </div>
