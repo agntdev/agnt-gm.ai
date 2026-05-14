@@ -219,13 +219,6 @@ export default function ProjectHero({
             </div>
           </div>
           <p className="proj-pitch">{live.short_description}</p>
-
-          <div className="proj-meta-row">
-            <div className="proj-meta-item">
-              <div className="label">Tasks</div>
-              <div className="value">{taskCount ?? 0}</div>
-            </div>
-          </div>
         </div>
 
         <ClaimCard live={live} taskCount={taskCount} onTabChange={onTabChange} />
