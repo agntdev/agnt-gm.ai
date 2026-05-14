@@ -147,6 +147,96 @@ const RESPONSIVE_CSS = `
       justify-content: center;
     }
   }
+
+  /* ─────────── Global mobile spacing pass ───────────
+     Goal: more breathing room around blocks AND inside them, plus
+     less wasted vertical gap. Same visual language, just less crowded.
+
+     Owner feedback: CSS-default 28px container padding felt too tight
+     on phones — blocks "in your face" against the screen edge with
+     text also touching card borders. We bump the container slightly
+     (28 → 32px) and pad card interiors more so content has visible
+     margin both from the screen and from each card edge. */
+  @media (max-width: 640px) {
+    .container { padding-left: 32px !important; padding-right: 32px !important; }
+  }
+  @media (max-width: 380px) {
+    /* Tiny phones (iPhone SE class): drop back to the CSS default 28px
+       so cards keep enough internal content width. */
+    .container { padding-left: 28px !important; padding-right: 28px !important; }
+  }
+  /* Nav is chrome, not content — keep it tight regardless of the
+     container bump above. */
+  @media (max-width: 640px) {
+    .nav .container { padding-left: 14px !important; padding-right: 14px !important; }
+  }
+
+  /* Card interiors get more horizontal breathing on phones so text
+     no longer kisses the card border. */
+  @media (max-width: 640px) {
+    .project-body  { padding: 14px 18px !important; }
+    .claim-card    { padding: 14px 18px !important; }
+  }
+
+  /* Section blocks: 28px top/bottom → 18px. The dashed underline still
+     reads, but the page stops feeling padded-out. */
+  @media (max-width: 640px) {
+    .section { padding: 18px 0 !important; }
+  }
+
+  /* Intro hero: tighten the margins under the headline and the
+     paragraph so the CTAs land sooner on a phone viewport. */
+  @media (max-width: 640px) {
+    .intro-h { margin: 0 0 10px !important; }
+    .intro-sub { margin: 0 0 14px !important; font-size: 14px !important; }
+    .intro-foot { padding-top: 14px !important; }
+    .intro-stats .is-v { font-size: 18px !important; }
+    .intro-stats .is-l { font-size: 9.5px !important; }
+  }
+
+  /* Section heads on phones: stack title and the tab-row, kill the
+     wide flexbox gap so tabs don't dangle on a second indented line. */
+  @media (max-width: 640px) {
+    .section-head { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; }
+    .section-head .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap !important; }
+  }
+
+  /* Project cards on the Pulse grid: the 120px preview frame eats half
+     the card on a stacked phone view. Halve it. The body padding
+     stays at the desktop 14px 16px — squeezing it made text feel
+     glued to the card edge. */
+  @media (max-width: 640px) {
+    .project-preview { height: 88px !important; }
+    .project-stats-row { gap: 10px !important; }
+  }
+
+  /* Project page hero on mobile: smaller h1 + tighter avatar gap so the
+     name doesn't squeeze the live-site card off-screen. Card interior
+     padding stays generous. */
+  @media (max-width: 640px) {
+    .proj-h1 { font-size: 24px !important; }
+    .proj-title-row { gap: 12px !important; }
+    .proj-title-row > :first-child { width: 48px !important; height: 48px !important; }
+    .proj-pitch { font-size: 13px !important; }
+  }
+
+  /* Project tabs: scroll horizontally instead of wrapping (mono labels
+     in two rows look broken). Bottom underline still reads. */
+  @media (max-width: 640px) {
+    .tabs-underline {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      flex-wrap: nowrap !important;
+      scrollbar-width: none;
+    }
+    .tabs-underline::-webkit-scrollbar { display: none; }
+  }
+
+  /* Footer: stack the "Built on TON" and the GitHub link so neither
+     gets cut off on the smallest phones. */
+  @media (max-width: 380px) {
+    .footer .container { flex-direction: column !important; gap: 10px !important; }
+  }
 `;
 
 export default function App() {
