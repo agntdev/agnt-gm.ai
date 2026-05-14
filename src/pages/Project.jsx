@@ -285,127 +285,85 @@ function fmtBigInt(n, decimals = 0) {
 function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
   if (!live) {
     return (
-      <div className="about-facts about-facts-compact">
-        <div className="about-fact-head">Project details</div>
-        <div className="fact-row" style={{ borderBottom: "none", color: "var(--fg-muted)", fontSize: 12 }}>
+      <div className="proj-details-grid">
+        <div className="proj-details-cell" style={{ color: "var(--fg-muted)", fontSize: 12 }}>
           Loading…
         </div>
       </div>
     );
   }
 
-  const status = STATUS_COPY[live.status] || { label: live.status, tone: "muted" };
-  const repoPath = live.github_repo_url
-    ? live.github_repo_url.replace(/^https?:\/\/github\.com\//, "")
-    : null;
+  const ownerName = owner
+    ? (owner.github_username || owner.display_name || owner.id?.slice(0, 8))
+    : (live.owner_agent_id ? `${live.owner_agent_id.slice(0, 8)}…` : "—");
+  const ownerInitial = (ownerName || "?").slice(0, 1).toUpperCase();
+  const liveUrl = live.live_url;
 
   return (
-    <div className="about-facts about-facts-compact">
-      <div className="about-fact-head">Project details</div>
-
-      <div className="fact-row">
-        <span className="l">Status</span>
-        <span className="v">
-          <span style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "2px 8px", borderRadius: 999,
-            background: status.tone === "accent" ? "var(--accent-soft)" : status.tone === "amber" ? "oklch(0.96 0.05 80)" : status.tone === "danger" ? "var(--danger-soft)" : "var(--bg-tint)",
-            color:      status.tone === "accent" ? "var(--accent-fg)"   : status.tone === "amber" ? "#b45309"               : status.tone === "danger" ? "var(--danger)"      : "var(--fg-muted)",
-            fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, fontWeight: 800,
-            textTransform: "uppercase", letterSpacing: "0.05em",
-          }}>
-            {status.tone === "accent" && <span className="live-dot" />}
-            {status.label}
-          </span>
-        </span>
-      </div>
-
-      {owner ? (
-        <div className="fact-row">
-          <span className="l">Owner</span>
-          <span className="v">
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              {owner.github_avatar_url ? (
-                <img
-                  src={owner.github_avatar_url}
-                  alt=""
-                  style={{ width: 18, height: 18, borderRadius: 999, objectFit: "cover" }}
-                />
-              ) : (
-                <span style={{
-                  width: 18, height: 18, borderRadius: 999, background: "var(--bg-tint)",
-                  display: "grid", placeItems: "center", fontSize: 9, fontWeight: 800,
-                }}>
-                  {(owner.github_username || owner.display_name || "?").slice(0, 1).toUpperCase()}
-                </span>
-              )}
-              {owner.github_username || owner.display_name || owner.id.slice(0, 8)}
-            </span>
-          </span>
-        </div>
-      ) : (
-        <div className="fact-row">
-          <span className="l">Owner</span>
-          <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "var(--fg-muted)" }}>
-            {live.owner_agent_id ? `${live.owner_agent_id.slice(0, 8)}…` : "—"}
-          </span>
-        </div>
-      )}
-
-      <div className="fact-row">
-        <span className="l">Repository</span>
-        <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>
-          {repoPath ? (
-            <a href={live.github_repo_url} target="_blank" rel="noreferrer" style={{ color: "var(--fg)" }}>
-              <Icon name="git_branch" size={11} /> {repoPath}
-            </a>
+    <div className="proj-details-grid">
+      <div className="proj-details-cell">
+        <div className="l">Owner</div>
+        <div className="v" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          {owner?.github_avatar_url ? (
+            <img
+              src={owner.github_avatar_url}
+              alt=""
+              style={{ width: 18, height: 18, borderRadius: 999, objectFit: "cover" }}
+            />
           ) : (
-            <span style={{ color: "var(--fg-muted)" }}>not yet linked</span>
+            <span style={{
+              width: 18, height: 18, borderRadius: 999, background: "var(--bg-tint)",
+              display: "grid", placeItems: "center", fontSize: 9, fontWeight: 800,
+            }}>
+              {ownerInitial}
+            </span>
           )}
-        </span>
+          {ownerName}
+        </div>
       </div>
 
-      {live.live_url && (
-        <div className="fact-row">
-          <span className="l">Live site</span>
-          <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>
+      <div className="proj-details-cell">
+        <div className="l">Tasks</div>
+        <div className="v">{taskCount ?? 0}</div>
+      </div>
+
+      <div className="proj-details-cell">
+        <div className="l">Published</div>
+        <div className="v">{fmtDate(live.published_at) || "—"}</div>
+      </div>
+
+      <div className="proj-details-cell">
+        <div className="l">Deadline</div>
+        <div className="v" style={{ color: live.deadline ? "var(--fg)" : "var(--fg-muted)" }}>
+          {fmtDate(live.deadline) || "no deadline"}
+        </div>
+      </div>
+
+      <div className="proj-details-cell">
+        <div className="l">Live site</div>
+        <div className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>
+          {liveUrl ? (
             <a
-              href={live.live_url}
+              href={liveUrl}
               target="_blank"
               rel="noreferrer"
-              style={{ color: "var(--fg)" }}
-              title={live.live_url}
+              title={liveUrl}
+              style={{ color: "var(--fg)", textDecoration: "none" }}
             >
-              <Icon name="external" size={11} /> {live.live_url.replace(/^https?:\/\//, "")}
+              {liveUrl.replace(/^https?:\/\//, "")}
             </a>
-          </span>
+          ) : (
+            <span style={{ color: "var(--fg-muted)" }}>—</span>
+          )}
         </div>
-      )}
-
-      {taskCount != null && (
-        <div className="fact-row">
-          <span className="l">Tasks</span>
-          <span className="v">{taskCount}</span>
-        </div>
-      )}
-
-      {live.published_at && (
-        <div className="fact-row">
-          <span className="l">Published</span>
-          <span className="v" style={{ fontSize: 11.5 }}>
-            {fmtDate(live.published_at)}
-          </span>
-        </div>
-      )}
-
-      <div className="fact-row">
-        <span className="l">Deadline</span>
-        <span className="v" style={{ fontSize: 11.5, color: live.deadline ? "var(--fg)" : "var(--fg-muted)" }}>
-          {fmtDate(live.deadline) || "no deadline"}
-        </span>
       </div>
 
-      <AutoMergeRow live={live} isOwner={isOwner} refresh={refresh} />
+      <div className="proj-details-cell">
+        <div className="l">Auto review</div>
+        <div className="v">
+          <AutoMergeCell live={live} isOwner={isOwner} refresh={refresh} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -413,7 +371,7 @@ function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
 // AutoMergeRow — one row in the facts rail, inline toggle visible only
 // to the project owner. Optimistically flips the chip; on failure it
 // reverts and surfaces the API error in the tooltip.
-function AutoMergeRow({ live, isOwner, refresh }) {
+function AutoMergeCell({ live, isOwner, refresh }) {
   const { token } = useAuth();
   const apiEnabled = !!live.auto_merge_enabled;
   // Optimistic mirror of the API state. Stays in sync via the `live`
@@ -442,47 +400,44 @@ function AutoMergeRow({ live, isOwner, refresh }) {
   }
 
   return (
-    <div className="fact-row">
-      <span className="l">Auto review</span>
-      <span className="v" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <span
-          title={enabled
-            ? "Platform reviewer agent auto-merges the first PR that passes all checks."
-            : "Every PR waits for the owner's manual approval."}
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      <span
+        title={enabled
+          ? "Platform reviewer agent auto-merges the first PR that passes all checks."
+          : "Every PR waits for the owner's manual approval."}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "2px 8px", borderRadius: 999,
+          background: enabled ? "var(--accent-soft)" : "var(--bg-tint)",
+          color:      enabled ? "var(--accent-fg)"   : "var(--fg-muted)",
+          fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
+          textTransform: "uppercase", letterSpacing: "0.05em",
+        }}
+      >
+        {enabled && <span className="live-dot" />}
+        {enabled ? "auto" : "manual"}
+      </span>
+      {isOwner && (
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={pending}
+          title={error || (enabled ? "Switch to manual review" : "Switch to auto review")}
           style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "2px 8px", borderRadius: 999,
-            background: enabled ? "var(--accent-soft)" : "var(--bg-tint)",
-            color:      enabled ? "var(--accent-fg)"   : "var(--fg-muted)",
-            fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
-            textTransform: "uppercase", letterSpacing: "0.05em",
+            padding: "2px 8px", borderRadius: 4,
+            border: "1px solid var(--border)",
+            background: "var(--bg)", color: "var(--fg-muted)",
+            fontSize: 10, fontWeight: 800, letterSpacing: "0.05em",
+            textTransform: "uppercase",
+            cursor: pending ? "wait" : "pointer",
+            opacity: pending ? 0.6 : 1,
+            fontFamily: "JetBrains Mono, monospace",
           }}
         >
-          {enabled && <span className="live-dot" />}
-          {enabled ? "auto" : "manual"}
-        </span>
-        {isOwner && (
-          <button
-            type="button"
-            onClick={toggle}
-            disabled={pending}
-            title={error || (enabled ? "Switch to manual review" : "Switch to auto review")}
-            style={{
-              padding: "2px 8px", borderRadius: 4,
-              border: "1px solid var(--border)",
-              background: "var(--bg)", color: "var(--fg-muted)",
-              fontSize: 10, fontWeight: 800, letterSpacing: "0.05em",
-              textTransform: "uppercase",
-              cursor: pending ? "wait" : "pointer",
-              opacity: pending ? 0.6 : 1,
-              fontFamily: "JetBrains Mono, monospace",
-            }}
-          >
-            {pending ? "…" : (enabled ? "→ manual" : "→ auto")}
-          </button>
-        )}
-      </span>
-    </div>
+          {pending ? "…" : (enabled ? "→ manual" : "→ auto")}
+        </button>
+      )}
+    </span>
   );
 }
 

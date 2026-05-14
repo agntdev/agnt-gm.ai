@@ -2278,6 +2278,44 @@ h1 .punch { color: var(--accent-fg); }
   padding: 5px 12px; font-size: 11px;
 }
 
+/* 3-column grid variant of the details panel — used in the hero between
+   the description and the tabs. Each cell stacks the label on top and the
+   value below; borders form a grid. Collapses to 1 column on narrow
+   viewports. */
+.proj-details-grid {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.proj-details-cell {
+  padding: 12px 16px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+/* Strip outer borders so we don't double up with the wrapper. */
+.proj-details-cell:nth-child(3n) { border-right: none; }
+.proj-details-cell:nth-last-child(-n+3) { border-bottom: none; }
+.proj-details-cell .l {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--fg-muted);
+  margin-bottom: 6px;
+}
+.proj-details-cell .v {
+  font-size: 13px; font-weight: 700; color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .proj-details-grid { grid-template-columns: 1fr; }
+  .proj-details-cell { border-right: none; }
+  .proj-details-cell:nth-last-child(-n+3) { border-bottom: 1px solid var(--border); }
+  .proj-details-cell:last-child { border-bottom: none; }
+}
+
 /* === Compact hero stats (feed-first) === */
 .hero-feed-grid {
   display: grid; grid-template-columns: minmax(0, 1fr) 340px;
