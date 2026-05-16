@@ -5,46 +5,33 @@
 // publish / stage-activation flows as the backend migrates them onto
 // the same machinery.
 //
-// Three integration paths:
-//   A) TonConnect — preferred when a wallet is already paired with the
-//      dApp. We hand the wallet a tx with the comment encoded as a
-//      TEP-74 text-comment BoC payload (op=0 + UTF-8 string).
-//   B) ton://transfer deep-links — for Tonkeeper / Tonhub /
-//      MyTonWallet. One universal URL; we render three labelled
-//      buttons for brand recognition.
-//   C) Manual copy/paste — three Copy buttons (wallet, amount,
-//      comment). Last-resort, but the buttons stay prominent because
-//      they're also useful for verifying the values from any of the
-//      above paths.
+// Two integration paths today:
+//   A) ton://transfer deep-links — for Tonkeeper / Tonhub /
+//      MyTonWallet. One universal URL with `?text=` carrying the
+//      comment marker; we render three labelled buttons for brand
+//      recognition. Wallet apps decode the text into a TEP-74
+//      comment payload internally.
+//   B) Manual copy/paste — three Copy buttons (wallet, amount,
+//      comment). Last-resort, but they stay prominent because they're
+//      also useful for verifying the values when paying via (A).
+//
+// (The original third path — in-browser TonConnect with a hand-built
+// BoC payload via `@ton/core` — is removed temporarily. `@ton/core`
+// references the Node-only `Buffer` global at module-eval time, which
+// white-screens the bundle in any browser that doesn't already have a
+// Buffer polyfill. Restoring it requires either (i) polyfilling
+// Buffer in main.jsx, or (ii) hand-rolling the BoC serializer for
+// op=0 + UTF-8 text comments. Tracking as a follow-up.)
 //
 // Polls /builder/owner-payments/{id} every 5s; stops once the intent
 // flips to `confirmed` or `expired`. Calls onConfirmed / onExpired so
 // the caller can refetch its own data.
 
 import { useEffect, useRef, useState } from "react";
-import { useTonConnectUI } from "@tonconnect/ui-react";
-import { beginCell, toNano } from "@ton/core";
 import { Icon } from "./atoms.jsx";
 import { api } from "../lib/api.js";
 
 const POLL_MS = 5_000;
-
-// Build the TEP-74 text-comment payload: op=0 (32 zero bits) followed
-// by the UTF-8 string. Returned as base64 BoC, ready to drop into
-// tonConnectUI.sendTransaction({ messages: [{ payload }] }).
-//
-// `storeStringTail` auto-chains into ref cells if the comment exceeds
-// the cell's bit budget, which is what we want for any marker shape
-// the backend might mint in the future. For today's 17-byte
-// `agnt:pay:<8hex>` markers it fits in the head cell, no refs needed.
-function buildCommentPayload(text) {
-  return beginCell()
-    .storeUint(0, 32)
-    .storeStringTail(text)
-    .endCell()
-    .toBoc()
-    .toString("base64");
-}
 
 function buildDeepLink(intent) {
   const params = new URLSearchParams({
@@ -153,9 +140,6 @@ export default function OwnerPaymentScreen({
   purposeLabel = "fund your project",
 }) {
   const [intent, setIntent] = useState(initialIntent);
-  const [tonConnectUI] = useTonConnectUI();
-  const [tcStatus, setTcStatus] = useState("idle"); // idle | sending | sent | rejected | error
-  const [tcError, setTcError] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const pollRef = useRef(null);
 
@@ -206,36 +190,6 @@ export default function OwnerPaymentScreen({
   );
 
   const deepLink = buildDeepLink(intent);
-
-  async function onPayTonConnect() {
-    setTcError("");
-    setTcStatus("sending");
-    try {
-      if (!tonConnectUI.connected) {
-        await tonConnectUI.openModal();
-        if (!tonConnectUI.connected) { setTcStatus("idle"); return; }
-      }
-      const payload = buildCommentPayload(intent.comment_marker);
-      await tonConnectUI.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + 6 * 60,
-        messages: [{
-          address: intent.target_wallet,
-          amount:  String(intent.expected_nano),
-          payload,
-        }],
-      });
-      setTcStatus("sent");
-    } catch (err) {
-      const msg = String(err?.message || err || "");
-      if (msg.toLowerCase().includes("reject")) {
-        setTcStatus("rejected");
-        setTcError("Transaction rejected in your wallet.");
-      } else {
-        setTcStatus("error");
-        setTcError(msg || "Wallet transfer failed. Try the deep-links below or copy the values manually.");
-      }
-    }
-  }
 
   const statusBlock = (() => {
     if (status === "confirmed") {
@@ -381,36 +335,19 @@ export default function OwnerPaymentScreen({
 
         {!terminal && (
           <>
-            <button
-              type="button"
-              onClick={onPayTonConnect}
-              disabled={tcStatus === "sending"}
-              className="btn-primary-big"
-              style={{
-                background: "var(--accent)",
-                opacity: tcStatus === "sending" ? 0.6 : 1,
-                justifyContent: "center", width: "100%",
-              }}
-            >
-              <Icon name="zap" size={12} />
-              {tcStatus === "sending" ? "Sending to wallet…"
-                : tcStatus === "sent"  ? "Sent — waiting for on-chain confirmation"
-                : `Pay with connected wallet`}
-            </button>
-
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <a
                 href={deepLink}
-                className="btn"
-                style={{ flex: 1, minWidth: 120, justifyContent: "center", textDecoration: "none" }}
+                className="btn-primary-big"
+                style={{ flex: 1, minWidth: 130, justifyContent: "center", background: "var(--accent)", textDecoration: "none" }}
                 rel="noreferrer"
               >
-                <Icon name="external" size={12} /> Tonkeeper
+                <Icon name="external" size={12} /> Open Tonkeeper
               </a>
               <a
                 href={deepLink}
                 className="btn"
-                style={{ flex: 1, minWidth: 120, justifyContent: "center", textDecoration: "none" }}
+                style={{ flex: 1, minWidth: 130, justifyContent: "center", textDecoration: "none" }}
                 rel="noreferrer"
               >
                 <Icon name="external" size={12} /> Tonhub
@@ -418,22 +355,15 @@ export default function OwnerPaymentScreen({
               <a
                 href={deepLink}
                 className="btn"
-                style={{ flex: 1, minWidth: 120, justifyContent: "center", textDecoration: "none" }}
+                style={{ flex: 1, minWidth: 130, justifyContent: "center", textDecoration: "none" }}
                 rel="noreferrer"
               >
                 <Icon name="external" size={12} /> MyTonWallet
               </a>
             </div>
-
-            {tcError && (
-              <div style={{
-                padding: 10, fontSize: 12,
-                border: "1px solid var(--danger)", borderRadius: 6,
-                background: "var(--danger-soft)", color: "var(--danger)",
-              }}>
-                {tcError}
-              </div>
-            )}
+            <div style={{ fontSize: 11, color: "var(--fg-muted)", lineHeight: 1.5 }}>
+              Or copy the three values above into any TON wallet manually.
+            </div>
           </>
         )}
 
@@ -455,8 +385,6 @@ export default function OwnerPaymentScreen({
   );
 }
 
-// Re-export helpers in case callers want to render their own variant.
-export { buildCommentPayload, buildDeepLink };
-// Hint to eslint: toNano is imported in case a caller wants the helper
-// later; it stays exported below so the import isn't pruned.
-export { toNano };
+// Re-export the deep-link builder in case callers want to render their
+// own pay-button variant (e.g. a QR code).
+export { buildDeepLink };
