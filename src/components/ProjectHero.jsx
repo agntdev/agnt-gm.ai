@@ -196,6 +196,21 @@ export default function ProjectHero({
                     {live.status.replace(/_/g, " ")}
                   </span>
                 )}
+                {live.jetton_admin_locked_at && (
+                  <span
+                    title={`Admin renounced ${new Date(live.jetton_admin_locked_at).toLocaleString()} — total supply is immutable.`}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4,
+                      background: "var(--bg-tint)",
+                      color: "var(--fg)",
+                      border: "1px solid var(--border-strong)",
+                      fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.05em", textTransform: "uppercase",
+                    }}
+                  >
+                    🔒 Supply frozen
+                  </span>
+                )}
               </div>
             </div>
           </div>

@@ -5,8 +5,11 @@
 import { useState } from "react";
 import { Icon } from "./atoms.jsx";
 import {
+  BODY_MD_MAX,
+  BODY_MD_WARN,
   DIFFICULTIES,
   MAX_TASKS,
+  TITLE_MAX,
   budgetState,
   emptyTask,
 } from "../lib/manualPlan.js";
@@ -169,8 +172,14 @@ export const monoInputStyle = { ...inputStyle, fontFamily: "JetBrains Mono, mono
 //   amber  — valid but suboptimal (70%-99% of max)
 //   green  — exactly at max ± 0.001 (pulses)
 // ─────────────────────────────────────────────────────────────────────
-export function BudgetMeter({ tasks, isStage, ownerShareBps }) {
-  const { sum, max, ratio, tone, remaining } = budgetState({ tasks, isStage, ownerShareBps });
+export function BudgetMeter({ tasks, isStage, ownerShareBps, weightField = "weight" }) {
+  // Read the weight off whichever field the caller is using. The two
+  // shapes today are:
+  //   - manual project / manual stage → task.weight
+  //   - add-tasks-to-stage           → task.weight_within_new
+  // budgetState() doesn't know about field names — pre-normalise.
+  const normalised = (tasks || []).map((t) => ({ weight: Number(t[weightField]) || 0 }));
+  const { sum, max, ratio, tone, remaining } = budgetState({ tasks: normalised, isStage, ownerShareBps });
 
   const palette = {
     danger: { fg: "var(--danger)",     bg: "var(--danger-soft)", bar: "var(--danger)" },
@@ -245,9 +254,10 @@ export function BudgetMeter({ tasks, isStage, ownerShareBps }) {
 // title, body_md textarea (expands on focus), weight + difficulty +
 // tags + delete.
 // ─────────────────────────────────────────────────────────────────────
-function TaskRow({ task, index, onChange, onRemove }) {
+function TaskRow({ task, index, onChange, onRemove, weightField = "weight" }) {
   const [bodyFocused, setBodyFocused] = useState(false);
   const tagsInput = (task.tags || []).join(", ");
+  const weightVal = Number.isFinite(task[weightField]) ? task[weightField] : 0;
 
   function patch(p) { onChange({ ...task, ...p }); }
 
@@ -282,6 +292,7 @@ function TaskRow({ task, index, onChange, onRemove }) {
           onChange={(e) => patch({ title: e.target.value })}
           placeholder="What ships in this task?"
           aria-label={`Task ${index + 1} title`}
+          maxLength={TITLE_MAX}
           style={{
             ...inputStyle,
             padding: "7px 12px",
@@ -311,22 +322,47 @@ function TaskRow({ task, index, onChange, onRemove }) {
         </button>
       </div>
 
-      <textarea
-        value={task.body_md}
-        onChange={(e) => patch({ body_md: e.target.value })}
-        onFocus={() => setBodyFocused(true)}
-        onBlur={() => setBodyFocused(false)}
-        placeholder="## Acceptance&#10;- testable bullet&#10;- testable bullet"
-        rows={bodyFocused || task.body_md.length > 60 ? 5 : 2}
-        style={{
-          ...inputStyle,
-          fontFamily: "JetBrains Mono, monospace",
-          fontSize: 12,
-          lineHeight: 1.55,
-          resize: "vertical",
-          transition: "min-height 0.18s ease",
-        }}
-      />
+      <div style={{ position: "relative" }}>
+        <textarea
+          value={task.body_md}
+          onChange={(e) => patch({ body_md: e.target.value })}
+          onFocus={() => setBodyFocused(true)}
+          onBlur={() => setBodyFocused(false)}
+          placeholder="## Acceptance&#10;- testable bullet&#10;- testable bullet"
+          rows={bodyFocused || task.body_md.length > 60 ? 5 : 2}
+          maxLength={BODY_MD_MAX}
+          style={{
+            ...inputStyle,
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 12,
+            lineHeight: 1.55,
+            resize: "vertical",
+            transition: "min-height 0.18s ease",
+            paddingBottom: 22, // leave room for the absolute-positioned counter
+          }}
+        />
+        {/* Live char counter — quiet until we're 80% of the way to the cap.
+            Backend enforces 50..16384 trimmed; we cap on input to avoid the
+            400 round-trip on a long paste. */}
+        {(bodyFocused || task.body_md.length > BODY_MD_WARN) && (
+          <span
+            style={{
+              position: "absolute", right: 10, bottom: 8,
+              fontFamily: "JetBrains Mono, monospace", fontSize: 10,
+              color: task.body_md.length >= BODY_MD_MAX ? "var(--danger)"
+                : task.body_md.length > BODY_MD_WARN ? "#b45309"
+                : "var(--fg-muted)",
+              background: "var(--bg)",
+              padding: "1px 6px",
+              borderRadius: 4,
+              pointerEvents: "none",
+              fontWeight: 700,
+            }}
+          >
+            {task.body_md.length.toLocaleString()} / {(BODY_MD_MAX / 1024).toFixed(0)}k
+          </span>
+        )}
+      </div>
 
       <div className="agnt-resp-task-meta" style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", gap: 10, alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -335,8 +371,8 @@ function TaskRow({ task, index, onChange, onRemove }) {
             min={0}
             max={1}
             step={0.05}
-            value={Number.isFinite(task.weight) ? task.weight : 0}
-            onChange={(e) => patch({ weight: clamp01(parseFloat(e.target.value)) })}
+            value={weightVal}
+            onChange={(e) => patch({ [weightField]: clamp01(parseFloat(e.target.value)) })}
             aria-label={`Task ${index + 1} weight`}
             style={{
               ...monoInputStyle,
@@ -415,10 +451,23 @@ function clamp01(n) {
 //   ownerShareBps — only used for project mode
 //   stageNumber   — only used for stage mode to pick slug prefix
 // ─────────────────────────────────────────────────────────────────────
-export function TasksEditor({ tasks, onChange, isStage, ownerShareBps, stageNumber }) {
+export function TasksEditor({
+  tasks, onChange,
+  isStage, ownerShareBps, stageNumber,
+  // `weightField` lets the add-tasks form drive the same component
+  // off a different shape (`weight_within_new`). For project/stage
+  // manual forms it defaults to `weight`.
+  weightField = "weight",
+  // `newTaskFactory` overrides the default emptyTask shape — used by
+  // the add-tasks form to mint rows with `weight_within_new` zeroed.
+  newTaskFactory,
+}) {
   function add() {
     if (tasks.length >= MAX_TASKS) return;
-    onChange([...tasks, emptyTask({ tasks, stageNumber })]);
+    const next = newTaskFactory
+      ? newTaskFactory({ tasks, stageNumber })
+      : emptyTask({ tasks, stageNumber });
+    onChange([...tasks, next]);
   }
   function patchAt(i, next) {
     onChange(tasks.map((t, idx) => (idx === i ? next : t)));
@@ -433,7 +482,7 @@ export function TasksEditor({ tasks, onChange, isStage, ownerShareBps, stageNumb
     const max = isStage ? 1.0 : (1 - (Number(ownerShareBps ?? 1000) || 0) / 10_000);
     if (tasks.length === 0) return;
     const even = Number((max / tasks.length).toFixed(3));
-    onChange(tasks.map((t) => ({ ...t, weight: even })));
+    onChange(tasks.map((t) => ({ ...t, [weightField]: even })));
   }
 
   return (
@@ -453,6 +502,7 @@ export function TasksEditor({ tasks, onChange, isStage, ownerShareBps, stageNumb
             index={i}
             onChange={(next) => patchAt(i, next)}
             onRemove={() => removeAt(i)}
+            weightField={weightField}
           />
         ))
       )}
@@ -511,7 +561,12 @@ export function TasksEditor({ tasks, onChange, isStage, ownerShareBps, stageNumb
         )}
       </div>
 
-      <BudgetMeter tasks={tasks} isStage={isStage} ownerShareBps={ownerShareBps} />
+      <BudgetMeter
+        tasks={tasks}
+        isStage={isStage}
+        ownerShareBps={ownerShareBps}
+        weightField={weightField}
+      />
     </div>
   );
 }
