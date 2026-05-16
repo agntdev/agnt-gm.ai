@@ -256,6 +256,16 @@ export function BudgetMeter({ tasks, isStage, ownerShareBps, weightField = "weig
 // ─────────────────────────────────────────────────────────────────────
 function TaskRow({ task, index, onChange, onRemove, weightField = "weight" }) {
   const [bodyFocused, setBodyFocused] = useState(false);
+  // Per-row "advanced" toggle. Slug / difficulty / tags live here —
+  // most owners never touch them (slug auto-fills, difficulty is a
+  // hint, tags are metadata). Auto-expand when any of those fields
+  // is non-default so re-opening an edited task doesn't hide the
+  // pre-existing values.
+  const hasNonDefaultAdvanced =
+    (task.slug && !/^S?\d*T\d{2}$/.test(task.slug)) ||
+    (task.difficulty && task.difficulty !== "medium") ||
+    (task.tags && task.tags.length > 0);
+  const [showAdv, setShowAdv] = useState(hasNonDefaultAdvanced);
   const tagsInput = (task.tags || []).join(", ");
   const weightVal = Number.isFinite(task[weightField]) ? task[weightField] : 0;
 
@@ -272,21 +282,7 @@ function TaskRow({ task, index, onChange, onRemove, weightField = "weight" }) {
         display: "flex", flexDirection: "column", gap: 8,
       }}
     >
-      <div className="agnt-resp-task-head" style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
-        <input
-          value={task.slug}
-          onChange={(e) => patch({ slug: e.target.value.toUpperCase().replace(/\s+/g, "") })}
-          placeholder="T01"
-          aria-label={`Task ${index + 1} slug`}
-          style={{
-            ...monoInputStyle,
-            padding: "7px 10px",
-            fontWeight: 800,
-            fontSize: 12,
-            textAlign: "center",
-            background: "var(--bg-soft)",
-          }}
-        />
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
         <input
           value={task.title}
           onChange={(e) => patch({ title: e.target.value })}
@@ -341,9 +337,6 @@ function TaskRow({ task, index, onChange, onRemove, weightField = "weight" }) {
             paddingBottom: 22, // leave room for the absolute-positioned counter
           }}
         />
-        {/* Live char counter — quiet until we're 80% of the way to the cap.
-            Backend enforces 50..16384 trimmed; we cap on input to avoid the
-            400 round-trip on a long paste. */}
         {(bodyFocused || task.body_md.length > BODY_MD_WARN) && (
           <span
             style={{
@@ -364,7 +357,9 @@ function TaskRow({ task, index, onChange, onRemove, weightField = "weight" }) {
         )}
       </div>
 
-      <div className="agnt-resp-task-meta" style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", gap: 10, alignItems: "center" }}>
+      {/* Default row: just weight + advanced toggle. Stays on a single
+          line on phones thanks to the wrap. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <input
             type="number"
@@ -380,50 +375,105 @@ function TaskRow({ task, index, onChange, onRemove, weightField = "weight" }) {
               fontVariantNumeric: "tabular-nums",
               fontWeight: 700,
               textAlign: "right",
+              width: 88,
             }}
           />
           <span style={{ fontSize: 10.5, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>weight</span>
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {DIFFICULTIES.map((d) => {
-            const active = task.difficulty === d;
-            return (
-              <button
-                key={d}
-                type="button"
-                onClick={() => patch({ difficulty: d })}
-                style={{
-                  flex: 1,
-                  height: 30,
-                  padding: "0 8px",
-                  border: `1px solid ${active ? "var(--fg)" : "var(--border)"}`,
-                  background: active ? "var(--fg)" : "var(--bg)",
-                  color:      active ? "var(--bg)" : "var(--fg-muted)",
-                  borderRadius: 6,
-                  fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, fontWeight: 800,
-                  textTransform: "uppercase", letterSpacing: "0.05em",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                {d}
-              </button>
-            );
-          })}
-        </div>
-        <input
-          value={tagsInput}
-          onChange={(e) => patch({ tags: parseTags(e.target.value) })}
-          placeholder="tags: frontend, infra"
-          aria-label={`Task ${index + 1} tags`}
+
+        {/* Slug shows as a compact mono pill once non-default OR when
+            the row is expanded. Keeps the auto-generated slug visible
+            but doesn't beg for attention. */}
+        {task.slug && (
+          <span
+            style={{
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em",
+              padding: "3px 8px", borderRadius: 4,
+              background: "var(--bg-soft)", color: "var(--fg-muted)",
+              border: "1px solid var(--border)",
+            }}
+            title="Task slug — referenced in PR titles. Edit under Advanced."
+          >
+            {task.slug}
+          </span>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setShowAdv((v) => !v)}
           style={{
-            ...inputStyle,
-            padding: "6px 10px",
-            fontSize: 11.5,
+            marginLeft: "auto",
+            padding: "4px 8px", border: "none", background: "transparent",
             fontFamily: "JetBrains Mono, monospace",
+            fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+            color: "var(--fg-muted)", textTransform: "uppercase",
+            cursor: "pointer",
           }}
-        />
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--fg)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-muted)"; }}
+        >
+          {showAdv ? "▾ Hide advanced" : "▸ Advanced (slug · difficulty · tags)"}
+        </button>
       </div>
+
+      {showAdv && (
+        <div className="agnt-resp-task-meta agnt-fade-in" style={{ display: "grid", gridTemplateColumns: "150px 1fr 1fr", gap: 10, alignItems: "center" }}>
+          <input
+            value={task.slug || ""}
+            onChange={(e) => patch({ slug: e.target.value.toUpperCase().replace(/\s+/g, "") })}
+            placeholder="T01"
+            aria-label={`Task ${index + 1} slug`}
+            style={{
+              ...monoInputStyle,
+              padding: "6px 10px",
+              fontWeight: 800,
+              fontSize: 11,
+              textAlign: "center",
+              background: "var(--bg-soft)",
+            }}
+          />
+          <div style={{ display: "flex", gap: 4 }}>
+            {DIFFICULTIES.map((d) => {
+              const active = task.difficulty === d;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => patch({ difficulty: d })}
+                  style={{
+                    flex: 1,
+                    height: 28,
+                    padding: "0 6px",
+                    border: `1px solid ${active ? "var(--fg)" : "var(--border)"}`,
+                    background: active ? "var(--fg)" : "var(--bg)",
+                    color:      active ? "var(--bg)" : "var(--fg-muted)",
+                    borderRadius: 6,
+                    fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
+                    textTransform: "uppercase", letterSpacing: "0.05em",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+          <input
+            value={tagsInput}
+            onChange={(e) => patch({ tags: parseTags(e.target.value) })}
+            placeholder="tags: frontend, infra"
+            aria-label={`Task ${index + 1} tags`}
+            style={{
+              ...inputStyle,
+              padding: "6px 10px",
+              fontSize: 11,
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

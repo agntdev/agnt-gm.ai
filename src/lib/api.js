@@ -74,6 +74,44 @@ async function send(method, path, body, { auth, signal, raw } = {}) {
   }
 }
 
+// Hardcoded mock generator for /preview-tasks. Produces N tasks with
+// plausible titles + bodies derived from the brief so the owner can
+// see the editor pre-filled. Removed when the real endpoint lands.
+function mockDraftTasks(brief, count, perStageTotal, stageNumber) {
+  const prefix = `S${stageNumber || 2}T`;
+  const titles = [
+    "Scaffold the feature",
+    "Wire the data model",
+    "Add the UI surface",
+    "Cover the happy path with tests",
+    "Polish edge cases + docs",
+    "Hook into telemetry",
+    "Plumb error states",
+    "Add accessibility passes",
+    "Performance audit",
+    "Update README and changelog",
+  ].slice(0, count);
+  const each = Number((1 / count).toFixed(3));
+  // Account for rounding so the sum is exactly 1.0
+  const slack = +(1 - each * count).toFixed(3);
+  const weightField = perStageTotal ? "weight" : "weight_within_new";
+  return titles.map((t, i) => ({
+    slug: `${prefix}${String(i + 1).padStart(2, "0")}`,
+    title: t,
+    body_md:
+      `## Acceptance\n` +
+      `- Maps cleanly to: "${brief.slice(0, 120)}${brief.length > 120 ? "…" : ""}"\n` +
+      `- Testable: defined output, no ambiguity\n` +
+      `- Documented in PR description\n\n` +
+      `## Notes\n` +
+      `Step ${i + 1}/${count} of the brief above. ` +
+      `Edit or replace this body before paying — the mock is just a stand-in for the real LLM draft.`,
+    difficulty: i === 0 ? "easy" : i === count - 1 ? "hard" : "medium",
+    [weightField]: i === 0 ? +(each + slack).toFixed(3) : each,
+    tags: ["draft"],
+  }));
+}
+
 export const api = {
   base: BASE,
 
@@ -205,6 +243,57 @@ export const api = {
   // every tick).
   getOwnerPayment: (id, token) =>
     getVerbose(`/builder/owner-payments/${encodeURIComponent(id)}`, { auth: token }),
+
+  // ─────────────────── /preview-tasks (MOCKED — backend pending) ───────────────────
+  // The owner-asked AI-first flow needs the backend to draft tasks
+  // from a brief WITHOUT writing to the DB or minting a payment
+  // intent. Spec sent to the backend dev as:
+  //   docs/frontend/2026-05-15-preview-tasks-request.md
+  //
+  // While that's not shipped, these helpers fake the response so the
+  // UX can be wired up end-to-end. Swap each function body for a real
+  // `send(...)` call when the endpoint lands; the response shape
+  // matches the spec verbatim.
+
+  /** Mock for: POST /projects/:id/stages/:n/preview-tasks (add-tasks AI draft). */
+  previewAddTasks: async (_idOrSlug, stageNumber, body, _token) => {
+    await new Promise((r) => setTimeout(r, 1200));
+    const trimmed = String(body?.brief || "").trim();
+    if (trimmed.length < 20) {
+      return { ok: false, status: 400, data: { error: "Brief too short — describe what should ship (min 20 chars)." } };
+    }
+    const approx = Math.max(1, Math.min(10, Number(body?.approx_count) || 3));
+    const sample = mockDraftTasks(trimmed, approx, /* perStageTotal */ false, stageNumber);
+    return {
+      ok: true,
+      status: 200,
+      data: {
+        tasks: sample,
+        note: "Draft (mock — backend endpoint not live yet). Edit or replace anything before paying.",
+        mock: true,
+      },
+    };
+  },
+
+  /** Mock for: POST /projects/:id/stages/preview-tasks (new-stage AI draft). */
+  previewNewStageTasks: async (_idOrSlug, body, _token) => {
+    await new Promise((r) => setTimeout(r, 1200));
+    const trimmed = String(body?.brief || "").trim();
+    if (trimmed.length < 20) {
+      return { ok: false, status: 400, data: { error: "Brief too short — describe what should ship (min 20 chars)." } };
+    }
+    const approx = Math.max(1, Math.min(10, Number(body?.approx_count) || 3));
+    const sample = mockDraftTasks(trimmed, approx, /* perStageTotal */ true, body?.nextStageNumber || 2);
+    return {
+      ok: true,
+      status: 200,
+      data: {
+        tasks: sample,
+        note: "Draft (mock — backend endpoint not live yet). Edit or replace anything before paying.",
+        mock: true,
+      },
+    };
+  },
 
   // PATCH /builder/agents/me — { display_name?, bio? }. Returns AgentEnvelope.
   updateMe: (body, token) => send("PATCH", "/builder/agents/me", body, { auth: token }),

@@ -544,6 +544,119 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
   );
 }
 
+// AiCustomizeDefaults — collapsed "Customize defaults" block for the
+// AI Form. Hides name / token_symbol / total_supply / task_notes
+// (rarely touched — the validator agent picks all four if blank).
+// Pool / Deadline / Wallet stay always-visible because they're
+// commit-time decisions, not "defaults".
+function AiCustomizeDefaults({ form, setField }) {
+  const [open, setOpen] = useState(false);
+  // Live summary on the collapsed header so users see the in-flight
+  // values without expanding.
+  const summary = (() => {
+    const chips = [];
+    if (form.name?.trim()) chips.push(`name: ${form.name.slice(0, 24)}${form.name.length > 24 ? "…" : ""}`);
+    if (form.token_symbol?.trim()) chips.push(`$${form.token_symbol}`);
+    const supply = Number(form.total_supply) || 0;
+    if (supply > 0) {
+      const s = supply >= 1e9 ? `${(supply / 1e9).toFixed(0)}B`
+        : supply >= 1e6 ? `${(supply / 1e6).toFixed(0)}M`
+        : supply.toLocaleString();
+      chips.push(`${s} supply`);
+    }
+    if (form.task_notes?.trim()) chips.push("task hints set");
+    if (chips.length === 0) chips.push("validator picks name, symbol, supply, and task hints");
+    return chips.join(" · ");
+  })();
+
+  return (
+    <div style={{
+      marginTop: 18, padding: "10px 14px",
+      border: "1px solid var(--border)", borderRadius: 8,
+      background: "var(--bg-soft)",
+    }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        style={{
+          display: "flex", alignItems: "center", gap: 8, width: "100%",
+          background: "none", border: "none", padding: 0,
+          cursor: "pointer", color: "var(--fg)", textAlign: "left",
+        }}
+      >
+        <span style={{
+          fontSize: 10.5, fontFamily: "JetBrains Mono, monospace",
+          fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
+          color: "var(--fg-muted)",
+        }}>
+          {open ? "▾" : "▸"} Customize defaults
+        </span>
+        <span style={{
+          flex: 1, fontSize: 10.5, color: "var(--fg-muted)",
+          fontFamily: "JetBrains Mono, monospace",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {summary}
+        </span>
+      </button>
+      {open && (
+        <div className="agnt-fade-in" style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div className="field-row">
+            <div className="field">
+              <label className="field-label">Project name</label>
+              <div className="field-hint">Defaults to LLM-generated if empty</div>
+              <input className="field-input" placeholder="TONscan Lite" value={form.name} onChange={(e) => setField("name", e.target.value)} />
+            </div>
+            <div className="field">
+              <label className="field-label">Token symbol</label>
+              <div className="field-hint">3–5 chars, uppercase</div>
+              <div className="field-suffix-wrap">
+                <span style={{ padding: "0 12px", fontSize: 12, color: "var(--fg-muted)", fontWeight: 800, borderRight: "1px solid var(--border)", display: "grid", placeItems: "center" }}>$</span>
+                <input
+                  style={{ textTransform: "uppercase" }}
+                  placeholder="TSCAN"
+                  value={form.token_symbol}
+                  onChange={(e) => setField("token_symbol", e.target.value.toUpperCase())}
+                  maxLength={5}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="field">
+            <label className="field-label">Total supply</label>
+            <div className="field-hint">Whole tokens. Minted on chain with 9 decimals.</div>
+            <input
+              className="field-input"
+              type="number"
+              min={1000}
+              step={1}
+              value={form.total_supply}
+              onChange={(e) => setField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">Task hints</label>
+            <div className="field-hint">Optional · steer the validator's task list (e.g. "prefer Preact", "no SaaS deps").</div>
+            <textarea
+              value={form.task_notes}
+              onChange={(e) => setField("task_notes", e.target.value)}
+              placeholder="e.g. Prefer Preact over React. Stick to TypeScript. Each task ≤ 8h."
+              rows={3}
+              style={{
+                width: "100%", padding: "10px 12px",
+                border: "1px solid var(--border)", borderRadius: 6,
+                fontSize: 13, lineHeight: 1.5, fontFamily: "inherit",
+                background: "var(--bg)", resize: "vertical",
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Form({
   form, setField, ideaTooShort, ideaTooLong, walletMissing, onSubmit, errorMsg,
   tonConnected, tonAddress, tonWalletName, onConnectWallet, onDisconnectWallet,
@@ -556,6 +669,14 @@ function Form({
           Describe the project in plain English. The validator agent reads this, drafts a plan, and breaks it into
           bounty tasks. Be specific about what success looks like.
         </p>
+        <div style={{
+          marginTop: 8, marginBottom: 14,
+          fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5,
+          padding: "8px 12px", borderRadius: 6, background: "var(--bg-soft)",
+          border: "1px solid var(--border)",
+        }}>
+          ⓘ The validator agent drafts the full plan + task list from your idea. <strong>You'll be able to review, edit, add or remove tasks</strong> before the project goes live.
+        </div>
 
         <div className="field">
           <label className="field-label">
@@ -579,77 +700,7 @@ function Form({
           {ideaTooLong && <div className="field-hint" style={{ color: "var(--danger)" }}>Trim to 10,000 characters or fewer.</div>}
         </div>
 
-        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", color: "var(--fg-muted)", textTransform: "uppercase", marginTop: 18, marginBottom: 8 }}>
-          Optional metadata
-        </div>
-
-        <div className="field-row">
-          <div className="field">
-            <label className="field-label">Project name</label>
-            <div className="field-hint">Defaults to LLM-generated if empty</div>
-            <input className="field-input" placeholder="TONscan Lite" value={form.name} onChange={(e) => setField("name", e.target.value)} />
-          </div>
-          <div className="field">
-            <label className="field-label">Token symbol</label>
-            <div className="field-hint">3–5 chars, uppercase</div>
-            <div className="field-suffix-wrap">
-              <span style={{ padding: "0 12px", fontSize: 12, color: "var(--fg-muted)", fontWeight: 800, borderRight: "1px solid var(--border)", display: "grid", placeItems: "center" }}>$</span>
-              <input
-                style={{ textTransform: "uppercase" }}
-                placeholder="TSCAN"
-                value={form.token_symbol}
-                onChange={(e) => setField("token_symbol", e.target.value.toUpperCase())}
-                maxLength={5}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="field-row">
-          <div className="field">
-            <label className="field-label">Total supply</label>
-            <div className="field-hint">Whole tokens. Minted on chain with 9 decimals.</div>
-            <input
-              className="field-input"
-              type="number"
-              min={1000}
-              step={1}
-              value={form.total_supply}
-              onChange={(e) => setField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
-            />
-          </div>
-          <div className="field">
-            <label className="field-label">Deadline</label>
-            <div className="field-hint">Project window for agents to ship</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 4 }}>
-              {[
-                { v: "1",  label: "1 day" },
-                { v: "3",  label: "3 days" },
-                { v: "7",  label: "7 days" },
-                { v: "14", label: "14 days" },
-              ].map((opt) => (
-                <button
-                  key={opt.v}
-                  type="button"
-                  onClick={() => setField("deadline", opt.v)}
-                  style={{
-                    height: 36, padding: "0 8px",
-                    border: `1px solid ${form.deadline === opt.v ? "var(--fg)" : "var(--border)"}`,
-                    background: form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
-                    color:      form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
-                    borderRadius: 6,
-                    fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 12, fontWeight: 700,
-                    cursor: "pointer",
-                    transition: "border-color 0.12s ease, background 0.12s ease",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <AiCustomizeDefaults form={form} setField={setField} />
 
         <div className="field-row">
           <div className="field">
@@ -687,11 +738,45 @@ function Form({
               ))}
             </div>
           </div>
+
           <div className="field">
-            <label className="field-label">
-              Owner wallet
-              <span style={{ float: "right", fontWeight: 500, color: "var(--danger)" }}>required</span>
-            </label>
+            <label className="field-label">Deadline</label>
+            <div className="field-hint">Project window for agents to ship</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 4 }}>
+              {[
+                { v: "1",  label: "1 day" },
+                { v: "3",  label: "3 days" },
+                { v: "7",  label: "7 days" },
+                { v: "14", label: "14 days" },
+              ].map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setField("deadline", opt.v)}
+                  style={{
+                    height: 36, padding: "0 8px",
+                    border: `1px solid ${form.deadline === opt.v ? "var(--fg)" : "var(--border)"}`,
+                    background: form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
+                    color:      form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
+                    borderRadius: 6,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 12, fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "border-color 0.12s ease, background 0.12s ease",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="field" style={{ marginTop: 14 }}>
+          <label className="field-label">
+            Owner wallet
+            <span style={{ float: "right", fontWeight: 500, color: "var(--danger)" }}>required</span>
+          </label>
             <div className="field-hint">
               {tonConnected
                 ? "Reward-pool refunds and owner-share tokens go to this wallet."
@@ -747,24 +832,6 @@ function Form({
                 <Icon name="zap" size={12} /> Connect TON wallet
               </button>
             )}
-          </div>
-        </div>
-
-        <div className="field">
-          <label className="field-label">Task notes</label>
-          <div className="field-hint">Optional pre-baked task description for the validator</div>
-          <textarea
-            value={form.task_notes}
-            onChange={(e) => setField("task_notes", e.target.value)}
-            placeholder="e.g. Prefer Preact over React. Stick to TypeScript. Each task should be ≤ 8h estimated."
-            rows={3}
-            style={{
-              width: "100%", padding: "10px 12px",
-              border: "1px solid var(--border)", borderRadius: 6,
-              fontSize: 13, lineHeight: 1.5, fontFamily: "inherit",
-              background: "var(--bg)", resize: "vertical",
-            }}
-          />
         </div>
 
         <AutoMergeToggle
@@ -825,8 +892,29 @@ function ManualForm({
   walletMissing, onSubmit, errorMsg, shakeKey,
   tonConnected, tonAddress, tonWalletName, onConnectWallet, onDisconnectWallet,
 }) {
-  const [docsOpen, setDocsOpen] = useState(false);
+  // "Customize defaults" lumps tokenomics + long-form pitch + plan/readme
+  // into a single collapsible. Default-collapsed because almost every
+  // owner ships with the defaults (1B supply · 0% share · short pitch
+  // only · no plan/readme). Opening it surfaces every advanced field
+  // without losing them.
+  const [customizeOpen, setCustomizeOpen] = useState(false);
   const canSubmit = !walletMissing && manual.name.trim() && manual.token_symbol.trim() && manual.tasks.length > 0;
+
+  // Summary chips on the collapsed customize header — owners see the
+  // effective defaults at a glance without expanding.
+  const customSummary = (() => {
+    const supply = Number(manual.total_supply) || 0;
+    const supplyShort = supply >= 1e9 ? `${(supply / 1e9).toFixed(0)}B`
+      : supply >= 1e6 ? `${(supply / 1e6).toFixed(0)}M`
+      : supply.toLocaleString();
+    const sharePct = (Number(manual.owner_share_bps) || 0) / 100;
+    const hasAbout = manual.about_of_project?.trim() || manual.goal_of_project?.trim();
+    const hasDocs = manual.plan_md?.trim() || manual.readme_md?.trim();
+    const chips = [`${supplyShort} supply`, `${sharePct}% owner share`];
+    if (hasAbout) chips.push("about + goal set");
+    if (hasDocs) chips.push("plan/readme set");
+    return chips.join(" · ");
+  })();
 
   return (
     <form
@@ -858,45 +946,8 @@ function ManualForm({
           </Field>
         </div>
 
-        <SectionHeader hint="Jetton supply minted on chain. Owner share is capped at 10%.">
-          Tokenomics
-        </SectionHeader>
-        <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12, marginTop: 10 }}>
-          <Field label="Total supply" hint="Whole tokens · 1M…1T · 9 decimals on chain">
-            <input
-              style={monoInputStyle}
-              type="number"
-              min={1_000_000}
-              max={1_000_000_000_000}
-              step={1}
-              value={manual.total_supply}
-              onChange={(e) => setManualField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
-            />
-          </Field>
-          <Field label="Owner share" hint="0–10% of the mint kept by the owner.">
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                style={{ ...monoInputStyle, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
-                type="number"
-                min={0}
-                max={10}
-                step={0.5}
-                value={(Number(manual.owner_share_bps) || 0) / 100}
-                onChange={(e) => {
-                  const pct = Math.max(0, Math.min(10, parseFloat(e.target.value) || 0));
-                  setManualField("owner_share_bps", Math.round(pct * 100));
-                }}
-              />
-              <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--fg-muted)", fontWeight: 700 }}>%</span>
-            </div>
-          </Field>
-        </div>
-
-        <SectionHeader hint="Tell agents (and tokenholders) what they're shipping.">
-          Pitch
-        </SectionHeader>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 10 }}>
-          <Field label="Short description" hint="One sentence — shows on the project card.">
+        <div style={{ marginTop: 12 }}>
+          <Field label="Short description" hint="One sentence — shows on the project card and the homepage Pulse.">
             <input
               style={inputStyle}
               maxLength={240}
@@ -905,64 +956,118 @@ function ManualForm({
               onChange={(e) => setManualField("short_description", e.target.value)}
             />
           </Field>
-          <Field label="About">
-            <textarea
-              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.55, resize: "vertical" }}
-              rows={3}
-              value={manual.about_of_project}
-              placeholder="Click the button. Win. Stop clicking."
-              onChange={(e) => setManualField("about_of_project", e.target.value)}
-            />
-          </Field>
-          <Field label="Goal">
-            <textarea
-              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.55, resize: "vertical" }}
-              rows={2}
-              value={manual.goal_of_project}
-              placeholder="Top of the addiction leaderboards by week 4."
-              onChange={(e) => setManualField("goal_of_project", e.target.value)}
-            />
-          </Field>
         </div>
 
-        <SectionHeader hint="Optional. Rendered as Markdown.">
-          Plan & docs
+        {/* "Customize defaults" — collapsed by default. Default values
+            (1B supply, 0% share, blank about/goal/plan/readme) work for
+            most owners; advanced fields stay reachable with one click. */}
+        <div style={{
+          marginTop: 18, padding: "10px 14px",
+          border: "1px solid var(--border)", borderRadius: 8,
+          background: "var(--bg-soft)",
+        }}>
           <button
             type="button"
-            onClick={() => setDocsOpen((v) => !v)}
+            onClick={() => setCustomizeOpen((v) => !v)}
+            aria-expanded={customizeOpen}
             style={{
-              marginLeft: 8, padding: "2px 8px",
-              background: "none", border: "1px solid var(--border)", borderRadius: 4,
-              fontFamily: "JetBrains Mono, monospace", fontSize: 9.5,
-              color: "var(--fg-muted)", cursor: "pointer", letterSpacing: "0.06em", textTransform: "uppercase",
+              display: "flex", alignItems: "center", gap: 8, width: "100%",
+              background: "none", border: "none", padding: 0,
+              cursor: "pointer", color: "var(--fg)",
+              textAlign: "left",
             }}
-            aria-expanded={docsOpen}
           >
-            {docsOpen ? "− Collapse" : "+ Expand"}
+            <span style={{
+              fontSize: 10.5, fontFamily: "JetBrains Mono, monospace",
+              fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
+              color: "var(--fg-muted)",
+            }}>
+              {customizeOpen ? "▾" : "▸"} Customize defaults
+            </span>
+            <span style={{
+              flex: 1, fontSize: 10.5, color: "var(--fg-muted)",
+              fontFamily: "JetBrains Mono, monospace",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {customSummary}
+            </span>
           </button>
-        </SectionHeader>
-        {docsOpen && (
-          <div className="agnt-fade-in" style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 10 }}>
-            <Field label="plan_md" hint="High-level roadmap / phase plan for agents.">
-              <textarea
-                style={{ ...inputStyle, fontFamily: "JetBrains Mono, monospace", fontSize: 12, lineHeight: 1.55, resize: "vertical" }}
-                rows={6}
-                value={manual.plan_md}
-                placeholder={"## Phase 1: button works\n- Render at /\n- Increments counter\n\n## Phase 2: scoreboard\n…"}
-                onChange={(e) => setManualField("plan_md", e.target.value)}
-              />
-            </Field>
-            <Field label="readme_md" hint="Repo README — written verbatim to GitHub on publish.">
-              <textarea
-                style={{ ...inputStyle, fontFamily: "JetBrains Mono, monospace", fontSize: 12, lineHeight: 1.55, resize: "vertical" }}
-                rows={6}
-                value={manual.readme_md}
-                placeholder={"# Happy Button\n\nA fun click-counter game…"}
-                onChange={(e) => setManualField("readme_md", e.target.value)}
-              />
-            </Field>
-          </div>
-        )}
+          {customizeOpen && (
+            <div className="agnt-fade-in" style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* Tokenomics */}
+              <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12 }}>
+                <Field label="Total supply" hint="Whole tokens · 1M…1T · 9 decimals on chain">
+                  <input
+                    style={monoInputStyle}
+                    type="number"
+                    min={1_000_000}
+                    max={1_000_000_000_000}
+                    step={1}
+                    value={manual.total_supply}
+                    onChange={(e) => setManualField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
+                  />
+                </Field>
+                <Field label="Owner share" hint="0–10% of the mint kept by the owner.">
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      style={{ ...monoInputStyle, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
+                      type="number"
+                      min={0}
+                      max={10}
+                      step={0.5}
+                      value={(Number(manual.owner_share_bps) || 0) / 100}
+                      onChange={(e) => {
+                        const pct = Math.max(0, Math.min(10, parseFloat(e.target.value) || 0));
+                        setManualField("owner_share_bps", Math.round(pct * 100));
+                      }}
+                    />
+                    <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--fg-muted)", fontWeight: 700 }}>%</span>
+                  </div>
+                </Field>
+              </div>
+
+              {/* Long-form pitch */}
+              <Field label="About" hint="Optional — longer description for the project page.">
+                <textarea
+                  style={{ ...inputStyle, fontSize: 13, lineHeight: 1.55, resize: "vertical" }}
+                  rows={3}
+                  value={manual.about_of_project}
+                  placeholder="Click the button. Win. Stop clicking."
+                  onChange={(e) => setManualField("about_of_project", e.target.value)}
+                />
+              </Field>
+              <Field label="Goal" hint="Optional — what success looks like.">
+                <textarea
+                  style={{ ...inputStyle, fontSize: 13, lineHeight: 1.55, resize: "vertical" }}
+                  rows={2}
+                  value={manual.goal_of_project}
+                  placeholder="Top of the addiction leaderboards by week 4."
+                  onChange={(e) => setManualField("goal_of_project", e.target.value)}
+                />
+              </Field>
+
+              {/* Plan & docs */}
+              <Field label="plan.md" hint="Optional · roadmap / phase plan for agents.">
+                <textarea
+                  style={{ ...inputStyle, fontFamily: "JetBrains Mono, monospace", fontSize: 12, lineHeight: 1.55, resize: "vertical" }}
+                  rows={5}
+                  value={manual.plan_md}
+                  placeholder={"## Phase 1: button works\n- Render at /\n- Increments counter\n…"}
+                  onChange={(e) => setManualField("plan_md", e.target.value)}
+                />
+              </Field>
+              <Field label="README.md" hint="Optional · written verbatim to the GitHub repo on publish.">
+                <textarea
+                  style={{ ...inputStyle, fontFamily: "JetBrains Mono, monospace", fontSize: 12, lineHeight: 1.55, resize: "vertical" }}
+                  rows={5}
+                  value={manual.readme_md}
+                  placeholder={"# Happy Button\n\nA fun click-counter game…"}
+                  onChange={(e) => setManualField("readme_md", e.target.value)}
+                />
+              </Field>
+            </div>
+          )}
+        </div>
 
         <SectionHeader
           hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} · weights must sum to ${(1 - (Number(manual.owner_share_bps) || 0) / 10_000).toFixed(2)}`}

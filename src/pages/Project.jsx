@@ -1022,19 +1022,71 @@ function StageFundCTA({ stage, refresh }) {
   );
 }
 
+// CreateStageForm — unified AI-first flow (per owner request 2026-05-15):
+//   1. Owner enters a brief + pool + mint.
+//   2. Clicks "Generate tasks" → server-side LLM drafts a task list.
+//   3. Tasks appear in TasksEditor; owner edits / adds / removes freely.
+//   4. Clicks "Submit & pay" → POST /stages with the (edited) manual_tasks
+//      list → returns pending stage + intent → owner pays.
+// The old "I'll write tasks" mode-switcher is gone — flexibility now
+// comes from editing the AI draft, including deleting everything and
+// writing from scratch.
 function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState("ai"); // "ai" | "manual"
   const [pool, setPool] = useState("5");
   const [mint, setMint] = useState("0");
   const [brief, setBrief] = useState("");
   const [tasks, setTasks] = useState([]);
+  const [phase, setPhase] = useState("input"); // input | generating | edit
+  // approx_count is a hint to the LLM; ~3 tasks per stage is the sweet
+  // spot for a single round of contributions. Hardcoded for now; can
+  // be exposed as a number stepper later if owners ask.
+  const approxCount = 3;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [moderationReason, setModerationReason] = useState("");
+  const [mockNoticeSeen, setMockNoticeSeen] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
   function triggerShake() { setShakeKey((n) => n + 1); }
+
+  async function onGenerate() {
+    setError("");
+    setModerationReason("");
+    if (brief.trim().length < 20) {
+      setError("Brief too short — describe what should ship (min 20 chars).");
+      triggerShake();
+      return;
+    }
+    const poolNano = Math.round((parseFloat(pool) || 0) * 1e9);
+    if (poolNano <= 0) {
+      setError("Set the reward pool above before generating tasks — the planner uses it to balance the weights.");
+      triggerShake();
+      return;
+    }
+
+    setPhase("generating");
+    const res = await api.previewNewStageTasks(projectIdOrSlug, {
+      brief: brief.trim(),
+      approx_count: approxCount,
+      stage_ton_nano: poolNano,
+      nextStageNumber,
+    }, token);
+
+    if (!res.ok) {
+      setPhase("input");
+      if (res.data?.rejection_reason) {
+        setModerationReason(res.data.rejection_reason);
+      } else {
+        setError(res.data?.error || `Could not draft tasks (HTTP ${res.status}).`);
+      }
+      triggerShake();
+      return;
+    }
+    setMockNoticeSeen(!!res.data?.mock);
+    setTasks(res.data.tasks || []);
+    setPhase("edit");
+  }
 
   async function onSubmit(e) {
     e?.preventDefault();
@@ -1045,34 +1097,27 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
     const mintAmount = Math.round((parseFloat(mint) || 0) * 1e9);
     if (!token) { setError("Sign in as the project owner first."); triggerShake(); return; }
 
+    const errs = validateManualPlan({ tasks }, "stage");
+    if (errs.length > 0) { setError(errs[0]); triggerShake(); return; }
+
     const body = {
       ton_reward_pool_nano: poolNano,
       jetton_mint_amount: mintAmount,
-    };
-    if (mode === "manual") {
-      const errs = validateManualPlan({ tasks }, "stage");
-      if (errs.length > 0) { setError(errs[0]); triggerShake(); return; }
-      body.manual_tasks = tasks.map((t) => ({
-        slug: t.slug.trim().toUpperCase(),
+      manual_tasks: tasks.map((t) => ({
+        slug: (t.slug || "").trim().toUpperCase() || undefined,
         title: t.title.trim(),
         body_md: t.body_md,
         difficulty: t.difficulty || undefined,
         weight: Number(t.weight),
         tags: (t.tags && t.tags.length) ? t.tags : undefined,
-      }));
-    } else {
-      if (!brief.trim()) { setError("Tell agents what ships in this stage."); triggerShake(); return; }
-      body.plan_brief = brief.trim();
-    }
+      })),
+    };
 
     setSubmitting(true);
     const res = await api.createProjectStage(projectIdOrSlug, body, token);
     setSubmitting(false);
     if (res.status === 401 || res.status === 403) { setError("Only the project owner can start a new stage."); triggerShake(); return; }
     if (res.status === 409) {
-      // The API surfaces `previous_stage` + `previous_status` for the
-      // "stage N is still open" path. Show them so the owner knows which
-      // stage is blocking and what state it's currently in.
       const prevN = res.data?.previous_stage;
       const prevS = res.data?.previous_status;
       const hint  = prevN != null && prevS
@@ -1086,9 +1131,11 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
       setModerationReason(res.data.rejection_reason); triggerShake(); return;
     }
     if (!res.ok) { setError(res.data?.error || `Request failed (HTTP ${res.status}).`); triggerShake(); return; }
+
     setOpen(false);
     setBrief("");
     setTasks([]);
+    setPhase("input");
     onCreated?.();
   }
 
@@ -1116,29 +1163,19 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
         background: "var(--bg-soft)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
         <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
           Start stage {nextStageNumber}
         </div>
-        <ModeSwitcher
-          value={mode}
-          onChange={(m) => { setMode(m); setError(""); setModerationReason(""); }}
-          options={[
-            { value: "ai",     label: "AI from brief",  icon: "zap" },
-            { value: "manual", label: "I'll write tasks", icon: "layers" },
-          ]}
-        />
+        <span style={{ fontSize: 10.5, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+          AI drafts → you edit → pay
+        </span>
       </div>
-      <p style={{ margin: "2px 0 14px", fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5, maxWidth: "70ch" }}>
-        {mode === "ai"
-          ? <>Describe what ships and the validator agent generates the task list once your deposit confirms.</>
-          : <>Author each task yourself. The full mint goes to agents — weights must sum to <strong>1.00</strong>.</>}
-      </p>
 
       <RejectionBanner reason={moderationReason} onDismiss={() => setModerationReason("")} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-        <Field label="Reward pool (TON)" hint="Funded after creation; auto-confirms via TonConnect.">
+      <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+        <Field label="Reward pool (TON)" hint="Auto-confirms via TonConnect.">
           <input
             type="number" min={0} step={0.001} value={pool}
             onChange={(e) => setPool(e.target.value)}
@@ -1154,52 +1191,103 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
         </Field>
       </div>
 
-      {mode === "ai" ? (
-        <div style={{ marginTop: 12 }}>
-          <Field label="What ships in this stage?" hint="One paragraph is enough — the planner expands it into tasks.">
-            <textarea
-              value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-              rows={3}
-              placeholder="e.g. dark mode, mobile sheet, replace REST polling with SSE"
-              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
-            />
-          </Field>
+      <div style={{ marginTop: 12 }}>
+        <Field
+          label="What ships in this stage?"
+          hint="One paragraph is enough — the validator agent expands it into tasks."
+        >
+          <textarea
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+            rows={3}
+            maxLength={2000}
+            placeholder="e.g. dark mode toggle, mobile sheet, replace REST polling with SSE"
+            style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
+          />
+        </Field>
+      </div>
+
+      <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5, padding: "8px 12px", borderRadius: 6, background: "var(--bg)" }}>
+        ⓘ The validator agent drafts ~{approxCount} tasks from your brief. <strong>You'll be able to add, remove or fully rewrite any of them</strong> before the deposit is sent.
+      </div>
+
+      {phase === "input" && (
+        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          <button
+            key={shakeKey}
+            type="button"
+            onClick={onGenerate}
+            disabled={phase === "generating"}
+            className={shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"}
+            style={{ background: "var(--accent)" }}
+          >
+            <Icon name="zap" size={12} /> Generate tasks
+          </button>
+          <button type="button" className="btn" onClick={() => setOpen(false)}>
+            Cancel
+          </button>
         </div>
-      ) : (
-        <div style={{ marginTop: 14 }}>
-          <SectionHeader first hint={`${tasks.length} task${tasks.length === 1 ? "" : "s"} · weights must sum to 1.00`}>
-            Tasks
+      )}
+
+      {phase === "generating" && (
+        <div style={{ marginTop: 14, padding: 14, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg)", display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="live-dot" />
+          <span style={{ fontSize: 12.5, color: "var(--fg)" }}>Drafting tasks from your brief…</span>
+        </div>
+      )}
+
+      {phase === "edit" && (
+        <>
+          <SectionHeader hint={`${tasks.length} task${tasks.length === 1 ? "" : "s"} drafted · weights must sum to 1.00 · feel free to edit, add or remove`}>
+            Draft tasks
           </SectionHeader>
+          {mockNoticeSeen && (
+            <div style={{
+              marginTop: 8, padding: "8px 12px", borderRadius: 6,
+              background: "oklch(0.96 0.05 80)", border: "1px solid oklch(0.85 0.08 80)",
+              color: "#b45309", fontSize: 11.5, lineHeight: 1.4,
+            }}>
+              ⚠ Mock draft — backend <code>/preview-tasks</code> endpoint is not live yet. The real LLM will replace these placeholders; you'll still be able to edit before paying.
+            </div>
+          )}
           <TasksEditor
             tasks={tasks}
             onChange={setTasks}
             isStage
             stageNumber={nextStageNumber}
           />
-        </div>
+
+          {error && (
+            <div className="agnt-fade-in" style={{ marginTop: 10, padding: 10, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+            <button
+              key={shakeKey}
+              type="submit"
+              disabled={submitting || tasks.length === 0}
+              className={shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"}
+              style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
+            >
+              <Icon name="zap" size={12} /> {submitting ? "Creating…" : `Submit & pay`}
+            </button>
+            <button type="button" className="btn" onClick={() => { setPhase("input"); setTasks([]); }}>
+              ← Back to brief
+            </button>
+            <button type="button" className="btn" onClick={() => setOpen(false)} style={{ marginLeft: "auto" }}>
+              Cancel
+            </button>
+          </div>
+        </>
       )}
 
-      {error && (
+      {phase === "input" && error && (
         <div className="agnt-fade-in" style={{ marginTop: 10, padding: 10, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
           {error}
         </div>
       )}
-
-      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <button
-          key={shakeKey}
-          type="submit"
-          className={shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"}
-          style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
-          disabled={submitting}
-        >
-          <Icon name="zap" size={12} /> {submitting ? "Creating…" : `Create stage ${nextStageNumber}`}
-        </button>
-        <button type="button" className="btn" onClick={() => setOpen(false)}>
-          Cancel
-        </button>
-      </div>
     </form>
   );
 }
@@ -1332,6 +1420,13 @@ function AddTasksCTA({ stage, refresh, live }) {
 
 function AddTasksForm({ stage, live, onCancel, onDone }) {
   const { token } = useAuth();
+  // AI-first flow (per owner request 2026-05-15):
+  //   phase=input    → owner writes a brief + top-up
+  //   phase=generating → mock /preview-tasks running
+  //   phase=edit     → tasks rendered in TasksEditor, owner can edit/add/delete
+  //   submit → /add-tasks → owner-payment intent → OwnerPaymentScreen
+  const [phase, setPhase] = useState("input");
+  const [brief, setBrief] = useState("");
   const [tasks, setTasks] = useState([]);
   const [deltaTon, setDeltaTon] = useState("1");          // human TON, → ×1e9
   const [deltaJetton, setDeltaJetton] = useState("0");    // whole jetton units
@@ -1341,6 +1436,8 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
   const [llmReasons, setLlmReasons] = useState(null);     // string[] | null
   const [confirmSkip, setConfirmSkip] = useState(false);
   const [intent, setIntent] = useState(null);
+  const [mockNotice, setMockNotice] = useState(false);
+  const approxCount = 3;
 
   const supplyLocked = !!live?.jetton_admin_locked_at;
   const existingTon = (Number(stage.ton_reward_pool_nano) || 0) / 1e9;
@@ -1351,6 +1448,34 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
   // tasks get the FULL delta_ton split by their weight_within_new.
   const deltaTonNum = Math.max(0, parseFloat(deltaTon) || 0);
   const newPoolTon = existingTon + deltaTonNum;
+
+  async function onGenerate() {
+    setErrorMsg("");
+    setLayer1Errors([]);
+    setLlmReasons(null);
+    if (brief.trim().length < 20) {
+      setErrorMsg("Brief too short — describe what should ship (min 20 chars).");
+      return;
+    }
+    if (deltaTonNum <= 0) {
+      setErrorMsg("Set the TON top-up above before generating — the planner uses it to balance weights.");
+      return;
+    }
+    setPhase("generating");
+    const res = await api.previewAddTasks(live.slug || live.id, stage.stage_number, {
+      brief: brief.trim(),
+      approx_count: approxCount,
+      delta_ton_nano: Math.round(deltaTonNum * 1e9),
+    }, token);
+    if (!res.ok) {
+      setPhase("input");
+      setErrorMsg(res.data?.error || `Could not draft tasks (HTTP ${res.status}).`);
+      return;
+    }
+    setMockNotice(!!res.data?.mock);
+    setTasks(res.data.tasks || []);
+    setPhase("edit");
+  }
 
   function buildBody(skipCoherence = false) {
     const body = {
@@ -1448,7 +1573,7 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
   return (
     <>
       <div style={{ padding: "16px 18px", borderTop: "1px solid var(--border)", background: "oklch(0.99 0.01 240)" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
             Add tasks to Stage {stage.stage_number}
           </div>
@@ -1457,50 +1582,10 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
           </span>
         </div>
 
-        <TasksEditor
-          tasks={tasks}
-          onChange={setTasks}
-          isStage
-          stageNumber={stage.stage_number}
-          weightField="weight_within_new"
-          newTaskFactory={({ tasks: ts, stageNumber }) => emptyAddTask({ tasks: ts, stageNumber })}
-        />
-
-        {llmReasons && (
-          <div style={{
-            marginTop: 10, padding: 12, borderRadius: 8,
-            background: "var(--danger-soft)", border: "1px solid var(--danger)",
-          }}>
-            <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--danger)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-              Coherence check rejected the batch
-            </div>
-            {llmReasons.map((r, i) => r ? (
-              <div key={i} style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.5, marginTop: 4 }}>
-                <strong>Task #{i + 1}</strong>: {r}
-              </div>
-            ) : null)}
-            <div style={{ marginTop: 8, fontSize: 11, color: "var(--fg-muted)" }}>
-              Edit the rejected tasks, or override the check if you're sure.
-            </div>
-          </div>
-        )}
-
-        {layer1Errors.length > 0 && (
-          <div style={{
-            marginTop: 10, padding: 12, borderRadius: 8,
-            background: "var(--danger-soft)", border: "1px solid var(--danger)",
-            fontSize: 12, color: "var(--danger)",
-          }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Fix these before retrying:</div>
-            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
-              {layer1Errors.map((e, i) => (
-                <li key={i}><code style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>{e.field}</code> — {e.message}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+        {/* Top-up + supply controls live above the brief — the LLM
+            uses delta_ton to balance weights, so the owner has to pick
+            it BEFORE generating. */}
+        <div className="agnt-resp-2col" style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <Field label="TON top-up" hint="Required > 0. Splits across the new tasks by weight.">
             <input
               type="number" min={0} step={0.001} value={deltaTon}
@@ -1521,44 +1606,150 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
           </Field>
         </div>
 
-        <div style={{ marginTop: 12 }}>
-          {existingPreview}
-        </div>
+        {phase === "input" && (
+          <>
+            <div style={{ marginTop: 12 }}>
+              <Field label="What ships in these new tasks?" hint="One paragraph is enough — the validator agent expands it.">
+                <textarea
+                  value={brief}
+                  onChange={(e) => setBrief(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="e.g. confetti animation on score increase + sound toggle"
+                  style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
+                />
+              </Field>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5, padding: "8px 12px", borderRadius: 6, background: "var(--bg)" }}>
+              ⓘ The validator agent drafts ~{approxCount} tasks from your brief. <strong>You'll be able to add, remove or fully rewrite any of them</strong> before paying.
+            </div>
+            {errorMsg && (
+              <div style={{ marginTop: 10, padding: 10, fontSize: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)" }}>
+                {errorMsg}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={onGenerate}
+                className="btn-primary-big"
+                style={{ background: "var(--accent)" }}
+              >
+                <Icon name="zap" size={12} /> Generate tasks
+              </button>
+              <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+            </div>
+          </>
+        )}
 
-        {errorMsg && (
-          <div style={{
-            marginTop: 10, padding: 10, fontSize: 12,
-            border: "1px solid var(--danger)", borderRadius: 6,
-            background: "var(--danger-soft)", color: "var(--danger)",
-          }}>
-            {errorMsg}
+        {phase === "generating" && (
+          <div style={{ marginTop: 14, padding: 14, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg)", display: "flex", alignItems: "center", gap: 10 }}>
+            <span className="live-dot" />
+            <span style={{ fontSize: 12.5, color: "var(--fg)" }}>Drafting tasks from your brief…</span>
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => submit(false)}
-            disabled={submitting || tasks.length === 0}
-            className="btn-primary-big"
-            style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
-          >
-            <Icon name="zap" size={12} /> {submitting ? "Validating…" : "Validate & Pay"}
-          </button>
-          {llmReasons && (
-            <button
-              type="button"
-              onClick={() => setConfirmSkip(true)}
-              className="btn"
-              style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
-            >
-              Submit anyway
-            </button>
-          )}
-          <button type="button" className="btn" onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
+        {phase === "edit" && (
+          <>
+            <div style={{ marginTop: 14, fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--fg-muted)", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 800 }}>
+              Draft tasks — edit, add or remove
+            </div>
+            {mockNotice && (
+              <div style={{
+                marginTop: 8, padding: "8px 12px", borderRadius: 6,
+                background: "oklch(0.96 0.05 80)", border: "1px solid oklch(0.85 0.08 80)",
+                color: "#b45309", fontSize: 11.5, lineHeight: 1.4,
+              }}>
+                ⚠ Mock draft — backend <code>/preview-tasks</code> endpoint not live yet. The real LLM will replace these placeholders; you'll still be able to edit before paying.
+              </div>
+            )}
+
+            <TasksEditor
+              tasks={tasks}
+              onChange={setTasks}
+              isStage
+              stageNumber={stage.stage_number}
+              weightField="weight_within_new"
+              newTaskFactory={({ tasks: ts, stageNumber }) => emptyAddTask({ tasks: ts, stageNumber })}
+            />
+
+            {llmReasons && (
+              <div style={{
+                marginTop: 10, padding: 12, borderRadius: 8,
+                background: "var(--danger-soft)", border: "1px solid var(--danger)",
+              }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--danger)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  Coherence check rejected the batch
+                </div>
+                {llmReasons.map((r, i) => r ? (
+                  <div key={i} style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.5, marginTop: 4 }}>
+                    <strong>Task #{i + 1}</strong>: {r}
+                  </div>
+                ) : null)}
+                <div style={{ marginTop: 8, fontSize: 11, color: "var(--fg-muted)" }}>
+                  Edit the rejected tasks, or override the check if you're sure.
+                </div>
+              </div>
+            )}
+
+            {layer1Errors.length > 0 && (
+              <div style={{
+                marginTop: 10, padding: 12, borderRadius: 8,
+                background: "var(--danger-soft)", border: "1px solid var(--danger)",
+                fontSize: 12, color: "var(--danger)",
+              }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Fix these before retrying:</div>
+                <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+                  {layer1Errors.map((e, i) => (
+                    <li key={i}><code style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>{e.field}</code> — {e.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div style={{ marginTop: 12 }}>
+              {existingPreview}
+            </div>
+
+            {errorMsg && (
+              <div style={{
+                marginTop: 10, padding: 10, fontSize: 12,
+                border: "1px solid var(--danger)", borderRadius: 6,
+                background: "var(--danger-soft)", color: "var(--danger)",
+              }}>
+                {errorMsg}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => submit(false)}
+                disabled={submitting || tasks.length === 0}
+                className="btn-primary-big"
+                style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
+              >
+                <Icon name="zap" size={12} /> {submitting ? "Validating…" : "Submit & Pay"}
+              </button>
+              {llmReasons && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmSkip(true)}
+                  className="btn"
+                  style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
+                >
+                  Submit anyway
+                </button>
+              )}
+              <button type="button" className="btn" onClick={() => { setPhase("input"); setTasks([]); }}>
+                ← Back to brief
+              </button>
+              <button type="button" className="btn" onClick={onCancel} style={{ marginLeft: "auto" }}>
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <ConfirmModal
