@@ -1046,7 +1046,10 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [moderationReason, setModerationReason] = useState("");
-  const [mockNoticeSeen, setMockNoticeSeen] = useState(false);
+  // Set when the LLM response came from Redis cache (cached_at on the
+  // payload). Lets us render a small "served from cache" hint above
+  // the draft so the owner knows a regenerate was free.
+  const [cachedAt, setCachedAt] = useState(null);
   const [shakeKey, setShakeKey] = useState(0);
   function triggerShake() { setShakeKey((n) => n + 1); }
 
@@ -1077,13 +1080,20 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
       setPhase("input");
       if (res.data?.rejection_reason) {
         setModerationReason(res.data.rejection_reason);
+      } else if (res.status === 429) {
+        const retry = Number(res.data?.retry_after_seconds);
+        setError(Number.isFinite(retry) && retry > 0
+          ? `Rate limit hit (10 drafts per hour). Try again in ${Math.ceil(retry / 60)} min.`
+          : "Rate limit hit (10 drafts per hour). Try again later.");
+      } else if (res.status === 502) {
+        setError("The LLM planner is unreachable right now. Try again in a moment.");
       } else {
         setError(res.data?.error || `Could not draft tasks (HTTP ${res.status}).`);
       }
       triggerShake();
       return;
     }
-    setMockNoticeSeen(!!res.data?.mock);
+    setCachedAt(res.data?.cached_at || null);
     setTasks(res.data.tasks || []);
     setPhase("edit");
   }
@@ -1241,13 +1251,14 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
           <SectionHeader hint={`${tasks.length} task${tasks.length === 1 ? "" : "s"} drafted · weights must sum to 1.00 · feel free to edit, add or remove`}>
             Draft tasks
           </SectionHeader>
-          {mockNoticeSeen && (
+          {cachedAt && (
             <div style={{
-              marginTop: 8, padding: "8px 12px", borderRadius: 6,
-              background: "oklch(0.96 0.05 80)", border: "1px solid oklch(0.85 0.08 80)",
-              color: "#b45309", fontSize: 11.5, lineHeight: 1.4,
+              marginTop: 8, fontSize: 10.5, color: "var(--fg-muted)",
+              fontFamily: "JetBrains Mono, monospace",
+              letterSpacing: "0.04em", textTransform: "uppercase",
+              display: "inline-flex", alignItems: "center", gap: 6,
             }}>
-              ⚠ Mock draft — backend <code>/preview-tasks</code> endpoint is not live yet. The real LLM will replace these placeholders; you'll still be able to edit before paying.
+              ⓘ served from cache — free regenerate
             </div>
           )}
           <TasksEditor
@@ -1422,7 +1433,7 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
   const { token } = useAuth();
   // AI-first flow (per owner request 2026-05-15):
   //   phase=input    → owner writes a brief + top-up
-  //   phase=generating → mock /preview-tasks running
+  //   phase=generating → /preview-tasks LLM call in flight
   //   phase=edit     → tasks rendered in TasksEditor, owner can edit/add/delete
   //   submit → /add-tasks → owner-payment intent → OwnerPaymentScreen
   const [phase, setPhase] = useState("input");
@@ -1436,7 +1447,7 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
   const [llmReasons, setLlmReasons] = useState(null);     // string[] | null
   const [confirmSkip, setConfirmSkip] = useState(false);
   const [intent, setIntent] = useState(null);
-  const [mockNotice, setMockNotice] = useState(false);
+  const [cachedAt, setCachedAt] = useState(null);
   const approxCount = 3;
 
   const supplyLocked = !!live?.jetton_admin_locked_at;
@@ -1469,10 +1480,21 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
     }, token);
     if (!res.ok) {
       setPhase("input");
-      setErrorMsg(res.data?.error || `Could not draft tasks (HTTP ${res.status}).`);
+      if (res.data?.rejection_reason) {
+        setErrorMsg(`Moderation rejected the brief: ${res.data.rejection_reason}`);
+      } else if (res.status === 429) {
+        const retry = Number(res.data?.retry_after_seconds);
+        setErrorMsg(Number.isFinite(retry) && retry > 0
+          ? `Rate limit hit (10 drafts per hour). Try again in ${Math.ceil(retry / 60)} min.`
+          : "Rate limit hit (10 drafts per hour). Try again later.");
+      } else if (res.status === 502) {
+        setErrorMsg("The LLM planner is unreachable right now. Try again in a moment.");
+      } else {
+        setErrorMsg(res.data?.error || `Could not draft tasks (HTTP ${res.status}).`);
+      }
       return;
     }
-    setMockNotice(!!res.data?.mock);
+    setCachedAt(res.data?.cached_at || null);
     setTasks(res.data.tasks || []);
     setPhase("edit");
   }
@@ -1654,13 +1676,14 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
             <div style={{ marginTop: 14, fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--fg-muted)", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 800 }}>
               Draft tasks — edit, add or remove
             </div>
-            {mockNotice && (
+            {cachedAt && (
               <div style={{
-                marginTop: 8, padding: "8px 12px", borderRadius: 6,
-                background: "oklch(0.96 0.05 80)", border: "1px solid oklch(0.85 0.08 80)",
-                color: "#b45309", fontSize: 11.5, lineHeight: 1.4,
+                marginTop: 4, fontSize: 10.5, color: "var(--fg-muted)",
+                fontFamily: "JetBrains Mono, monospace",
+                letterSpacing: "0.04em", textTransform: "uppercase",
+                display: "inline-flex", alignItems: "center", gap: 6,
               }}>
-                ⚠ Mock draft — backend <code>/preview-tasks</code> endpoint not live yet. The real LLM will replace these placeholders; you'll still be able to edit before paying.
+                ⓘ served from cache — free regenerate
               </div>
             )}
 
