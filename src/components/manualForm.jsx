@@ -5,8 +5,11 @@
 import { useState } from "react";
 import { Icon } from "./atoms.jsx";
 import {
+  BODY_MD_MAX,
+  BODY_MD_WARN,
   DIFFICULTIES,
   MAX_TASKS,
+  TITLE_MAX,
   budgetState,
   emptyTask,
 } from "../lib/manualPlan.js";
@@ -169,8 +172,14 @@ export const monoInputStyle = { ...inputStyle, fontFamily: "JetBrains Mono, mono
 //   amber  — valid but suboptimal (70%-99% of max)
 //   green  — exactly at max ± 0.001 (pulses)
 // ─────────────────────────────────────────────────────────────────────
-export function BudgetMeter({ tasks, isStage, ownerShareBps }) {
-  const { sum, max, ratio, tone, remaining } = budgetState({ tasks, isStage, ownerShareBps });
+export function BudgetMeter({ tasks, isStage, ownerShareBps, weightField = "weight" }) {
+  // Read the weight off whichever field the caller is using. The two
+  // shapes today are:
+  //   - manual project / manual stage → task.weight
+  //   - add-tasks-to-stage           → task.weight_within_new
+  // budgetState() doesn't know about field names — pre-normalise.
+  const normalised = (tasks || []).map((t) => ({ weight: Number(t[weightField]) || 0 }));
+  const { sum, max, ratio, tone, remaining } = budgetState({ tasks: normalised, isStage, ownerShareBps });
 
   const palette = {
     danger: { fg: "var(--danger)",     bg: "var(--danger-soft)", bar: "var(--danger)" },
@@ -245,9 +254,20 @@ export function BudgetMeter({ tasks, isStage, ownerShareBps }) {
 // title, body_md textarea (expands on focus), weight + difficulty +
 // tags + delete.
 // ─────────────────────────────────────────────────────────────────────
-function TaskRow({ task, index, onChange, onRemove }) {
+function TaskRow({ task, index, onChange, onRemove, weightField = "weight" }) {
   const [bodyFocused, setBodyFocused] = useState(false);
+  // Per-row "advanced" toggle. Slug / difficulty / tags live here —
+  // most owners never touch them (slug auto-fills, difficulty is a
+  // hint, tags are metadata). Auto-expand when any of those fields
+  // is non-default so re-opening an edited task doesn't hide the
+  // pre-existing values.
+  const hasNonDefaultAdvanced =
+    (task.slug && !/^S?\d*T\d{2}$/.test(task.slug)) ||
+    (task.difficulty && task.difficulty !== "medium") ||
+    (task.tags && task.tags.length > 0);
+  const [showAdv, setShowAdv] = useState(hasNonDefaultAdvanced);
   const tagsInput = (task.tags || []).join(", ");
+  const weightVal = Number.isFinite(task[weightField]) ? task[weightField] : 0;
 
   function patch(p) { onChange({ ...task, ...p }); }
 
@@ -262,26 +282,13 @@ function TaskRow({ task, index, onChange, onRemove }) {
         display: "flex", flexDirection: "column", gap: 8,
       }}
     >
-      <div className="agnt-resp-task-head" style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
-        <input
-          value={task.slug}
-          onChange={(e) => patch({ slug: e.target.value.toUpperCase().replace(/\s+/g, "") })}
-          placeholder="T01"
-          aria-label={`Task ${index + 1} slug`}
-          style={{
-            ...monoInputStyle,
-            padding: "7px 10px",
-            fontWeight: 800,
-            fontSize: 12,
-            textAlign: "center",
-            background: "var(--bg-soft)",
-          }}
-        />
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
         <input
           value={task.title}
           onChange={(e) => patch({ title: e.target.value })}
           placeholder="What ships in this task?"
           aria-label={`Task ${index + 1} title`}
+          maxLength={TITLE_MAX}
           style={{
             ...inputStyle,
             padding: "7px 12px",
@@ -311,32 +318,56 @@ function TaskRow({ task, index, onChange, onRemove }) {
         </button>
       </div>
 
-      <textarea
-        value={task.body_md}
-        onChange={(e) => patch({ body_md: e.target.value })}
-        onFocus={() => setBodyFocused(true)}
-        onBlur={() => setBodyFocused(false)}
-        placeholder="## Acceptance&#10;- testable bullet&#10;- testable bullet"
-        rows={bodyFocused || task.body_md.length > 60 ? 5 : 2}
-        style={{
-          ...inputStyle,
-          fontFamily: "JetBrains Mono, monospace",
-          fontSize: 12,
-          lineHeight: 1.55,
-          resize: "vertical",
-          transition: "min-height 0.18s ease",
-        }}
-      />
+      <div style={{ position: "relative" }}>
+        <textarea
+          value={task.body_md}
+          onChange={(e) => patch({ body_md: e.target.value })}
+          onFocus={() => setBodyFocused(true)}
+          onBlur={() => setBodyFocused(false)}
+          placeholder="## Acceptance&#10;- testable bullet&#10;- testable bullet"
+          rows={bodyFocused || task.body_md.length > 60 ? 5 : 2}
+          maxLength={BODY_MD_MAX}
+          style={{
+            ...inputStyle,
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 12,
+            lineHeight: 1.55,
+            resize: "vertical",
+            transition: "min-height 0.18s ease",
+            paddingBottom: 22, // leave room for the absolute-positioned counter
+          }}
+        />
+        {(bodyFocused || task.body_md.length > BODY_MD_WARN) && (
+          <span
+            style={{
+              position: "absolute", right: 10, bottom: 8,
+              fontFamily: "JetBrains Mono, monospace", fontSize: 10,
+              color: task.body_md.length >= BODY_MD_MAX ? "var(--danger)"
+                : task.body_md.length > BODY_MD_WARN ? "#b45309"
+                : "var(--fg-muted)",
+              background: "var(--bg)",
+              padding: "1px 6px",
+              borderRadius: 4,
+              pointerEvents: "none",
+              fontWeight: 700,
+            }}
+          >
+            {task.body_md.length.toLocaleString()} / {(BODY_MD_MAX / 1024).toFixed(0)}k
+          </span>
+        )}
+      </div>
 
-      <div className="agnt-resp-task-meta" style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", gap: 10, alignItems: "center" }}>
+      {/* Default row: just weight + advanced toggle. Stays on a single
+          line on phones thanks to the wrap. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <input
             type="number"
             min={0}
             max={1}
             step={0.05}
-            value={Number.isFinite(task.weight) ? task.weight : 0}
-            onChange={(e) => patch({ weight: clamp01(parseFloat(e.target.value)) })}
+            value={weightVal}
+            onChange={(e) => patch({ [weightField]: clamp01(parseFloat(e.target.value)) })}
             aria-label={`Task ${index + 1} weight`}
             style={{
               ...monoInputStyle,
@@ -344,50 +375,105 @@ function TaskRow({ task, index, onChange, onRemove }) {
               fontVariantNumeric: "tabular-nums",
               fontWeight: 700,
               textAlign: "right",
+              width: 88,
             }}
           />
           <span style={{ fontSize: 10.5, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>weight</span>
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {DIFFICULTIES.map((d) => {
-            const active = task.difficulty === d;
-            return (
-              <button
-                key={d}
-                type="button"
-                onClick={() => patch({ difficulty: d })}
-                style={{
-                  flex: 1,
-                  height: 30,
-                  padding: "0 8px",
-                  border: `1px solid ${active ? "var(--fg)" : "var(--border)"}`,
-                  background: active ? "var(--fg)" : "var(--bg)",
-                  color:      active ? "var(--bg)" : "var(--fg-muted)",
-                  borderRadius: 6,
-                  fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, fontWeight: 800,
-                  textTransform: "uppercase", letterSpacing: "0.05em",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                {d}
-              </button>
-            );
-          })}
-        </div>
-        <input
-          value={tagsInput}
-          onChange={(e) => patch({ tags: parseTags(e.target.value) })}
-          placeholder="tags: frontend, infra"
-          aria-label={`Task ${index + 1} tags`}
+
+        {/* Slug shows as a compact mono pill once non-default OR when
+            the row is expanded. Keeps the auto-generated slug visible
+            but doesn't beg for attention. */}
+        {task.slug && (
+          <span
+            style={{
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em",
+              padding: "3px 8px", borderRadius: 4,
+              background: "var(--bg-soft)", color: "var(--fg-muted)",
+              border: "1px solid var(--border)",
+            }}
+            title="Task slug — referenced in PR titles. Edit under Advanced."
+          >
+            {task.slug}
+          </span>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setShowAdv((v) => !v)}
           style={{
-            ...inputStyle,
-            padding: "6px 10px",
-            fontSize: 11.5,
+            marginLeft: "auto",
+            padding: "4px 8px", border: "none", background: "transparent",
             fontFamily: "JetBrains Mono, monospace",
+            fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+            color: "var(--fg-muted)", textTransform: "uppercase",
+            cursor: "pointer",
           }}
-        />
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--fg)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-muted)"; }}
+        >
+          {showAdv ? "▾ Hide advanced" : "▸ Advanced (slug · difficulty · tags)"}
+        </button>
       </div>
+
+      {showAdv && (
+        <div className="agnt-resp-task-meta agnt-fade-in" style={{ display: "grid", gridTemplateColumns: "150px 1fr 1fr", gap: 10, alignItems: "center" }}>
+          <input
+            value={task.slug || ""}
+            onChange={(e) => patch({ slug: e.target.value.toUpperCase().replace(/\s+/g, "") })}
+            placeholder="T01"
+            aria-label={`Task ${index + 1} slug`}
+            style={{
+              ...monoInputStyle,
+              padding: "6px 10px",
+              fontWeight: 800,
+              fontSize: 11,
+              textAlign: "center",
+              background: "var(--bg-soft)",
+            }}
+          />
+          <div style={{ display: "flex", gap: 4 }}>
+            {DIFFICULTIES.map((d) => {
+              const active = task.difficulty === d;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => patch({ difficulty: d })}
+                  style={{
+                    flex: 1,
+                    height: 28,
+                    padding: "0 6px",
+                    border: `1px solid ${active ? "var(--fg)" : "var(--border)"}`,
+                    background: active ? "var(--fg)" : "var(--bg)",
+                    color:      active ? "var(--bg)" : "var(--fg-muted)",
+                    borderRadius: 6,
+                    fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
+                    textTransform: "uppercase", letterSpacing: "0.05em",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+          <input
+            value={tagsInput}
+            onChange={(e) => patch({ tags: parseTags(e.target.value) })}
+            placeholder="tags: frontend, infra"
+            aria-label={`Task ${index + 1} tags`}
+            style={{
+              ...inputStyle,
+              padding: "6px 10px",
+              fontSize: 11,
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -415,10 +501,23 @@ function clamp01(n) {
 //   ownerShareBps — only used for project mode
 //   stageNumber   — only used for stage mode to pick slug prefix
 // ─────────────────────────────────────────────────────────────────────
-export function TasksEditor({ tasks, onChange, isStage, ownerShareBps, stageNumber }) {
+export function TasksEditor({
+  tasks, onChange,
+  isStage, ownerShareBps, stageNumber,
+  // `weightField` lets the add-tasks form drive the same component
+  // off a different shape (`weight_within_new`). For project/stage
+  // manual forms it defaults to `weight`.
+  weightField = "weight",
+  // `newTaskFactory` overrides the default emptyTask shape — used by
+  // the add-tasks form to mint rows with `weight_within_new` zeroed.
+  newTaskFactory,
+}) {
   function add() {
     if (tasks.length >= MAX_TASKS) return;
-    onChange([...tasks, emptyTask({ tasks, stageNumber })]);
+    const next = newTaskFactory
+      ? newTaskFactory({ tasks, stageNumber })
+      : emptyTask({ tasks, stageNumber });
+    onChange([...tasks, next]);
   }
   function patchAt(i, next) {
     onChange(tasks.map((t, idx) => (idx === i ? next : t)));
@@ -433,7 +532,7 @@ export function TasksEditor({ tasks, onChange, isStage, ownerShareBps, stageNumb
     const max = isStage ? 1.0 : (1 - (Number(ownerShareBps ?? 1000) || 0) / 10_000);
     if (tasks.length === 0) return;
     const even = Number((max / tasks.length).toFixed(3));
-    onChange(tasks.map((t) => ({ ...t, weight: even })));
+    onChange(tasks.map((t) => ({ ...t, [weightField]: even })));
   }
 
   return (
@@ -453,6 +552,7 @@ export function TasksEditor({ tasks, onChange, isStage, ownerShareBps, stageNumb
             index={i}
             onChange={(next) => patchAt(i, next)}
             onRemove={() => removeAt(i)}
+            weightField={weightField}
           />
         ))
       )}
@@ -511,7 +611,12 @@ export function TasksEditor({ tasks, onChange, isStage, ownerShareBps, stageNumb
         )}
       </div>
 
-      <BudgetMeter tasks={tasks} isStage={isStage} ownerShareBps={ownerShareBps} />
+      <BudgetMeter
+        tasks={tasks}
+        isStage={isStage}
+        ownerShareBps={ownerShareBps}
+        weightField={weightField}
+      />
     </div>
   );
 }

@@ -64,12 +64,18 @@ export default function Agent() {
   const [agent, setAgent] = useState(null);
   const [agentLoading, setAgentLoading] = useState(true);
   const [allProjects, setAllProjects] = useState(null);
+  // Payout summary lifted up to the page so WalletBindCard can elevate
+  // its copy when the viewer has earnings waiting for a wallet bind.
+  // PayoutsPanel still fetches its own data — minor double-fetch, but
+  // both views can render independently and the endpoint is cheap.
+  const [payoutSummary, setPayoutSummary] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     setAgent(null);
     setAgentLoading(true);
     setAllProjects(null);
+    setPayoutSummary(null);
 
     api.agent(handle).then((res) => {
       if (cancelled) return;
@@ -80,6 +86,10 @@ export default function Agent() {
       api.listProjects({ limit: 100 }).then((r) => {
         if (cancelled) return;
         setAllProjects(r?.projects || []);
+      });
+      api.agentPayoutsSummary(a.id, { weeks: 1 }).then((s) => {
+        if (cancelled) return;
+        setPayoutSummary(s || null);
       });
     });
     return () => { cancelled = true; };
@@ -207,6 +217,7 @@ export default function Agent() {
             viewer={viewer}
             token={token}
             onBound={refreshAuth}
+            payoutSummary={payoutSummary}
           />
         )}
 
@@ -311,7 +322,7 @@ function shortAddr(addr) {
 //      we disconnect first so the wallet signs a fresh proof for THIS payload.)
 //   3. When the wallet returns with a tonProof envelope, POST it to /wallet/bind.
 //   4. On success, refresh the cached /me so the bound address renders.
-function WalletBindCard({ agent, viewer, token, onBound }) {
+function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonWallet();
   const [phase, setPhase] = useState("idle"); // idle | requesting | signing | binding | bound | error
@@ -490,21 +501,45 @@ function WalletBindCard({ agent, viewer, token, onBound }) {
     error: "Try again",
   };
 
+  // Auto-backfill on bind (commit 815e725 on the API): if the agent has
+  // earnings sitting in pending OR lifetime ledger rows with no wallet
+  // bound, those rows settle on the next daily payout cron tick (00:30
+  // UTC) the moment the wallet lands. Elevate the copy when that's the
+  // case so the user understands binding is unlocking real money, not a
+  // future-only setup step.
+  const pendingTonNano = Number(payoutSummary?.pending?.ton_nano) || 0;
+  const lifetimeCount  = Number(payoutSummary?.lifetime?.payout_count) || 0;
+  const pendingCount   = Number(payoutSummary?.pending?.payout_count) || 0;
+  const hasStuckMoney  = !boundAddress && (pendingTonNano > 0 || lifetimeCount > 0 || pendingCount > 0);
+  const stuckTon = (pendingTonNano / 1e9).toLocaleString(undefined, { maximumFractionDigits: 3 });
+
   return (
     <div style={{
       margin: "0 0 24px",
       padding: "16px 18px",
-      border: "1px dashed var(--border-strong)",
+      border: hasStuckMoney ? "1px solid oklch(0.75 0.12 80)" : "1px dashed var(--border-strong)",
       borderRadius: 10,
-      background: "var(--bg-soft)",
+      background: hasStuckMoney ? "oklch(0.97 0.04 80)" : "var(--bg-soft)",
     }}>
       <div className="agnt-resp-wallet-row" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--fg-muted)", textTransform: "uppercase" }}>
-            {tcConnected ? "Verify TON wallet" : "Bind a TON wallet"}
+          <div style={{
+            fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
+            color: hasStuckMoney ? "#b45309" : "var(--fg-muted)",
+            textTransform: "uppercase",
+          }}>
+            {hasStuckMoney
+              ? "⚠ Earnings waiting — bind a wallet"
+              : (tcConnected ? "Verify TON wallet" : "Bind a TON wallet")}
           </div>
           <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, maxWidth: "60ch" }}>
-            {tcConnected
+            {hasStuckMoney ? (
+              <>
+                You have {pendingTonNano > 0 ? <strong>{stuckTon} TON</strong> : null}
+                {pendingTonNano > 0 && pendingCount + lifetimeCount > 0 ? " plus " : null}
+                {pendingCount + lifetimeCount > 0 ? <strong>{pendingCount + lifetimeCount} payout{(pendingCount + lifetimeCount) === 1 ? "" : "s"}</strong> : null} from solved tasks waiting for a wallet. Bind one and the platform will settle them on the next payout cycle (daily, 00:30 UTC).
+              </>
+            ) : tcConnected
               ? "Your wallet is connected but not yet verified on this agent. We'll ask it to sign a one-shot proof — your wallet will briefly reconnect."
               : "Connecting a wallet proves you own this address and lets the platform credit reward-pool payouts and owner-share tokens to it."}
           </div>

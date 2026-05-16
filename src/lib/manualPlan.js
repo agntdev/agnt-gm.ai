@@ -5,6 +5,14 @@
 
 export const DIFFICULTIES = ["easy", "medium", "hard"];
 export const MAX_TASKS = 50;
+// Universal cap on task body_md, matched server-side across manual-project
+// creation, manual-stage creation and add-tasks. 16384 chars is the
+// backend's hard ceiling — we cap input here so users don't lose work on
+// a long paste only to get a 400 from the API.
+export const BODY_MD_MAX = 16384;
+export const BODY_MD_WARN = Math.floor(BODY_MD_MAX * 0.8);
+export const BODY_MD_MIN = 50;
+export const TITLE_MAX = 200;
 export const SYMBOL_RE = /^[A-Z0-9]{3,10}$/;
 export const SUPPLY_MIN = 1_000_000;
 export const SUPPLY_MAX = 1_000_000_000_000;
@@ -126,4 +134,78 @@ export function budgetState({ tasks, isStage, ownerShareBps }) {
   if (Math.abs(ratio - 1) <= 0.001) tone = "ok";
   if (ratio > 1.001) tone = "over";
   return { sum, max, ratio, tone, remaining: Math.max(0, max - sum) };
+}
+
+// ───────────────────────── add-tasks validation ─────────────────────────
+// Mirrors the Layer-1 server validation for POST /add-tasks. Same shape
+// as validateManualPlan but stricter: weights must sum to EXACTLY 1.0
+// (these split the NEW deposit, not the total pool), and the per-task
+// (0.01, 0.85) range only applies when there's more than one task.
+//
+// `existingSlugs` is a Set of slugs already on the stage — duplicates
+// against existing tasks must also fail client-side.
+export function validateAddTasks(tasks, { existingSlugs = new Set(), deltaTonNano = 0, deltaJettonUnits = 0, supplyLocked = false } = {}) {
+  const errs = [];
+
+  if (!(Number(deltaTonNano) > 0)) errs.push("TON top-up is required (delta_ton_nano > 0).");
+  if (Number(deltaJettonUnits) > 0 && supplyLocked) {
+    errs.push("Supply is frozen — set jetton mint to 0.");
+  }
+  if (Number(deltaJettonUnits) < 0) errs.push("Jetton mint cannot be negative.");
+
+  if (!tasks?.length) errs.push("Add at least one task.");
+  if (tasks?.length > MAX_TASKS) errs.push(`Too many tasks (max ${MAX_TASKS}).`);
+
+  const slugs = new Set();
+  let sum = 0;
+  const multi = tasks.length > 1;
+  tasks.forEach((t, i) => {
+    const slug = String(t.slug || "").trim();
+    if (slug) {
+      if (!/^[A-Za-z0-9_-]+$/.test(slug)) errs.push(`Task #${i + 1}: slug must match [A-Za-z0-9_-].`);
+      if (slug.length > 20) errs.push(`Task #${i + 1}: slug too long (max 20 chars).`);
+      const slugU = slug.toUpperCase();
+      if (slugs.has(slugU)) errs.push(`Task #${i + 1}: duplicate slug "${slug}".`);
+      if (existingSlugs.has(slugU)) errs.push(`Task #${i + 1}: slug "${slug}" collides with an existing task in this stage.`);
+      slugs.add(slugU);
+    }
+
+    const title = String(t.title || "").trim();
+    if (!title || title.length < 5) errs.push(`Task #${i + 1}: title too short (min 5 chars).`);
+    if (title.length > TITLE_MAX) errs.push(`Task #${i + 1}: title too long (max ${TITLE_MAX}).`);
+
+    const body = String(t.body_md || "").trim();
+    if (body.length < BODY_MD_MIN) errs.push(`Task #${i + 1}: body too short (min ${BODY_MD_MIN} chars).`);
+    if (body.length > BODY_MD_MAX) errs.push(`Task #${i + 1}: body too long (max ${BODY_MD_MAX}).`);
+
+    if (t.difficulty && !["trivial", ...DIFFICULTIES].includes(t.difficulty)) {
+      errs.push(`Task #${i + 1}: difficulty must be one of trivial|easy|medium|hard.`);
+    }
+
+    const w = Number(t.weight_within_new);
+    if (!Number.isFinite(w)) errs.push(`Task #${i + 1}: weight required.`);
+    else if (multi && w <= 0.01) errs.push(`Task #${i + 1}: weight too small (need > 0.01 when adding multiple tasks).`);
+    else if (multi && w >= 0.85) errs.push(`Task #${i + 1}: weight too large (need < 0.85 — split into multiple smaller tasks).`);
+    else if (!multi && (w <= 0 || w > 1)) errs.push(`Task #${i + 1}: weight must be (0, 1].`);
+    sum += w || 0;
+  });
+
+  if (tasks?.length && Math.abs(sum - 1.0) > 0.001) {
+    errs.push(`Weight sum is ${sum.toFixed(3)} — must equal 1.00 (weights split the NEW deposit, not the existing pool).`);
+  }
+
+  return errs;
+}
+
+// Default for a new "add tasks" row: blank slug (server auto-fills),
+// title, body, default weight that balances out the rest of the batch.
+export function emptyAddTask({ tasks = [], stageNumber } = {}) {
+  return {
+    slug: nextSlug(tasks, stageNumber),
+    title: "",
+    body_md: "",
+    difficulty: "medium",
+    weight_within_new: 0,
+    tags: [],
+  };
 }

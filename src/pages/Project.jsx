@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { Icon } from "../components/atoms.jsx";
+import ConfirmModal from "../components/ConfirmModal.jsx";
 import {
   Field,
   ModeSwitcher,
@@ -18,8 +19,9 @@ import {
   WeeklyBars,
 } from "../components/payoutWidgets.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
+import OwnerPaymentScreen from "../components/ownerPayment.jsx";
 import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
-import { validateManualPlan } from "../lib/manualPlan.js";
+import { emptyAddTask, validateAddTasks, validateManualPlan } from "../lib/manualPlan.js";
 import { useAuth } from "../lib/auth.js";
 
 export default function Project() {
@@ -106,7 +108,7 @@ export default function Project() {
               </div>
 
               <div>
-                <TokenRail live={live} />
+                <TokenRail live={live} isOwner={isOwner} refresh={refresh} />
               </div>
             </div>
           )}
@@ -447,7 +449,7 @@ function shortAddr(addr) {
   return `${addr.slice(0, 6)}…${addr.slice(-6)}`;
 }
 
-function TokenRail({ live }) {
+function TokenRail({ live, isOwner, refresh }) {
   if (!live) return null;
 
   const tonPool = nanoToTon(live.ton_reward_pool_nano) ?? 0;
@@ -493,6 +495,8 @@ function TokenRail({ live }) {
         </div>
       )}
 
+      <SupplyLockRow live={live} isOwner={isOwner} refresh={refresh} />
+
       <div className="fact-row">
         <span className="l">Jetton minter</span>
         <span className="v" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>
@@ -519,6 +523,100 @@ function TokenRail({ live }) {
         </span>
       </div>
     </div>
+  );
+}
+
+// SupplyLockRow — "Supply: 🔓 mintable / 🔒 frozen" with an inline
+// owner-only "Lock forever" CTA. One-way action, ConfirmModal gate.
+function SupplyLockRow({ live, isOwner, refresh }) {
+  const { token } = useAuth();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const locked = !!live.jetton_admin_locked_at;
+
+  async function onConfirm() {
+    if (!token) { setError("Sign in as the project owner."); return; }
+    setPending(true);
+    setError("");
+    const res = await api.lockJettonAdmin(live.slug || live.id, token);
+    setPending(false);
+    if (!res.ok) {
+      setError(res.data?.error || `Failed (HTTP ${res.status}).`);
+      return;
+    }
+    setConfirmOpen(false);
+    refresh?.();
+  }
+
+  return (
+    <>
+      <div className="fact-row">
+        <span className="l">Supply</span>
+        <span className="v" style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span
+            title={locked
+              ? `Admin renounced ${new Date(live.jetton_admin_locked_at).toLocaleString()} — no further minting possible.`
+              : "Admin slot is still held by the platform — new tasks can mint more supply."}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "2px 8px", borderRadius: 999,
+              background: locked ? "var(--bg-tint)" : "var(--accent-soft)",
+              color:      locked ? "var(--fg)"      : "var(--accent-fg)",
+              border: locked ? "1px solid var(--border-strong)" : "1px solid var(--accent)",
+              fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
+              textTransform: "uppercase", letterSpacing: "0.05em",
+            }}
+          >
+            {locked ? "🔒 frozen" : "🔓 mintable"}
+          </span>
+          {isOwner && !locked && (
+            <button
+              type="button"
+              onClick={() => { setError(""); setConfirmOpen(true); }}
+              title="Renounce admin slot — one-way action."
+              style={{
+                padding: "2px 8px", borderRadius: 4,
+                border: "1px solid var(--border)",
+                background: "var(--bg)", color: "var(--fg-muted)",
+                fontSize: 10, fontWeight: 800, letterSpacing: "0.05em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                fontFamily: "JetBrains Mono, monospace",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--danger)"; e.currentTarget.style.borderColor = "var(--danger)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-muted)"; e.currentTarget.style.borderColor = "var(--border)"; }}
+            >
+              Lock forever
+            </button>
+          )}
+        </span>
+      </div>
+      {error && (
+        <div className="fact-row" style={{ padding: "6px 16px" }}>
+          <span className="l" />
+          <span style={{ fontSize: 11, color: "var(--danger)" }}>{error}</span>
+        </div>
+      )}
+      <ConfirmModal
+        open={confirmOpen}
+        danger
+        title="Lock token supply forever?"
+        confirmLabel="Yes, lock supply forever"
+        cancelLabel="Cancel"
+        loading={pending}
+        onCancel={() => { if (!pending) setConfirmOpen(false); }}
+        onConfirm={onConfirm}
+        body={
+          <>
+            After this fires you will <strong>not</strong> be able to mint
+            any more <code style={{ fontFamily: "JetBrains Mono, monospace" }}>${live.token_symbol}</code>
+            {" "}for this project, including in future stage activations or
+            add-tasks calls. <strong>This is a one-way action.</strong>
+          </>
+        }
+      />
+    </>
   );
 }
 
@@ -705,6 +803,17 @@ function StagesSection({ live, isOwner, refresh }) {
     return () => clearTimeout(t);
   }, [stages]);
 
+  // BuilderStageCloser worker flips active → closed automatically
+  // every 10 min once all tasks merged + payouts settled. The owner
+  // may be looking at an `active` stage when that flip happens —
+  // refetch when the tab regains focus so the UI doesn't show stale
+  // status (and the Add-tasks CTA doesn't dangle on a closed stage).
+  useEffect(() => {
+    const onFocus = () => reloadStages();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
   if (loading || stages == null) return null;
   if (stages.length === 0) return null;
 
@@ -730,6 +839,7 @@ function StagesSection({ live, isOwner, refresh }) {
             stage={s}
             isLast={i === stages.length - 1}
             isOwner={isOwner}
+            live={live}
             refresh={() => { reloadStages(); refresh(); }}
           />
         ))}
@@ -746,7 +856,7 @@ function StagesSection({ live, isOwner, refresh }) {
   );
 }
 
-function StageCard({ stage, isLast, isOwner, refresh }) {
+function StageCard({ stage, isLast, isOwner, refresh, live }) {
   const cfg = STAGE_STATUS[stage.status] || { label: stage.status, tone: "muted" };
   const tonPool = (Number(stage.ton_reward_pool_nano) || 0) / 1e9;
   const totalTasks = stage.tasks_count ?? 0;
@@ -833,6 +943,10 @@ function StageCard({ stage, isLast, isOwner, refresh }) {
       {stage.status === "pending" && isOwner && (
         <StageFundCTA stage={stage} refresh={refresh} />
       )}
+
+      {stage.status === "active" && isOwner && (
+        <AddTasksCTA stage={stage} refresh={refresh} live={live} />
+      )}
     </div>
   );
 }
@@ -908,19 +1022,81 @@ function StageFundCTA({ stage, refresh }) {
   );
 }
 
+// CreateStageForm — unified AI-first flow (per owner request 2026-05-15):
+//   1. Owner enters a brief + pool + mint.
+//   2. Clicks "Generate tasks" → server-side LLM drafts a task list.
+//   3. Tasks appear in TasksEditor; owner edits / adds / removes freely.
+//   4. Clicks "Submit & pay" → POST /stages with the (edited) manual_tasks
+//      list → returns pending stage + intent → owner pays.
+// The old "I'll write tasks" mode-switcher is gone — flexibility now
+// comes from editing the AI draft, including deleting everything and
+// writing from scratch.
 function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState("ai"); // "ai" | "manual"
   const [pool, setPool] = useState("5");
   const [mint, setMint] = useState("0");
   const [brief, setBrief] = useState("");
   const [tasks, setTasks] = useState([]);
+  const [phase, setPhase] = useState("input"); // input | generating | edit
+  // approx_count is a hint to the LLM; ~3 tasks per stage is the sweet
+  // spot for a single round of contributions. Hardcoded for now; can
+  // be exposed as a number stepper later if owners ask.
+  const approxCount = 3;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [moderationReason, setModerationReason] = useState("");
+  // Set when the LLM response came from Redis cache (cached_at on the
+  // payload). Lets us render a small "served from cache" hint above
+  // the draft so the owner knows a regenerate was free.
+  const [cachedAt, setCachedAt] = useState(null);
   const [shakeKey, setShakeKey] = useState(0);
   function triggerShake() { setShakeKey((n) => n + 1); }
+
+  async function onGenerate() {
+    setError("");
+    setModerationReason("");
+    if (brief.trim().length < 20) {
+      setError("Brief too short — describe what should ship (min 20 chars).");
+      triggerShake();
+      return;
+    }
+    const poolNano = Math.round((parseFloat(pool) || 0) * 1e9);
+    if (poolNano <= 0) {
+      setError("Set the reward pool above before generating tasks — the planner uses it to balance the weights.");
+      triggerShake();
+      return;
+    }
+
+    setPhase("generating");
+    const res = await api.previewNewStageTasks(projectIdOrSlug, {
+      brief: brief.trim(),
+      approx_count: approxCount,
+      stage_ton_nano: poolNano,
+      nextStageNumber,
+    }, token);
+
+    if (!res.ok) {
+      setPhase("input");
+      if (res.data?.rejection_reason) {
+        setModerationReason(res.data.rejection_reason);
+      } else if (res.status === 429) {
+        const retry = Number(res.data?.retry_after_seconds);
+        setError(Number.isFinite(retry) && retry > 0
+          ? `Rate limit hit (10 drafts per hour). Try again in ${Math.ceil(retry / 60)} min.`
+          : "Rate limit hit (10 drafts per hour). Try again later.");
+      } else if (res.status === 502) {
+        setError("The LLM planner is unreachable right now. Try again in a moment.");
+      } else {
+        setError(res.data?.error || `Could not draft tasks (HTTP ${res.status}).`);
+      }
+      triggerShake();
+      return;
+    }
+    setCachedAt(res.data?.cached_at || null);
+    setTasks(res.data.tasks || []);
+    setPhase("edit");
+  }
 
   async function onSubmit(e) {
     e?.preventDefault();
@@ -931,34 +1107,27 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
     const mintAmount = Math.round((parseFloat(mint) || 0) * 1e9);
     if (!token) { setError("Sign in as the project owner first."); triggerShake(); return; }
 
+    const errs = validateManualPlan({ tasks }, "stage");
+    if (errs.length > 0) { setError(errs[0]); triggerShake(); return; }
+
     const body = {
       ton_reward_pool_nano: poolNano,
       jetton_mint_amount: mintAmount,
-    };
-    if (mode === "manual") {
-      const errs = validateManualPlan({ tasks }, "stage");
-      if (errs.length > 0) { setError(errs[0]); triggerShake(); return; }
-      body.manual_tasks = tasks.map((t) => ({
-        slug: t.slug.trim().toUpperCase(),
+      manual_tasks: tasks.map((t) => ({
+        slug: (t.slug || "").trim().toUpperCase() || undefined,
         title: t.title.trim(),
         body_md: t.body_md,
         difficulty: t.difficulty || undefined,
         weight: Number(t.weight),
         tags: (t.tags && t.tags.length) ? t.tags : undefined,
-      }));
-    } else {
-      if (!brief.trim()) { setError("Tell agents what ships in this stage."); triggerShake(); return; }
-      body.plan_brief = brief.trim();
-    }
+      })),
+    };
 
     setSubmitting(true);
     const res = await api.createProjectStage(projectIdOrSlug, body, token);
     setSubmitting(false);
     if (res.status === 401 || res.status === 403) { setError("Only the project owner can start a new stage."); triggerShake(); return; }
     if (res.status === 409) {
-      // The API surfaces `previous_stage` + `previous_status` for the
-      // "stage N is still open" path. Show them so the owner knows which
-      // stage is blocking and what state it's currently in.
       const prevN = res.data?.previous_stage;
       const prevS = res.data?.previous_status;
       const hint  = prevN != null && prevS
@@ -972,9 +1141,11 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
       setModerationReason(res.data.rejection_reason); triggerShake(); return;
     }
     if (!res.ok) { setError(res.data?.error || `Request failed (HTTP ${res.status}).`); triggerShake(); return; }
+
     setOpen(false);
     setBrief("");
     setTasks([]);
+    setPhase("input");
     onCreated?.();
   }
 
@@ -1002,29 +1173,19 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
         background: "var(--bg-soft)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
         <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
           Start stage {nextStageNumber}
         </div>
-        <ModeSwitcher
-          value={mode}
-          onChange={(m) => { setMode(m); setError(""); setModerationReason(""); }}
-          options={[
-            { value: "ai",     label: "AI from brief",  icon: "zap" },
-            { value: "manual", label: "I'll write tasks", icon: "layers" },
-          ]}
-        />
+        <span style={{ fontSize: 10.5, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+          AI drafts → you edit → pay
+        </span>
       </div>
-      <p style={{ margin: "2px 0 14px", fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5, maxWidth: "70ch" }}>
-        {mode === "ai"
-          ? <>Describe what ships and the validator agent generates the task list once your deposit confirms.</>
-          : <>Author each task yourself. The full mint goes to agents — weights must sum to <strong>1.00</strong>.</>}
-      </p>
 
       <RejectionBanner reason={moderationReason} onDismiss={() => setModerationReason("")} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-        <Field label="Reward pool (TON)" hint="Funded after creation; auto-confirms via TonConnect.">
+      <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+        <Field label="Reward pool (TON)" hint="Auto-confirms via TonConnect.">
           <input
             type="number" min={0} step={0.001} value={pool}
             onChange={(e) => setPool(e.target.value)}
@@ -1040,52 +1201,104 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
         </Field>
       </div>
 
-      {mode === "ai" ? (
-        <div style={{ marginTop: 12 }}>
-          <Field label="What ships in this stage?" hint="One paragraph is enough — the planner expands it into tasks.">
-            <textarea
-              value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-              rows={3}
-              placeholder="e.g. dark mode, mobile sheet, replace REST polling with SSE"
-              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
-            />
-          </Field>
+      <div style={{ marginTop: 12 }}>
+        <Field
+          label="What ships in this stage?"
+          hint="One paragraph is enough — the validator agent expands it into tasks."
+        >
+          <textarea
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+            rows={3}
+            maxLength={2000}
+            placeholder="e.g. dark mode toggle, mobile sheet, replace REST polling with SSE"
+            style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
+          />
+        </Field>
+      </div>
+
+      <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5, padding: "8px 12px", borderRadius: 6, background: "var(--bg)" }}>
+        ⓘ The validator agent drafts ~{approxCount} tasks from your brief. <strong>You'll be able to add, remove or fully rewrite any of them</strong> before the deposit is sent.
+      </div>
+
+      {phase === "input" && (
+        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          <button
+            key={shakeKey}
+            type="button"
+            onClick={onGenerate}
+            disabled={phase === "generating"}
+            className={shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"}
+            style={{ background: "var(--accent)" }}
+          >
+            <Icon name="zap" size={12} /> Generate tasks
+          </button>
+          <button type="button" className="btn" onClick={() => setOpen(false)}>
+            Cancel
+          </button>
         </div>
-      ) : (
-        <div style={{ marginTop: 14 }}>
-          <SectionHeader first hint={`${tasks.length} task${tasks.length === 1 ? "" : "s"} · weights must sum to 1.00`}>
-            Tasks
+      )}
+
+      {phase === "generating" && (
+        <div style={{ marginTop: 14, padding: 14, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg)", display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="live-dot" />
+          <span style={{ fontSize: 12.5, color: "var(--fg)" }}>Drafting tasks from your brief…</span>
+        </div>
+      )}
+
+      {phase === "edit" && (
+        <>
+          <SectionHeader hint={`${tasks.length} task${tasks.length === 1 ? "" : "s"} drafted · weights must sum to 1.00 · feel free to edit, add or remove`}>
+            Draft tasks
           </SectionHeader>
+          {cachedAt && (
+            <div style={{
+              marginTop: 8, fontSize: 10.5, color: "var(--fg-muted)",
+              fontFamily: "JetBrains Mono, monospace",
+              letterSpacing: "0.04em", textTransform: "uppercase",
+              display: "inline-flex", alignItems: "center", gap: 6,
+            }}>
+              ⓘ served from cache — free regenerate
+            </div>
+          )}
           <TasksEditor
             tasks={tasks}
             onChange={setTasks}
             isStage
             stageNumber={nextStageNumber}
           />
-        </div>
+
+          {error && (
+            <div className="agnt-fade-in" style={{ marginTop: 10, padding: 10, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+            <button
+              key={shakeKey}
+              type="submit"
+              disabled={submitting || tasks.length === 0}
+              className={shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"}
+              style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
+            >
+              <Icon name="zap" size={12} /> {submitting ? "Creating…" : `Submit & pay`}
+            </button>
+            <button type="button" className="btn" onClick={() => { setPhase("input"); setTasks([]); }}>
+              ← Back to brief
+            </button>
+            <button type="button" className="btn" onClick={() => setOpen(false)} style={{ marginLeft: "auto" }}>
+              Cancel
+            </button>
+          </div>
+        </>
       )}
 
-      {error && (
+      {phase === "input" && error && (
         <div className="agnt-fade-in" style={{ marginTop: 10, padding: 10, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
           {error}
         </div>
       )}
-
-      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <button
-          key={shakeKey}
-          type="submit"
-          className={shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"}
-          style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
-          disabled={submitting}
-        >
-          <Icon name="zap" size={12} /> {submitting ? "Creating…" : `Create stage ${nextStageNumber}`}
-        </button>
-        <button type="button" className="btn" onClick={() => setOpen(false)}>
-          Cancel
-        </button>
-      </div>
     </form>
   );
 }
@@ -1172,5 +1385,423 @@ function ProjectPayoutsSection({ slug, live }) {
         />
       </div>
     </section>
+  );
+}
+
+// ─────────────── AddTasksCTA + AddTasksForm ───────────────
+//
+// On an active stage, owner can add new tasks via the new add-tasks
+// endpoint. Flow:
+//   1. Click "+ Add tasks" → AddTasksForm expands inline on the card.
+//   2. Owner fills the multi-row form; live BudgetMeter enforces sum=1.
+//   3. Submit → POST /stages/:n/add-tasks
+//        - 400 with layer1_errors → highlight per-field
+//        - 400 with llm_reject    → "Submit anyway" path (skip_coherence)
+//        - 202 with intent        → open OwnerPaymentScreen modal
+//   4. Modal polls /owner-payments/:id until confirmed (or expired).
+//   5. On confirmed → refetch stage + tasks (executor mutated both).
+
+function AddTasksCTA({ stage, refresh, live }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border)" }}>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          style={{
+            padding: "8px 14px", borderRadius: 8,
+            border: "1px dashed var(--border-strong)",
+            background: "transparent",
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 11, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase",
+            color: "var(--fg-muted)", cursor: "pointer",
+            transition: "color 0.15s ease, border-color 0.15s ease, background 0.15s ease",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--fg)"; e.currentTarget.style.borderColor = "var(--fg)"; e.currentTarget.style.background = "var(--bg-soft)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-muted)"; e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.background = "transparent"; }}
+        >
+          + Add tasks to stage
+        </button>
+      </div>
+    );
+  }
+  return <AddTasksForm stage={stage} live={live} onCancel={() => setOpen(false)} onDone={() => { setOpen(false); refresh(); }} />;
+}
+
+function AddTasksForm({ stage, live, onCancel, onDone }) {
+  const { token } = useAuth();
+  // AI-first flow (per owner request 2026-05-15):
+  //   phase=input    → owner writes a brief + top-up
+  //   phase=generating → /preview-tasks LLM call in flight
+  //   phase=edit     → tasks rendered in TasksEditor, owner can edit/add/delete
+  //   submit → /add-tasks → owner-payment intent → OwnerPaymentScreen
+  const [phase, setPhase] = useState("input");
+  const [brief, setBrief] = useState("");
+  const [tasks, setTasks] = useState([]);
+  const [deltaTon, setDeltaTon] = useState("1");          // human TON, → ×1e9
+  const [deltaJetton, setDeltaJetton] = useState("0");    // whole jetton units
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [layer1Errors, setLayer1Errors] = useState([]);   // [{field, message}]
+  const [llmReasons, setLlmReasons] = useState(null);     // string[] | null
+  const [confirmSkip, setConfirmSkip] = useState(false);
+  const [intent, setIntent] = useState(null);
+  const [cachedAt, setCachedAt] = useState(null);
+  const approxCount = 3;
+
+  const supplyLocked = !!live?.jetton_admin_locked_at;
+  const existingTon = (Number(stage.ton_reward_pool_nano) || 0) / 1e9;
+  const existingCount = stage.tasks_count || 0;
+
+  // Preview math: existing tasks keep their absolute TON shares
+  // (server rescales weights, but `weight × pool` stays put). New
+  // tasks get the FULL delta_ton split by their weight_within_new.
+  const deltaTonNum = Math.max(0, parseFloat(deltaTon) || 0);
+  const newPoolTon = existingTon + deltaTonNum;
+
+  async function onGenerate() {
+    setErrorMsg("");
+    setLayer1Errors([]);
+    setLlmReasons(null);
+    if (brief.trim().length < 20) {
+      setErrorMsg("Brief too short — describe what should ship (min 20 chars).");
+      return;
+    }
+    if (deltaTonNum <= 0) {
+      setErrorMsg("Set the TON top-up above before generating — the planner uses it to balance weights.");
+      return;
+    }
+    setPhase("generating");
+    const res = await api.previewAddTasks(live.slug || live.id, stage.stage_number, {
+      brief: brief.trim(),
+      approx_count: approxCount,
+      delta_ton_nano: Math.round(deltaTonNum * 1e9),
+    }, token);
+    if (!res.ok) {
+      setPhase("input");
+      if (res.data?.rejection_reason) {
+        setErrorMsg(`Moderation rejected the brief: ${res.data.rejection_reason}`);
+      } else if (res.status === 429) {
+        const retry = Number(res.data?.retry_after_seconds);
+        setErrorMsg(Number.isFinite(retry) && retry > 0
+          ? `Rate limit hit (10 drafts per hour). Try again in ${Math.ceil(retry / 60)} min.`
+          : "Rate limit hit (10 drafts per hour). Try again later.");
+      } else if (res.status === 502) {
+        setErrorMsg("The LLM planner is unreachable right now. Try again in a moment.");
+      } else {
+        setErrorMsg(res.data?.error || `Could not draft tasks (HTTP ${res.status}).`);
+      }
+      return;
+    }
+    setCachedAt(res.data?.cached_at || null);
+    setTasks(res.data.tasks || []);
+    setPhase("edit");
+  }
+
+  function buildBody(skipCoherence = false) {
+    const body = {
+      tasks: tasks.map((t) => ({
+        title: String(t.title || "").trim(),
+        body_md: t.body_md || "",
+        slug: String(t.slug || "").trim() || undefined,
+        difficulty: t.difficulty || undefined,
+        weight_within_new: Number(t.weight_within_new) || 0,
+      })),
+      delta_ton_nano: Math.round(deltaTonNum * 1e9),
+    };
+    if (!supplyLocked) {
+      const jet = parseInt(deltaJetton, 10);
+      body.delta_jetton_units = Number.isFinite(jet) && jet > 0 ? jet : 0;
+    } else {
+      body.delta_jetton_units = 0;
+    }
+    if (skipCoherence) body.skip_coherence = true;
+    return body;
+  }
+
+  async function submit(skipCoherence = false) {
+    setErrorMsg("");
+    setLayer1Errors([]);
+    setLlmReasons(null);
+
+    const existingSlugs = new Set(); // we don't have task slugs on stage here; let the server check
+    const errs = validateAddTasks(tasks, {
+      existingSlugs,
+      deltaTonNano: Math.round(deltaTonNum * 1e9),
+      deltaJettonUnits: parseInt(deltaJetton, 10) || 0,
+      supplyLocked,
+    });
+    if (errs.length > 0) { setErrorMsg(errs[0]); return; }
+
+    setSubmitting(true);
+    const res = await api.addTasksToStage(live.slug || live.id, stage.stage_number, buildBody(skipCoherence), token);
+    setSubmitting(false);
+
+    if (res.status === 400) {
+      const data = res.data || {};
+      if (data.llm_reject) {
+        setLlmReasons(data.llm_reasons || []);
+        return;
+      }
+      if (Array.isArray(data.layer1_errors) && data.layer1_errors.length) {
+        setLayer1Errors(data.layer1_errors);
+        return;
+      }
+      setErrorMsg(data.error || "Validation failed.");
+      return;
+    }
+    if (res.status === 401 || res.status === 403) { setErrorMsg("Only the project owner can add tasks."); return; }
+    if (res.status === 409) { setErrorMsg(res.data?.error || "Stage is no longer active."); return; }
+    if (!res.ok) { setErrorMsg(res.data?.error || `Failed (HTTP ${res.status}).`); return; }
+
+    // 202 with intent.
+    if (res.data?.intent) {
+      setIntent(res.data.intent);
+    } else {
+      setErrorMsg("Unexpected server response — no payment intent returned.");
+    }
+  }
+
+  function onConfirmed() {
+    // executor mutated stage + tasks — caller refetches both via onDone.
+    setIntent(null);
+    onDone();
+  }
+
+  // Convenience: live preview of existing rewards staying unchanged.
+  const existingPreview = (
+    <div style={{
+      padding: "10px 14px",
+      borderRadius: 8,
+      background: "var(--bg-soft)",
+      border: "1px solid var(--border)",
+      fontSize: 11.5, color: "var(--fg)", lineHeight: 1.55,
+    }}>
+      <div style={{ fontSize: 9.5, fontWeight: 800, color: "var(--fg-muted)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>
+        Preview
+      </div>
+      Stage will go from <strong>{existingCount} → {existingCount + tasks.length}</strong> tasks.
+      Pool will go from <strong>{existingTon.toFixed(3)} → {newPoolTon.toFixed(3)} TON</strong>.
+      {!supplyLocked && parseInt(deltaJetton, 10) > 0 && (
+        <> Supply will mint another <strong>{Number(deltaJetton).toLocaleString()} ${live.token_symbol}</strong>.</>
+      )}
+      <div style={{ marginTop: 6, fontSize: 11, color: "var(--fg-muted)" }}>
+        Existing {existingCount} task{existingCount === 1 ? "" : "s"} keep their TON shares — only the new {tasks.length} {tasks.length === 1 ? "task" : "tasks"} split the {deltaTonNum.toFixed(3)} TON top-up.
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <div style={{ padding: "16px 18px", borderTop: "1px solid var(--border)", background: "oklch(0.99 0.01 240)" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
+            Add tasks to Stage {stage.stage_number}
+          </div>
+          <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>
+            existing {existingCount} task{existingCount === 1 ? "" : "s"} — their TON shares stay unchanged
+          </span>
+        </div>
+
+        {/* Top-up + supply controls live above the brief — the LLM
+            uses delta_ton to balance weights, so the owner has to pick
+            it BEFORE generating. */}
+        <div className="agnt-resp-2col" style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="TON top-up" hint="Required > 0. Splits across the new tasks by weight.">
+            <input
+              type="number" min={0} step={0.001} value={deltaTon}
+              onChange={(e) => setDeltaTon(e.target.value)}
+              style={monoInputStyle}
+            />
+          </Field>
+          <Field
+            label="Extra jetton mint (optional)"
+            hint={supplyLocked ? "Supply is frozen — must stay 0." : "Whole units. Leave 0 to keep current supply."}
+          >
+            <input
+              type="number" min={0} step={1} value={supplyLocked ? "0" : deltaJetton}
+              disabled={supplyLocked}
+              onChange={(e) => setDeltaJetton(e.target.value)}
+              style={{ ...monoInputStyle, opacity: supplyLocked ? 0.5 : 1 }}
+            />
+          </Field>
+        </div>
+
+        {phase === "input" && (
+          <>
+            <div style={{ marginTop: 12 }}>
+              <Field label="What ships in these new tasks?" hint="One paragraph is enough — the validator agent expands it.">
+                <textarea
+                  value={brief}
+                  onChange={(e) => setBrief(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="e.g. confetti animation on score increase + sound toggle"
+                  style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }}
+                />
+              </Field>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5, padding: "8px 12px", borderRadius: 6, background: "var(--bg)" }}>
+              ⓘ The validator agent drafts ~{approxCount} tasks from your brief. <strong>You'll be able to add, remove or fully rewrite any of them</strong> before paying.
+            </div>
+            {errorMsg && (
+              <div style={{ marginTop: 10, padding: 10, fontSize: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)" }}>
+                {errorMsg}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={onGenerate}
+                className="btn-primary-big"
+                style={{ background: "var(--accent)" }}
+              >
+                <Icon name="zap" size={12} /> Generate tasks
+              </button>
+              <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+            </div>
+          </>
+        )}
+
+        {phase === "generating" && (
+          <div style={{ marginTop: 14, padding: 14, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg)", display: "flex", alignItems: "center", gap: 10 }}>
+            <span className="live-dot" />
+            <span style={{ fontSize: 12.5, color: "var(--fg)" }}>Drafting tasks from your brief…</span>
+          </div>
+        )}
+
+        {phase === "edit" && (
+          <>
+            <div style={{ marginTop: 14, fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--fg-muted)", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 800 }}>
+              Draft tasks — edit, add or remove
+            </div>
+            {cachedAt && (
+              <div style={{
+                marginTop: 4, fontSize: 10.5, color: "var(--fg-muted)",
+                fontFamily: "JetBrains Mono, monospace",
+                letterSpacing: "0.04em", textTransform: "uppercase",
+                display: "inline-flex", alignItems: "center", gap: 6,
+              }}>
+                ⓘ served from cache — free regenerate
+              </div>
+            )}
+
+            <TasksEditor
+              tasks={tasks}
+              onChange={setTasks}
+              isStage
+              stageNumber={stage.stage_number}
+              weightField="weight_within_new"
+              newTaskFactory={({ tasks: ts, stageNumber }) => emptyAddTask({ tasks: ts, stageNumber })}
+            />
+
+            {llmReasons && (
+              <div style={{
+                marginTop: 10, padding: 12, borderRadius: 8,
+                background: "var(--danger-soft)", border: "1px solid var(--danger)",
+              }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--danger)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  Coherence check rejected the batch
+                </div>
+                {llmReasons.map((r, i) => r ? (
+                  <div key={i} style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.5, marginTop: 4 }}>
+                    <strong>Task #{i + 1}</strong>: {r}
+                  </div>
+                ) : null)}
+                <div style={{ marginTop: 8, fontSize: 11, color: "var(--fg-muted)" }}>
+                  Edit the rejected tasks, or override the check if you're sure.
+                </div>
+              </div>
+            )}
+
+            {layer1Errors.length > 0 && (
+              <div style={{
+                marginTop: 10, padding: 12, borderRadius: 8,
+                background: "var(--danger-soft)", border: "1px solid var(--danger)",
+                fontSize: 12, color: "var(--danger)",
+              }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Fix these before retrying:</div>
+                <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+                  {layer1Errors.map((e, i) => (
+                    <li key={i}><code style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>{e.field}</code> — {e.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div style={{ marginTop: 12 }}>
+              {existingPreview}
+            </div>
+
+            {errorMsg && (
+              <div style={{
+                marginTop: 10, padding: 10, fontSize: 12,
+                border: "1px solid var(--danger)", borderRadius: 6,
+                background: "var(--danger-soft)", color: "var(--danger)",
+              }}>
+                {errorMsg}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => submit(false)}
+                disabled={submitting || tasks.length === 0}
+                className="btn-primary-big"
+                style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
+              >
+                <Icon name="zap" size={12} /> {submitting ? "Validating…" : "Submit & Pay"}
+              </button>
+              {llmReasons && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmSkip(true)}
+                  className="btn"
+                  style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
+                >
+                  Submit anyway
+                </button>
+              )}
+              <button type="button" className="btn" onClick={() => { setPhase("input"); setTasks([]); }}>
+                ← Back to brief
+              </button>
+              <button type="button" className="btn" onClick={onCancel} style={{ marginLeft: "auto" }}>
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <ConfirmModal
+        open={confirmSkip}
+        danger
+        title="Skip the coherence check?"
+        confirmLabel="Yes, submit anyway"
+        body={
+          <>
+            The platform's LLM thinks at least one task in this batch isn't a
+            coherent unit of software work. Skipping forwards the batch
+            straight to activation — agents may still ignore unclear tasks.
+            Proceed only if you're sure the descriptions are good enough.
+          </>
+        }
+        onCancel={() => setConfirmSkip(false)}
+        onConfirm={() => { setConfirmSkip(false); submit(true); }}
+      />
+
+      {intent && (
+        <OwnerPaymentScreen
+          intent={intent}
+          token={token}
+          purposeLabel="add the new tasks"
+          onConfirmed={onConfirmed}
+          onExpired={() => setIntent(null)}
+          onClose={() => setIntent(null)}
+        />
+      )}
+    </>
   );
 }

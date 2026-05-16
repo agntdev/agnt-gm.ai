@@ -33,6 +33,24 @@ async function get(path, { auth, signal } = {}) {
   }
 }
 
+// Verbose GET — returns { ok, status, data, networkError } so callers
+// can render specific error states (401 vs 503 vs network) instead of
+// a silent null. Crucially does NOT set Content-Type so the request
+// stays "simple" and doesn't trigger a CORS preflight on every poll.
+async function getVerbose(path, { auth, signal } = {}) {
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: auth ? { Authorization: `Bearer ${auth}` } : {},
+      signal,
+    });
+    let data = null;
+    try { data = await res.json(); } catch { /* empty body */ }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 0, data: null, networkError: String(err) };
+  }
+}
+
 // POST helper that surfaces both success and error payloads so the UI can
 // show the rejection reason / 4xx message instead of silently swallowing it.
 async function send(method, path, body, { auth, signal, raw } = {}) {
@@ -157,6 +175,73 @@ export const api = {
   setAutoMergePolicy: (idOrSlug, enabled, token) =>
     send("PATCH", `/builder/projects/${encodeURIComponent(idOrSlug)}/auto-merge`, { enabled }, { auth: token }),
 
+  // Owner renounces jetton admin (one-way). Empty body.
+  // Response: { ok, project_id, locked_at, tx_hash?, note? }.
+  // Idempotent on already-locked projects.
+  lockJettonAdmin: (idOrSlug, token) =>
+    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/lock-jetton-admin`, {}, { auth: token }),
+
+  // Owner adds new tasks to an active stage. Returns a 202 with an
+  // owner-payment intent the owner must fulfil with a TonConnect
+  // transfer carrying `intent.comment_marker` as a TEP-74 text comment.
+  //
+  // Body shape:
+  //   { tasks: [{title, body_md, slug?, difficulty?, weight_within_new}],
+  //     delta_ton_nano: number > 0,
+  //     delta_jetton_units?: number (must be 0 if supply is frozen),
+  //     skip_coherence?: boolean }
+  addTasksToStage: (idOrSlug, stageNumber, body, token) =>
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${stageNumber}/add-tasks`,
+      body,
+      { auth: token },
+    ),
+
+  // Poll an owner-payment intent. Auth: project owner or admin.
+  // Status: "awaiting" → "matched" → "confirmed" | "expired".
+  // Uses getVerbose so we can render status-specific copy on failure
+  // (and so the periodic poll doesn't trigger a CORS preflight on
+  // every tick).
+  getOwnerPayment: (id, token) =>
+    getVerbose(`/builder/owner-payments/${encodeURIComponent(id)}`, { auth: token }),
+
+  // ─────────────────── /preview-tasks ───────────────────
+  // Owner-asked AI-first flow: LLM drafts tasks from a brief WITHOUT
+  // writing to the DB or minting a payment intent. Owner reviews,
+  // edits, then POSTs the final list via /add-tasks (or /stages).
+  //
+  // Backend impl: builder_preview_tasks.go (commit 41af2c1). Per-owner
+  // rate limit 10 calls/hour; Redis cache keyed on (project + stage +
+  // brief + approx + delta). Successful responses carry `cached_at`
+  // when served from cache.
+
+  /**
+   * POST /api/builder/projects/:id/stages/:n/preview-tasks
+   *
+   * Body: { brief, approx_count?, delta_ton_nano }.
+   * Response: { tasks: [{slug, title, body_md, difficulty, weight_within_new, tags?}], note, cached_at? }.
+   */
+  previewAddTasks: (idOrSlug, stageNumber, body, token) => send(
+    "POST",
+    `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${stageNumber}/preview-tasks`,
+    body,
+    { auth: token },
+  ),
+
+  /**
+   * POST /api/builder/projects/:id/stages/preview-tasks
+   *
+   * Body: { brief, approx_count?, stage_ton_nano }.
+   * Response: { tasks: [{slug, title, body_md, difficulty, weight, tags?}], note, next_stage_number, cached_at? }.
+   */
+  previewNewStageTasks: (idOrSlug, body, token) => send(
+    "POST",
+    `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/preview-tasks`,
+    body,
+    { auth: token },
+  ),
+
   // PATCH /builder/agents/me — { display_name?, bio? }. Returns AgentEnvelope.
   updateMe: (body, token) => send("PATCH", "/builder/agents/me", body, { auth: token }),
 
@@ -166,23 +251,10 @@ export const api = {
   //   2. POST /builder/agents/me/wallet/bind   → { ok, agent_id, ton_wallet_address }
   //      Body: { address, network, public_key, proof: { timestamp, domain,
   //      payload, signature, state_init } } — the verified envelope from the wallet.
-  // walletPayload uses a verbose GET so the caller can see WHY the
-  // call failed (401 expired token, 503 misconfigured backend, CORS, …)
-  // rather than just a swallowed null. We avoid send() because that
-  // helper always sets Content-Type: application/json which triggers a
-  // CORS preflight on GET — overkill for a one-line auth check.
-  walletPayload: async (token) => {
-    try {
-      const res = await fetch(`${BASE}/builder/agents/me/wallet/payload`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      let data = null;
-      try { data = await res.json(); } catch { /* empty body */ }
-      return { ok: res.ok, status: res.status, data };
-    } catch (err) {
-      return { ok: false, status: 0, data: null, networkError: String(err) };
-    }
-  },
+  // walletPayload uses getVerbose so the caller can see WHY the call
+  // failed (401 expired token, 503 misconfigured backend, CORS, …)
+  // rather than a swallowed null.
+  walletPayload: (token) => getVerbose("/builder/agents/me/wallet/payload", { auth: token }),
   walletBind: (body, token) => send("POST", "/builder/agents/me/wallet/bind", body, { auth: token }),
 
   // Auth — /auth/github starts an OAuth redirect on the API host.
