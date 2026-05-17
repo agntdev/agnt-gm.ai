@@ -1829,7 +1829,9 @@ function EditTasksPanel({ live, isOwner, refresh }) {
   const [layer1Errors, setLayer1Errors] = useState([]);
   const [llmReasons, setLlmReasons] = useState(null);
   const [confirmSkip, setConfirmSkip] = useState(false);
-  const [mockNotice, setMockNotice] = useState(false);
+  // Last successful response counters — drives the brief "Saved: N
+  // updated · M added · K removed" toast under the panel header.
+  const [lastSaved, setLastSaved] = useState(null);
 
   if (!live || !isOwner || live.status !== "ready_to_publish") return null;
 
@@ -1916,20 +1918,37 @@ function EditTasksPanel({ live, isOwner, refresh }) {
         setLayer1Errors(data.layer1_errors);
         return;
       }
+      if (res.status === 429) {
+        const retry = Number(data.retry_after_seconds);
+        setErrorMsg(Number.isFinite(retry) && retry > 0
+          ? `Rate limit hit (30 edits per hour). Try again in ${Math.ceil(retry / 60)} min.`
+          : "Rate limit hit (30 edits per hour). Try again later.");
+        return;
+      }
       if (res.status === 409) {
         setErrorMsg(`Project status is now ${data.current_status || "not ready_to_publish"}. Refresh the page.`);
         return;
       }
       if (res.status === 401 || res.status === 403) { setErrorMsg("Only the project owner can edit tasks."); return; }
+      if (res.status === 502) { setErrorMsg("LLM coherence check is unreachable right now. Try again in a moment, or use Save anyway to bypass."); return; }
       setErrorMsg(data.error || `Save failed (HTTP ${res.status}).`);
       return;
     }
 
-    setMockNotice(!!res.data?.mock);
+    // Server returns counters separately when the slug-preserving
+    // diff applies — surface them so the owner sees "kept 4, added 2,
+    // removed 1" rather than a generic "saved".
+    const data = res.data || {};
+    setLastSaved({
+      replaced: Number(data.tasks_replaced) || tasks.length,
+      inserted: Number(data.tasks_inserted) || 0,
+      updated:  Number(data.tasks_updated)  || 0,
+      deleted:  Number(data.tasks_deleted)  || 0,
+    });
     setPhase("done");
     refresh?.();
     // Auto-collapse after a short success display.
-    setTimeout(() => setPhase("idle"), 1400);
+    setTimeout(() => setPhase("idle"), 1800);
   }
 
   // ──────────────────────── render ────────────────────────
@@ -1950,8 +1969,8 @@ function EditTasksPanel({ live, isOwner, refresh }) {
             </h3>
           </div>
           <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--fg-muted)", lineHeight: 1.5 }}>
-            {phase === "done"
-              ? "Saved. The new task list is live for review."
+            {phase === "done" && lastSaved
+              ? <>Saved. <strong>{lastSaved.updated}</strong> kept{lastSaved.inserted ? <>, <strong>+{lastSaved.inserted}</strong> added</> : null}{lastSaved.deleted ? <>, <strong>−{lastSaved.deleted}</strong> removed</> : null}.</>
               : "The validator agent drafted a task list. You can rewrite, add or remove any of them before the pool deposit triggers auto-publish."}
           </p>
         </div>
@@ -2046,15 +2065,6 @@ function EditTasksPanel({ live, isOwner, refresh }) {
           </div>
         )}
 
-        {mockNotice && (
-          <div style={{
-            marginTop: 10, padding: "8px 12px", borderRadius: 6,
-            background: "oklch(0.96 0.05 80)", border: "1px solid oklch(0.85 0.08 80)",
-            color: "#b45309", fontSize: 11.5, lineHeight: 1.4,
-          }}>
-            ⚠ Mock save — backend <code>PUT /projects/:id/tasks</code> not live yet. The edit didn't actually persist server-side; this will swap to a real save once the endpoint ships.
-          </div>
-        )}
 
         <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
           <button
