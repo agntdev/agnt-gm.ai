@@ -80,7 +80,13 @@ export default function Project() {
             <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} isOwner={isOwner} refresh={refresh} />
           </div>
         </ProjectHero>
-        <FundPoolBanner live={live} isOwner={isOwner} refresh={refresh} />
+        {/* FundPoolBanner used to live here as a top-level CTA for the
+            project-level pool. Stage 1 is now created automatically at
+            publish time and its pending deposit IS the project pool
+            (backend mirrors stage_1.ton_pool_funded_at into the legacy
+            builder_projects.ton_pool_funded_at column). The duplicate
+            "Pay X TON" buttons on screen confused owners — kept the
+            stage-card one inside <StagesSection> as the single source. */}
         <EditTasksPanel live={live} isOwner={isOwner} refresh={refresh} />
         <StagesSection live={live} isOwner={isOwner} refresh={refresh} />
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
@@ -620,148 +626,6 @@ function SupplyLockRow({ live, isOwner, refresh }) {
     </>
   );
 }
-
-// ──────────────────────── Fund pool banner ────────────────────────
-// Rendered between the hero and the tab bodies. Visible only when:
-//   - project is in `ready_to_publish`
-//   - ton_reward_pool_nano > 0 and ton_pool_funded_at is unset
-//   - the viewer is the project owner
-// Send-flow:
-//   1. Connect TonConnect wallet if not connected.
-//   2. tonConnectUI.sendTransaction({ address: PLATFORM_TON_WALLET, amount }).
-//   3. Poll the project — BuilderTonDepositWatcher fills ton_pool_funded_at
-//      within ~10–60s, then AutoPublishOnDeposit flips status to `live`.
-function FundPoolBanner({ live, isOwner, refresh }) {
-  const tonAddress = useTonAddress();
-  const [tonConnectUI] = useTonConnectUI();
-  const [submitting, setSubmitting] = useState(false);
-  const [txSubmitted, setTxSubmitted] = useState(false);
-  const [error, setError] = useState("");
-  const pollTimer = useRef(null);
-
-  const poolNano = Number(live?.ton_reward_pool_nano) || 0;
-  const visible =
-    !!live &&
-    isOwner &&
-    live.status === "ready_to_publish" &&
-    poolNano > 0 &&
-    !live.ton_pool_funded_at;
-
-  // Drive a slow background refresh once a transaction has been
-  // submitted, so the UI flips from "waiting for confirmation" to
-  // funded/live without a manual reload.
-  useEffect(() => {
-    if (!txSubmitted) return undefined;
-    if (live?.ton_pool_funded_at || live?.status === "live") return undefined;
-    pollTimer.current = setTimeout(() => refresh(), 5000);
-    return () => clearTimeout(pollTimer.current);
-  }, [txSubmitted, live?.ton_pool_funded_at, live?.status, refresh]);
-
-  if (!visible) return null;
-
-  const tonAmount = poolNano / 1e9;
-  const tonLabel = tonAmount.toLocaleString(undefined, { maximumFractionDigits: 3 });
-  const ownerWallet = live.owner_wallet_address || "";
-  // Address normalisation differences (raw vs UQ vs EQ) mean we only
-  // do a loose textual check — the backend watcher normalises both
-  // sides to canonical raw before comparing.
-  const walletMismatch =
-    tonAddress &&
-    ownerWallet &&
-    tonAddress.replace(/[^a-z0-9:]/gi, "").toLowerCase() !==
-      ownerWallet.replace(/[^a-z0-9:]/gi, "").toLowerCase();
-
-  async function onPay() {
-    // Prefer the address baked into the project DTO by the API
-    // (POST /builder/projects + GET /builder/projects/:id now return
-    // funding_address). Fall back to the build-time env if older
-    // responses come back without it.
-    const destination = live.funding_address || PLATFORM_TON_WALLET;
-    const amount = live.funding_amount_nano != null
-      ? String(live.funding_amount_nano)
-      : String(poolNano);
-    if (!destination) {
-      setError("Platform wallet not configured (VITE_TON_PLATFORM_WALLET).");
-      return;
-    }
-    setError("");
-    setSubmitting(true);
-    try {
-      if (!tonAddress) {
-        await tonConnectUI.openModal();
-        if (!tonConnectUI.connected) { setSubmitting(false); return; }
-      }
-      await tonConnectUI.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + 360,
-        messages: [{ address: destination, amount }],
-      });
-      setTxSubmitted(true);
-    } catch (err) {
-      if (err?.message?.toLowerCase()?.includes("reject")) {
-        setError("Transaction rejected in your wallet.");
-      } else {
-        setError(String(err?.message || err) || "Wallet transfer failed.");
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div
-      className="agnt-resp-banner"
-      style={{
-        marginTop: 16, padding: 18,
-        border: "1px solid var(--border-strong)", borderRadius: 10,
-        background: "var(--bg-soft)",
-        display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap",
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 240 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Icon name="zap" size={14} />
-          <h3 style={{ margin: 0, fontSize: 14, fontFamily: "JetBrains Mono, monospace" }}>
-            {txSubmitted ? "Waiting for on-chain confirmation…" : "Fund the reward pool"}
-          </h3>
-        </div>
-        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--fg-muted)", lineHeight: 1.5 }}>
-          {txSubmitted
-            ? `Once the deposit watcher spots the transfer (~10–60s), the project will auto-publish and flip to live.`
-            : <>Send <strong>{tonLabel} TON</strong> from the owner wallet to the platform. The
-              project auto-publishes the moment the deposit confirms — no extra click needed.</>}
-        </p>
-        {walletMismatch && !txSubmitted && (
-          <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--danger)" }}>
-            Connected wallet doesn't match the project's owner wallet. The deposit watcher matches by
-            sender — sending from this address won't auto-confirm.
-          </p>
-        )}
-        {error && (
-          <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--danger)" }}>{error}</p>
-        )}
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        {txSubmitted ? (
-          <button type="button" className="btn" onClick={refresh}>
-            <Icon name="zap" size={12} /> Refresh status
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn-primary-big"
-            style={{ background: "var(--accent)", opacity: submitting ? 0.6 : 1 }}
-            disabled={submitting}
-            onClick={onPay}
-          >
-            <Icon name="zap" size={12} /> {submitting ? "Submitting…" : `Pay ${tonLabel} TON`}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ────────────────────────── Stages section ──────────────────────────
 // Multi-round funding (2026-05-13). Renders the project's stage timeline,
 // lets the owner start the next stage when the previous one closes, and
 // surfaces a TonConnect "Fund this stage" CTA when a freshly-created
