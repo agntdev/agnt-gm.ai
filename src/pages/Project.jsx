@@ -81,6 +81,7 @@ export default function Project() {
           </div>
         </ProjectHero>
         <FundPoolBanner live={live} isOwner={isOwner} refresh={refresh} />
+        <EditTasksPanel live={live} isOwner={isOwner} refresh={refresh} />
         <StagesSection live={live} isOwner={isOwner} refresh={refresh} />
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
           {tab === "contribute" && (
@@ -1802,6 +1803,301 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
           onClose={() => setIntent(null)}
         />
       )}
+    </>
+  );
+}
+
+// ─────────────────────── EditTasksPanel ───────────────────────
+//
+// Visible only when the project is in `ready_to_publish` AND the
+// viewer is the owner. Lets the owner rewrite the AI-drafted task
+// list before paying the pool (and triggering auto-publish).
+//
+// Lifecycle:
+//   collapsed → click "Edit tasks" → loading → editing →
+//     submit → saving → done (panel collapses, refresh fires)
+//
+// Backend `PUT /projects/:id/tasks` is mocked in api.updateProjectTasks
+// for now (spec sent to backend dev). The mock returns success and the
+// edited list — good enough to wire the UI end-to-end. When the real
+// endpoint lands, only api.js changes; this component is unchanged.
+function EditTasksPanel({ live, isOwner, refresh }) {
+  const { token } = useAuth();
+  const [phase, setPhase] = useState("idle"); // idle | loading | editing | saving | done
+  const [tasks, setTasks] = useState([]);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [layer1Errors, setLayer1Errors] = useState([]);
+  const [llmReasons, setLlmReasons] = useState(null);
+  const [confirmSkip, setConfirmSkip] = useState(false);
+  const [mockNotice, setMockNotice] = useState(false);
+
+  if (!live || !isOwner || live.status !== "ready_to_publish") return null;
+
+  async function onOpen() {
+    setErrorMsg("");
+    setLayer1Errors([]);
+    setLlmReasons(null);
+    setPhase("loading");
+
+    // Two-step load: first list (cheap), then a full per-task fetch
+    // for body_md / weight / difficulty / tags that the trimmed list
+    // doesn't carry today. The backend spec proposes a ?full=true to
+    // collapse this into one round-trip; the helper passes the flag
+    // already, so when the backend honours it we just keep the
+    // tasks-from-list as-is and skip the per-task fetches.
+    const listRes = await api.listProjectTasks(live.slug || live.id, { full: true });
+    const rough = listRes?.tasks || [];
+    let full = rough;
+    const needsBackfill = rough.some(
+      (t) => t.body_md == null || t.weight == null,
+    );
+    if (needsBackfill) {
+      const fulls = await Promise.all(
+        rough.map((t) => api.getTask(live.slug || live.id, t.slug)),
+      );
+      full = fulls.map((envelope, i) => {
+        const detail = envelope?.task || envelope || {};
+        return {
+          slug: rough[i].slug,
+          title: detail.title ?? rough[i].title ?? "",
+          body_md: detail.body_md ?? "",
+          difficulty: detail.difficulty || "medium",
+          weight: typeof detail.weight === "number" ? detail.weight : 0,
+          tags: Array.isArray(detail.tags) ? detail.tags : [],
+        };
+      });
+    } else {
+      full = rough.map((t) => ({
+        slug: t.slug,
+        title: t.title || "",
+        body_md: t.body_md || "",
+        difficulty: t.difficulty || "medium",
+        weight: typeof t.weight === "number" ? t.weight : 0,
+        tags: Array.isArray(t.tags) ? t.tags : [],
+      }));
+    }
+    setTasks(full);
+    setPhase("editing");
+  }
+
+  async function onSave(skipCoherence = false) {
+    setErrorMsg("");
+    setLayer1Errors([]);
+    setLlmReasons(null);
+
+    const errs = validateManualPlan(
+      { tasks, owner_share_bps: live.owner_share_bps ?? 0 },
+      "project",
+    );
+    if (errs.length > 0) { setErrorMsg(errs[0]); return; }
+
+    setPhase("saving");
+    const body = {
+      tasks: tasks.map((t) => ({
+        slug: (t.slug || "").trim().toUpperCase() || undefined,
+        title: String(t.title || "").trim(),
+        body_md: t.body_md || "",
+        difficulty: t.difficulty || undefined,
+        weight: Number(t.weight),
+        tags: (t.tags && t.tags.length) ? t.tags : undefined,
+      })),
+    };
+    if (skipCoherence) body.skip_coherence = true;
+
+    const res = await api.updateProjectTasks(live.slug || live.id, body, token);
+    if (!res.ok) {
+      setPhase("editing");
+      const data = res.data || {};
+      if (data.llm_reject) {
+        setLlmReasons(data.llm_reasons || []);
+        return;
+      }
+      if (Array.isArray(data.layer1_errors) && data.layer1_errors.length) {
+        setLayer1Errors(data.layer1_errors);
+        return;
+      }
+      if (res.status === 409) {
+        setErrorMsg(`Project status is now ${data.current_status || "not ready_to_publish"}. Refresh the page.`);
+        return;
+      }
+      if (res.status === 401 || res.status === 403) { setErrorMsg("Only the project owner can edit tasks."); return; }
+      setErrorMsg(data.error || `Save failed (HTTP ${res.status}).`);
+      return;
+    }
+
+    setMockNotice(!!res.data?.mock);
+    setPhase("done");
+    refresh?.();
+    // Auto-collapse after a short success display.
+    setTimeout(() => setPhase("idle"), 1400);
+  }
+
+  // ──────────────────────── render ────────────────────────
+
+  if (phase === "idle" || phase === "done") {
+    return (
+      <div style={{
+        marginTop: 16, padding: 14,
+        border: "1px solid var(--border)", borderRadius: 10,
+        background: "var(--bg-soft)",
+        display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+      }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Icon name="layers" size={14} />
+            <h3 style={{ margin: 0, fontSize: 14, fontFamily: "JetBrains Mono, monospace" }}>
+              Edit tasks before publish
+            </h3>
+          </div>
+          <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--fg-muted)", lineHeight: 1.5 }}>
+            {phase === "done"
+              ? "Saved. The new task list is live for review."
+              : "The validator agent drafted a task list. You can rewrite, add or remove any of them before the pool deposit triggers auto-publish."}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn-primary-big"
+          style={{ background: phase === "done" ? "var(--accent-soft)" : "var(--accent)", color: phase === "done" ? "var(--accent-fg)" : "white" }}
+          onClick={onOpen}
+        >
+          <Icon name={phase === "done" ? "check" : "layers"} size={12} /> {phase === "done" ? "Saved ✓" : "Edit tasks"}
+        </button>
+      </div>
+    );
+  }
+
+  if (phase === "loading") {
+    return (
+      <div style={{
+        marginTop: 16, padding: 14,
+        border: "1px solid var(--border)", borderRadius: 10,
+        background: "var(--bg-soft)",
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <span className="live-dot" />
+        <span style={{ fontSize: 12.5, color: "var(--fg)" }}>Loading current task list…</span>
+      </div>
+    );
+  }
+
+  // phase === "editing" | "saving"
+  const saving = phase === "saving";
+
+  return (
+    <>
+      <div style={{
+        marginTop: 16, padding: 16,
+        border: "1px solid var(--border-strong)", borderRadius: 10,
+        background: "var(--bg-soft)",
+      }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
+            Edit tasks
+          </div>
+          <span style={{ fontSize: 10.5, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace" }}>
+            {tasks.length} task{tasks.length === 1 ? "" : "s"} · weights must sum to {(1 - (Number(live.owner_share_bps) || 0) / 10_000).toFixed(2)}
+          </span>
+        </div>
+
+        <TasksEditor
+          tasks={tasks}
+          onChange={setTasks}
+          isStage={false}
+          ownerShareBps={live.owner_share_bps ?? 0}
+        />
+
+        {llmReasons && (
+          <div style={{
+            marginTop: 10, padding: 12, borderRadius: 8,
+            background: "var(--danger-soft)", border: "1px solid var(--danger)",
+          }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--danger)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              Coherence check rejected the batch
+            </div>
+            {llmReasons.map((r, i) => r ? (
+              <div key={i} style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.5, marginTop: 4 }}>
+                <strong>Task #{i + 1}</strong>: {r}
+              </div>
+            ) : null)}
+          </div>
+        )}
+
+        {layer1Errors.length > 0 && (
+          <div style={{
+            marginTop: 10, padding: 12, borderRadius: 8,
+            background: "var(--danger-soft)", border: "1px solid var(--danger)",
+            fontSize: 12, color: "var(--danger)",
+          }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Fix these before saving:</div>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+              {layer1Errors.map((e, i) => (
+                <li key={i}>
+                  <code style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>{e.field}</code> — {e.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {errorMsg && (
+          <div style={{ marginTop: 10, padding: 10, fontSize: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)" }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {mockNotice && (
+          <div style={{
+            marginTop: 10, padding: "8px 12px", borderRadius: 6,
+            background: "oklch(0.96 0.05 80)", border: "1px solid oklch(0.85 0.08 80)",
+            color: "#b45309", fontSize: 11.5, lineHeight: 1.4,
+          }}>
+            ⚠ Mock save — backend <code>PUT /projects/:id/tasks</code> not live yet. The edit didn't actually persist server-side; this will swap to a real save once the endpoint ships.
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => onSave(false)}
+            disabled={saving || tasks.length === 0}
+            className="btn-primary-big"
+            style={{ background: "var(--accent)", opacity: saving ? 0.6 : 1 }}
+          >
+            <Icon name="zap" size={12} /> {saving ? "Saving…" : "Save tasks"}
+          </button>
+          {llmReasons && (
+            <button
+              type="button"
+              onClick={() => setConfirmSkip(true)}
+              className="btn"
+              style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
+            >
+              Save anyway
+            </button>
+          )}
+          <button type="button" className="btn" onClick={() => setPhase("idle")} style={{ marginLeft: "auto" }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <ConfirmModal
+        open={confirmSkip}
+        danger
+        title="Skip the coherence check?"
+        confirmLabel="Yes, save anyway"
+        body={
+          <>
+            The platform's LLM thinks at least one task isn't a coherent
+            unit of software work. Skipping forwards the list straight
+            to the project — agents may still ignore unclear tasks.
+            Proceed only if you're sure the descriptions are good enough.
+          </>
+        }
+        onCancel={() => setConfirmSkip(false)}
+        onConfirm={() => { setConfirmSkip(false); onSave(true); }}
+      />
     </>
   );
 }

@@ -89,9 +89,15 @@ export const api = {
 
   getProject: (idOrSlug) => get(`/builder/projects/${encodeURIComponent(idOrSlug)}`),
 
-  listProjectTasks: (idOrSlug, { status } = {}) => {
+  listProjectTasks: (idOrSlug, { status, full } = {}) => {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
+    // `full=true` asks the backend to include body_md / weight /
+    // difficulty / tags on each row — needed to seed the edit-tasks
+    // panel without N task-detail round-trips. Backend pending: today
+    // the param is accepted-but-ignored, the EditTasksPanel falls back
+    // to per-task getTask() to fill the missing fields.
+    if (full) qs.set("full", "true");
     return get(`/builder/projects/${encodeURIComponent(idOrSlug)}/tasks${qs.toString() ? "?" + qs : ""}`);
   },
 
@@ -180,6 +186,34 @@ export const api = {
   // Idempotent on already-locked projects.
   lockJettonAdmin: (idOrSlug, token) =>
     send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/lock-jetton-admin`, {}, { auth: token }),
+
+  // ─────────── PUT /projects/:id/tasks (MOCKED — backend pending) ───────────
+  // Owner replaces the entire task list of a `ready_to_publish` project.
+  // Spec sent to backend as:
+  //   agnt-api/docs/frontend/2026-05-17-edit-tasks-before-publish-request.md
+  //
+  // When the real endpoint lands, swap the body for a single
+  //   send("PUT", `/builder/projects/${enc(idOrSlug)}/tasks`, body, { auth: token })
+  // and delete the mock branch. Response shape on the wire matches the
+  // mock {ok, project_id, tasks_replaced, tasks} envelope.
+  updateProjectTasks: async (idOrSlug, body, _token) => {
+    await new Promise((r) => setTimeout(r, 700));
+    const tasks = Array.isArray(body?.tasks) ? body.tasks : [];
+    if (tasks.length === 0) {
+      return { ok: false, status: 400, data: { error: "Task list cannot be empty." } };
+    }
+    return {
+      ok: true,
+      status: 200,
+      data: {
+        ok: true,
+        project_id: idOrSlug,
+        tasks_replaced: tasks.length,
+        tasks,
+        mock: true,
+      },
+    };
+  },
 
   // Owner adds new tasks to an active stage. Returns a 202 with an
   // owner-payment intent the owner must fulfil with a TonConnect
