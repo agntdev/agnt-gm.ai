@@ -358,11 +358,27 @@ const RESPONSIVE_CSS = `
   }
 
   /* Milestones tasks table — 80px / 1fr / 160px / 140px / 90px grid is
-     ~470px minimum and overflows on phones. The Milestones page wraps
-     it in .ms-tasks-scroll for horizontal scroll on mobile. */
+     ~470px minimum and overflows on phones. Horizontal scroll was
+     confusing (first paint hid hash/title behind the right columns),
+     so on phones the row reflows into a self-contained 2-row card
+     (hash + title + status on top, claim + reward below) and the
+     head row hides — card titles are self-explanatory. */
   @media (max-width: 640px) {
-    .ms-tasks-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
-    .ms-task-list { min-width: 560px; }
+    .ms-task-head { display: none !important; }
+    .ms-task-row {
+      grid-template-columns: auto minmax(0, 1fr) auto !important;
+      grid-template-areas:
+        "hash title status"
+        "claim reward reward" !important;
+      column-gap: 10px !important;
+      row-gap: 8px !important;
+      padding: 12px 14px !important;
+    }
+    .ms-task-hash   { grid-area: hash;   align-self: start; padding-top: 2px; }
+    .ms-task-title  { grid-area: title;  min-width: 0; }
+    .ms-task-status { grid-area: status; align-self: start; }
+    .ms-task-claim  { grid-area: claim; }
+    .ms-task-reward { grid-area: reward; text-align: right; align-items: flex-end; }
   }
 
   /* Create form — .field-row (1fr 1fr) puts the reward-pool input
