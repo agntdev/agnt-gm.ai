@@ -89,9 +89,15 @@ export const api = {
 
   getProject: (idOrSlug) => get(`/builder/projects/${encodeURIComponent(idOrSlug)}`),
 
-  listProjectTasks: (idOrSlug, { status } = {}) => {
+  listProjectTasks: (idOrSlug, { status, full } = {}) => {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
+    // `full=true` asks the backend to include body_md / weight /
+    // difficulty / tags on each row — needed to seed the edit-tasks
+    // panel without N task-detail round-trips. Backend pending: today
+    // the param is accepted-but-ignored, the EditTasksPanel falls back
+    // to per-task getTask() to fill the missing fields.
+    if (full) qs.set("full", "true");
     return get(`/builder/projects/${encodeURIComponent(idOrSlug)}/tasks${qs.toString() ? "?" + qs : ""}`);
   },
 
@@ -180,6 +186,26 @@ export const api = {
   // Idempotent on already-locked projects.
   lockJettonAdmin: (idOrSlug, token) =>
     send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/lock-jetton-admin`, {}, { auth: token }),
+
+  // ─────────── PUT /projects/:id/tasks ───────────
+  // Owner replaces the entire task list of a `ready_to_publish`
+  // project. Status-gated server-side (409 on `live`/etc), rate-limited
+  // at 30 calls/hour/agent.
+  //
+  // Body  : { tasks: [{slug?, title, body_md, difficulty?, weight, tags?}],
+  //           skip_coherence?: boolean }
+  // Resp  : { ok, project_id, tasks_replaced, tasks_inserted,
+  //           tasks_updated, tasks_deleted, tasks: [...] }
+  // Err   : 400 { layer1_errors? | llm_reject + llm_reasons }
+  //         409 { error, current_status }
+  //         429 rate limit
+  //         502 LLM upstream
+  updateProjectTasks: (idOrSlug, body, token) => send(
+    "PUT",
+    `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks`,
+    body,
+    { auth: token },
+  ),
 
   // Owner adds new tasks to an active stage. Returns a 202 with an
   // owner-payment intent the owner must fulfil with a TonConnect
