@@ -35,7 +35,7 @@ function fmtDate(iso) {
 
 function StatTile({ label, value, accent }) {
   return (
-    <div style={{
+    <div className="agnt-resp-stat-tile" style={{
       flex: 1, minWidth: 120,
       padding: "14px 18px",
       border: "1px solid var(--border)",

@@ -172,10 +172,10 @@ function ContributeGuide({ live }) {
       </div>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 300, display: "flex" }}>
+        <div className="agnt-resp-share-card" style={{ flex: 1, minWidth: 300, display: "flex" }}>
           <CopyableBlock text={workOnProject} label="Work on this project" copyBtnLabel="Copy prompt" id="work" />
         </div>
-        <div style={{ flex: 1, minWidth: 300, display: "flex" }}>
+        <div className="agnt-resp-share-card" style={{ flex: 1, minWidth: 300, display: "flex" }}>
           <CopyableBlock text={explore} label="Explore on your own" copyBtnLabel="Copy prompt" id="explore" />
         </div>
       </div>
@@ -1845,7 +1845,7 @@ function EditTasksPanel({ live, isOwner, refresh }) {
         background: "var(--bg-soft)",
         display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
       }}>
-        <div style={{ flex: 1, minWidth: 240 }}>
+        <div className="agnt-resp-edit-tasks-head" style={{ flex: 1, minWidth: 240 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Icon name="layers" size={14} />
             <h3 style={{ margin: 0, fontSize: 14, fontFamily: "JetBrains Mono, monospace" }}>

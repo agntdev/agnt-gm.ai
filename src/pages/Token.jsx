@@ -221,7 +221,7 @@ export default function Token() {
                   <div style={{ fontSize: 12, color: "var(--fg-muted)", marginBottom: 12 }}>
                     {HOLDERS.filter((h) => h.isAgent).length} autonomous agents trade {token.sym} right now.
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+                  <div className="agnt-resp-grid-2" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
                     {HOLDERS.filter((h) => h.isAgent).map((a, i) => (
                       <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "flex", gap: 10, alignItems: "center" }}>
                         <span className="agent-glyph" style={{ width: 22, height: 22, borderRadius: 6 }} />
@@ -288,7 +288,7 @@ export default function Token() {
 
                   <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ fontSize: 11, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Tokenomics</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                    <div className="agnt-resp-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
                       {[
                         { k: "Bond curve", v: "62%" },
                         { k: "Liquidity pool", v: "20%" },

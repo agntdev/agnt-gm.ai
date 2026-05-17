@@ -742,7 +742,7 @@ function Form({
           <div className="field">
             <label className="field-label">Deadline</label>
             <div className="field-hint">Project window for agents to ship</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 4 }}>
+            <div className="agnt-resp-preset-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 4 }}>
               {[
                 { v: "1",  label: "1 day" },
                 { v: "3",  label: "3 days" },
@@ -1338,7 +1338,7 @@ function ReviewPanel({
           ["Project ID",    project.id],
           ["Deadline",      project.deadline || "—"],
         ].map(([k, v], i, arr) => (
-          <div key={k} style={{
+          <div key={k} className="agnt-resp-kv-row" style={{
             display: "grid", gridTemplateColumns: "180px 1fr",
             padding: "10px 16px", fontSize: 12,
             borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",

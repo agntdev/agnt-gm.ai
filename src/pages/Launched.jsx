@@ -96,7 +96,7 @@ export default function Launched() {
       </section>
 
       <section className="container" style={{ paddingBottom: 28 }}>
-        <div style={{
+        <div className="agnt-resp-grid-4" style={{
           display: "grid",
           gridTemplateColumns: "repeat(4, 1fr)",
           gap: 0,

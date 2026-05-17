@@ -237,6 +237,105 @@ const RESPONSIVE_CSS = `
   @media (max-width: 380px) {
     .footer .container { flex-direction: column !important; gap: 10px !important; }
   }
+
+  /* ─────────── Generic responsive grid hooks ───────────
+     Plain inline-style grids can't carry media queries, so we tag the
+     worst offenders with these class names and override here. */
+
+  /* 4-up stat / preset grids → 2 columns ≤640px, 1 column ≤380px. */
+  @media (max-width: 640px) {
+    .agnt-resp-grid-4 { grid-template-columns: 1fr 1fr !important; }
+    /* Internal cell borders that used borderRight on all-but-last look
+       weird on a 2-column reflow — drop the right border on every cell
+       and let the row-gap handle separation visually. */
+    .agnt-resp-grid-4 > * { border-right: none !important; border-bottom: 1px solid var(--border) !important; }
+    .agnt-resp-grid-4 > *:last-child { border-bottom: none !important; }
+  }
+  @media (max-width: 380px) {
+    .agnt-resp-grid-4 { grid-template-columns: 1fr !important; }
+  }
+
+  /* 2-up grids that aren't tagged with the form-grid class (e.g. token
+     "agents trading" cards) → 1 column ≤520px. */
+  @media (max-width: 520px) {
+    .agnt-resp-grid-2 { grid-template-columns: 1fr !important; }
+  }
+
+  /* 4-pill preset rows (deadline 1 day / 3 days / …) — keep all four
+     buttons on row 1 on phones but let them wrap on really narrow
+     viewports so the text doesn't get clipped. */
+  @media (max-width: 380px) {
+    .agnt-resp-preset-4 { grid-template-columns: 1fr 1fr !important; }
+  }
+
+  /* Review-panel key-value rows ("180px 1fr") flatten on phones so the
+     value text isn't squeezed into ~150px of remaining width. Label
+     drops above the value, in small caps. */
+  @media (max-width: 640px) {
+    .agnt-resp-kv-row {
+      grid-template-columns: 1fr !important;
+      row-gap: 2px;
+    }
+    .agnt-resp-kv-row > :first-child { font-size: 9.5px !important; }
+    .agnt-resp-kv-row > :last-child {
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  /* Agent profile stat tiles — 5 tiles in a flex row with minWidth:120
+     forced them onto two awkward rows on phones (3+2 with the last
+     wrapping). Shrink the minWidth so we get a cleaner 2×… layout, and
+     drop the inner padding a touch so the numbers still fit. */
+  @media (max-width: 640px) {
+    .agnt-resp-stat-tile {
+      min-width: 0 !important;
+      flex-basis: calc(50% - 6px) !important;
+      padding: 12px 14px !important;
+    }
+  }
+
+  /* Project page "Contribute" share cards — minWidth:300 was forcing
+     horizontal overflow on phones < 360px. Let the cards shrink to
+     fit the container instead. */
+  @media (max-width: 640px) {
+    .agnt-resp-share-card { min-width: 0 !important; flex-basis: 100% !important; }
+  }
+
+  /* EditTasksPanel collapsed header — minWidth:240 + button forced
+     the button onto a second indented line on narrow phones. Let the
+     copy block shrink and the button drop full-width below it. */
+  @media (max-width: 520px) {
+    .agnt-resp-edit-tasks-head { min-width: 0 !important; flex-basis: 100% !important; }
+    .agnt-resp-edit-tasks-head + button { width: 100%; justify-content: center; }
+  }
+
+  /* Token page detail-grid — already CSS-driven, but the tokenomics row
+     above still needs the .agnt-resp-grid-4 override (handled). The
+     "agents trading" card row gets .agnt-resp-grid-2 (handled). */
+
+  /* Trading page market-strip — gap:28 between metric items is too wide
+     on phones, leaves single items dangling. Reduce gap so all metrics
+     stay legible without overflow. */
+  @media (max-width: 640px) {
+    .market-strip { gap: 14px !important; padding: 10px 14px !important; }
+    .market-strip .ms-value { font-size: 12.5px !important; }
+    .market-strip .ms-divider { display: none !important; }
+  }
+
+  /* Launched table — already wraps in a card; the table itself can
+     scroll horizontally on phones since the 9-column DOM doesn't reflow
+     well into a card. */
+  @media (max-width: 640px) {
+    .launched-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  }
+
+  /* WeeklyBars 12-column grid: bars stay legible at 12 cols on a 320px
+     viewport (≈22px per bar incl. gap), but on iPhone SE the gap eats
+     too much. Drop gap to 2px on very narrow viewports. */
+  @media (max-width: 380px) {
+    .agnt-resp-weekly-bars { gap: 2px !important; }
+  }
 `;
 
 export default function App() {

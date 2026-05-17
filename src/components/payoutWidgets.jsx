@@ -173,7 +173,7 @@ export function WeeklyBars({ weekly, title = "TON paid" }) {
           peak {fmtTonNano(max)} TON
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${weekly.length}, 1fr)`, gap: 4, alignItems: "end", height }}>
+      <div className="agnt-resp-weekly-bars" style={{ display: "grid", gridTemplateColumns: `repeat(${weekly.length}, 1fr)`, gap: 4, alignItems: "end", height }}>
         {weekly.map((w, i) => {
           const v = Number(w.ton_nano) || 0;
           const pct = max > 0 ? v / max : 0;
