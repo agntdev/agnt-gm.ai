@@ -775,19 +775,22 @@ const STAGE_STATUS = {
 };
 
 function StagesSection({ live, isOwner, refresh }) {
+  // `stages === null` means "haven't fetched yet" — the section is
+  // hidden during that first paint. On reloads we DON'T reset to null;
+  // the previous list stays on screen until the new one lands, then
+  // swaps in atomically. Stops the millisecond-flicker where the
+  // whole stages block unmounts → remounts on every refresh tick
+  // (which happens on focus, after Pay, after every poll, etc.).
   const [stages, setStages] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [reloadTick, setReloadTick] = useState(0);
   const idOrSlug = live?.slug || live?.id;
 
   useEffect(() => {
     if (!idOrSlug) return;
     let cancelled = false;
-    setLoading(true);
     api.projectStages(idOrSlug).then((res) => {
       if (cancelled) return;
       setStages(res?.stages || []);
-      setLoading(false);
     });
     return () => { cancelled = true; };
   }, [idOrSlug, reloadTick]);
@@ -815,7 +818,7 @@ function StagesSection({ live, isOwner, refresh }) {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  if (loading || stages == null) return null;
+  if (stages == null) return null;
   if (stages.length === 0) return null;
 
   const last = stages[stages.length - 1];
@@ -1887,8 +1890,25 @@ function EditTasksPanel({ live, isOwner, refresh }) {
     setLayer1Errors([]);
     setLlmReasons(null);
 
+    // Validate against the WHOLE plan, not just the tasks list — the
+    // validator's "project" mode runs identity / tokenomics checks that
+    // fail loudly on missing name/symbol/supply. Those fields are
+    // already locked in on the existing project; pull them off `live`
+    // and synthesize a full plan so the validator only really tests
+    // the bit the owner is editing (the tasks + weight budget).
+    //
+    // token_total_supply on the DTO is in smallest units (decimals=9);
+    // the validator wants whole tokens. Divide before passing.
+    const decimals = live.token_decimals ?? 9;
+    const supplyWhole = (Number(live.token_total_supply) || 0) / Math.pow(10, decimals);
     const errs = validateManualPlan(
-      { tasks, owner_share_bps: live.owner_share_bps ?? 0 },
+      {
+        name: live.name,
+        token_symbol: live.token_symbol,
+        total_supply: supplyWhole,
+        owner_share_bps: live.owner_share_bps ?? 0,
+        tasks,
+      },
       "project",
     );
     if (errs.length > 0) { setErrorMsg(errs[0]); return; }
