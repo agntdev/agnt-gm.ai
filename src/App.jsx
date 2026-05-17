@@ -92,14 +92,16 @@ const RESPONSIVE_CSS = `
   }
 
   /* My-projects table on the Agent page — horizontal scroll within
-     the table card rather than the whole viewport. */
+     the table card rather than the whole viewport. The !important is
+     needed to defeat the inline overflow:hidden that the card uses
+     to clip border-radius corners on desktop. */
   @media (max-width: 640px) {
     .agnt-resp-h-scroll {
-      overflow-x: auto;
+      overflow-x: auto !important;
       -webkit-overflow-scrolling: touch;
     }
-    .agnt-resp-h-scroll > * {
-      min-width: 520px;
+    .agnt-resp-h-scroll-inner {
+      min-width: 560px;
     }
   }
 
@@ -335,6 +337,43 @@ const RESPONSIVE_CSS = `
      too much. Drop gap to 2px on very narrow viewports. */
   @media (max-width: 380px) {
     .agnt-resp-weekly-bars { gap: 2px !important; }
+  }
+
+  /* Milestones (project Tasks tab) stats grid — 5-col fixed layout
+     (Total / Open / In flight / Merged …) at minmax(82px,1fr) totals
+     ~410px, which overflows phones. Drop to 2 cols on phones, 4 cols
+     on very narrow tablet widths. Also: align values to bottom so
+     wrapped labels ("In flight") line up with single-line ones. */
+  @media (max-width: 700px) {
+    .ms-hero-stats { grid-template-columns: 1fr 1fr !important; }
+    .ms-stat {
+      border-right: none !important;
+      border-bottom: 1px solid var(--border);
+      display: flex !important;
+      flex-direction: column;
+      justify-content: flex-end;
+      min-height: 72px;
+    }
+    .ms-stat:nth-last-child(-n+2) { border-bottom: none; }
+  }
+
+  /* Milestones tasks table — 80px / 1fr / 160px / 140px / 90px grid is
+     ~470px minimum and overflows on phones. The Milestones page wraps
+     it in .ms-tasks-scroll for horizontal scroll on mobile. */
+  @media (max-width: 640px) {
+    .ms-tasks-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+    .ms-task-list { min-width: 560px; }
+  }
+
+  /* Create form — .field-row (1fr 1fr) puts the reward-pool input
+     next to the 4-pill deadline grid. On phones that right column
+     can't fit "1 day / 3 days / 7 days / 14 days" labels and pushes
+     the form wider than the viewport. Collapse to single column. */
+  @media (max-width: 640px) {
+    .field-row { grid-template-columns: 1fr !important; }
+    /* Reduce inner padding so the form-card content area stays usable
+       at narrow widths (default 24px 28px → cuts ~56px from row width). */
+    .create-form-card { padding: 18px 16px !important; }
   }
 `;
 

@@ -572,6 +572,7 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
 function ProjectsTable({ projects, navigate }) {
   return (
     <div className="agnt-resp-h-scroll" style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+      <div className="agnt-resp-h-scroll-inner">
       <div style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 2fr) 110px 140px 110px",
@@ -646,6 +647,7 @@ function ProjectsTable({ projects, navigate }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

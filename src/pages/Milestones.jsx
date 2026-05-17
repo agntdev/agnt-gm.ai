@@ -193,7 +193,7 @@ export default function Milestones() {
             </div>
           </div>
 
-          <div style={{ marginTop: 24, border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+          <div className="ms-tasks-scroll" style={{ marginTop: 24, border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
             {liveTasks === null ? (
               <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>
                 Loading tasks…
