@@ -5,33 +5,146 @@
 // publish / stage-activation flows as the backend migrates them onto
 // the same machinery.
 //
-// Two integration paths today:
-//   A) ton://transfer deep-links — for Tonkeeper / Tonhub /
+// Three integration paths:
+//   A) TonConnect — preferred when a wallet is already paired with the
+//      dApp. We build the comment as a TEP-74 text-comment BoC payload
+//      (op=0 + UTF-8 string) with our own minimal serializer below,
+//      then ship it via tonConnectUI.sendTransaction's `payload` field.
+//   B) ton://transfer deep-links — for Tonkeeper / Tonhub /
 //      MyTonWallet. One universal URL with `?text=` carrying the
 //      comment marker; we render three labelled buttons for brand
 //      recognition. Wallet apps decode the text into a TEP-74
 //      comment payload internally.
-//   B) Manual copy/paste — three Copy buttons (wallet, amount,
-//      comment). Last-resort, but they stay prominent because they're
-//      also useful for verifying the values when paying via (A).
+//   C) Manual copy/paste — three Copy buttons (wallet, amount,
+//      comment). Last-resort, but stays prominent because the values
+//      are also useful for verifying what (A) / (B) sent.
 //
-// (The original third path — in-browser TonConnect with a hand-built
-// BoC payload via `@ton/core` — is removed temporarily. `@ton/core`
-// references the Node-only `Buffer` global at module-eval time, which
-// white-screens the bundle in any browser that doesn't already have a
-// Buffer polyfill. Restoring it requires either (i) polyfilling
-// Buffer in main.jsx, or (ii) hand-rolling the BoC serializer for
-// op=0 + UTF-8 text comments. Tracking as a follow-up.)
+// Why a hand-rolled BoC serializer instead of `@ton/core`:
+//   @ton/core references the Node-only `Buffer` global at module-eval
+//   time. Browsers don't ship `Buffer` → ReferenceError on import →
+//   white-screen. Pulling in a `buffer` polyfill works but adds ~10KB
+//   for one helper we use exactly once. Our marker is always 17 ASCII
+//   bytes (`agnt:pay:<8hex>`) which fits cleanly in a single cell —
+//   ~30 lines of code does the job without the library or polyfill.
 //
 // Polls /builder/owner-payments/{id} every 5s; stops once the intent
 // flips to `confirmed` or `expired`. Calls onConfirmed / onExpired so
 // the caller can refetch its own data.
 
 import { useEffect, useRef, useState } from "react";
+import { useTonConnectUI } from "@tonconnect/ui-react";
 import { Icon } from "./atoms.jsx";
 import { api } from "../lib/api.js";
 
 const POLL_MS = 5_000;
+
+// Max bytes of UTF-8 text that fit into a single 1023-bit cell after
+// reserving 32 bits for the op-code. (1023 - 32) / 8 = 123.875 → 123.
+// Our `agnt:pay:<8hex>` markers are 17 bytes, so this is never hit
+// in practice — guard kept for future marker shapes.
+const MAX_INLINE_COMMENT_BYTES = 123;
+
+// CRC32C lookup table (Castagnoli polynomial, reversed bit order =
+// 0x82f63b78). Used at the end of the BoC envelope per the TVM spec.
+// Built once on module load.
+const CRC32C_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? ((c >>> 1) ^ 0x82f63b78) : (c >>> 1);
+    }
+    t[i] = c;
+  }
+  return t;
+})();
+
+function crc32c(bytes) {
+  let c = ~0;
+  for (let i = 0; i < bytes.length; i++) {
+    c = CRC32C_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  }
+  return (~c) >>> 0;
+}
+
+/**
+ * Encode `text` as a TEP-74 text-comment BoC payload, ready to drop
+ * into `tonConnectUI.sendTransaction({ messages: [{ payload }] })`.
+ *
+ * Layout:
+ *   cell = [4 bytes op-code = 0x00000000] [N bytes UTF-8 of text]
+ *   BoC  = magic + header (with has_crc32c) + 1 cell + CRC32C tail
+ *
+ * Output is byte-for-byte identical to
+ *   `beginCell().storeUint(0,32).storeStringTail(text).endCell().toBoc().toString("base64")`
+ * from `@ton/core`. Verified examples:
+ *   buildCommentPayload("test")
+ *     = "te6cckEBAQEACgAAEAAAAAB0ZXN0cbBecQ=="
+ *   buildCommentPayload("agnt:pay:a1b2c3d4")
+ *     = "te6cckEBAQEAFwAAKgAAAABhZ250OnBheTphMWIyYzNkNF8srTc="
+ */
+function buildCommentPayload(text) {
+  const textBytes = new TextEncoder().encode(text);
+  if (textBytes.length > MAX_INLINE_COMMENT_BYTES) {
+    throw new Error(
+      `comment too long for a single-cell payload: ${textBytes.length} bytes ` +
+      `(max ${MAX_INLINE_COMMENT_BYTES}). The current backend marker shape ` +
+      `is well under this — if you're seeing this, the marker format changed.`
+    );
+  }
+
+  // 1. Cell body: 4 zero bytes (op = text-comment) + UTF-8.
+  //    Bit-aligned, so no completion tag.
+  const cellData = new Uint8Array(4 + textBytes.length);
+  cellData.set(textBytes, 4);
+
+  // 2. Cell descriptors (TVM "raw" cell format):
+  //      d1 = (refs & 7) + 8*is_exotic + 32*level   → 0 (no refs)
+  //      d2 = floor(bits/8)*2 + (bits % 8 == 0 ? 0 : 1)
+  //           For full-byte content: d2 = bytes * 2.
+  const cellBytes = new Uint8Array(2 + cellData.length);
+  cellBytes[0] = 0;
+  cellBytes[1] = cellData.length * 2;
+  cellBytes.set(cellData, 2);
+
+  // 3. BoC envelope:
+  //      magic     = b5ee9c72
+  //      header    = 0b01000001 → has_idx=0, has_crc=1, has_cache=0,
+  //                                flags=0, size_bytes=1
+  //      off_bytes = 1
+  //      cells / roots / absent counts (1 byte each because size=1)
+  //      tot_cells_size = cellBytes.length (1 byte, off_bytes=1)
+  //      root_list      = single byte index 0
+  //      cell_data      = our 2+N bytes
+  //      crc32c         = CRC of everything above, little-endian
+  const totSize = cellBytes.length;
+  const boc = new Uint8Array(4 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + cellBytes.length + 4);
+  let i = 0;
+  boc[i++] = 0xb5; boc[i++] = 0xee; boc[i++] = 0x9c; boc[i++] = 0x72;
+  boc[i++] = 0x41;        // header (has_crc32c=1, size_bytes=1)
+  boc[i++] = 0x01;        // off_bytes
+  boc[i++] = 0x01;        // cells_count
+  boc[i++] = 0x01;        // roots_count
+  boc[i++] = 0x00;        // absent_count
+  boc[i++] = totSize;     // tot_cells_size
+  boc[i++] = 0x00;        // root index 0
+  boc.set(cellBytes, i);
+  i += cellBytes.length;
+  const crc = crc32c(boc.subarray(0, i));
+  boc[i++] = crc & 0xff;
+  boc[i++] = (crc >>> 8) & 0xff;
+  boc[i++] = (crc >>> 16) & 0xff;
+  boc[i++] = (crc >>> 24) & 0xff;
+
+  // 4. Base64. Chunked to dodge the apply-spread argument-count limit
+  //    on very long inputs (not an issue for ~30-byte BoCs today, but
+  //    cheap to keep for future longer markers).
+  let s = "";
+  for (let k = 0; k < boc.length; k += 0x8000) {
+    s += String.fromCharCode.apply(null, boc.subarray(k, k + 0x8000));
+  }
+  return btoa(s);
+}
 
 function buildDeepLink(intent) {
   const params = new URLSearchParams({
@@ -140,6 +253,9 @@ export default function OwnerPaymentScreen({
   purposeLabel = "fund your project",
 }) {
   const [intent, setIntent] = useState(initialIntent);
+  const [tonConnectUI] = useTonConnectUI();
+  const [tcStatus, setTcStatus] = useState("idle"); // idle | sending | sent | rejected | error
+  const [tcError, setTcError] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const pollRef = useRef(null);
 
@@ -190,6 +306,36 @@ export default function OwnerPaymentScreen({
   );
 
   const deepLink = buildDeepLink(intent);
+
+  async function onPayTonConnect() {
+    setTcError("");
+    setTcStatus("sending");
+    try {
+      if (!tonConnectUI.connected) {
+        await tonConnectUI.openModal();
+        if (!tonConnectUI.connected) { setTcStatus("idle"); return; }
+      }
+      const payload = buildCommentPayload(intent.comment_marker);
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 6 * 60,
+        messages: [{
+          address: intent.target_wallet,
+          amount:  String(intent.expected_nano),
+          payload,
+        }],
+      });
+      setTcStatus("sent");
+    } catch (err) {
+      const msg = String(err?.message || err || "");
+      if (msg.toLowerCase().includes("reject")) {
+        setTcStatus("rejected");
+        setTcError("Transaction rejected in your wallet.");
+      } else {
+        setTcStatus("error");
+        setTcError(msg || "Wallet transfer failed. Try the deep-links below or copy the values manually.");
+      }
+    }
+  }
 
   const statusBlock = (() => {
     if (status === "confirmed") {
@@ -335,19 +481,36 @@ export default function OwnerPaymentScreen({
 
         {!terminal && (
           <>
+            <button
+              type="button"
+              onClick={onPayTonConnect}
+              disabled={tcStatus === "sending"}
+              className="btn-primary-big"
+              style={{
+                background: "var(--accent)",
+                opacity: tcStatus === "sending" ? 0.6 : 1,
+                justifyContent: "center", width: "100%",
+              }}
+            >
+              <Icon name="zap" size={12} />
+              {tcStatus === "sending" ? "Sending to wallet…"
+                : tcStatus === "sent"  ? "Sent — waiting for on-chain confirmation"
+                : `Pay with connected wallet`}
+            </button>
+
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <a
                 href={deepLink}
-                className="btn-primary-big"
-                style={{ flex: 1, minWidth: 130, justifyContent: "center", background: "var(--accent)", textDecoration: "none" }}
+                className="btn"
+                style={{ flex: 1, minWidth: 120, justifyContent: "center", textDecoration: "none" }}
                 rel="noreferrer"
               >
-                <Icon name="external" size={12} /> Open Tonkeeper
+                <Icon name="external" size={12} /> Tonkeeper
               </a>
               <a
                 href={deepLink}
                 className="btn"
-                style={{ flex: 1, minWidth: 130, justifyContent: "center", textDecoration: "none" }}
+                style={{ flex: 1, minWidth: 120, justifyContent: "center", textDecoration: "none" }}
                 rel="noreferrer"
               >
                 <Icon name="external" size={12} /> Tonhub
@@ -355,15 +518,22 @@ export default function OwnerPaymentScreen({
               <a
                 href={deepLink}
                 className="btn"
-                style={{ flex: 1, minWidth: 130, justifyContent: "center", textDecoration: "none" }}
+                style={{ flex: 1, minWidth: 120, justifyContent: "center", textDecoration: "none" }}
                 rel="noreferrer"
               >
                 <Icon name="external" size={12} /> MyTonWallet
               </a>
             </div>
-            <div style={{ fontSize: 11, color: "var(--fg-muted)", lineHeight: 1.5 }}>
-              Or copy the three values above into any TON wallet manually.
-            </div>
+
+            {tcError && (
+              <div style={{
+                padding: 10, fontSize: 12,
+                border: "1px solid var(--danger)", borderRadius: 6,
+                background: "var(--danger-soft)", color: "var(--danger)",
+              }}>
+                {tcError}
+              </div>
+            )}
           </>
         )}
 
@@ -385,6 +555,6 @@ export default function OwnerPaymentScreen({
   );
 }
 
-// Re-export the deep-link builder in case callers want to render their
-// own pay-button variant (e.g. a QR code).
-export { buildDeepLink };
+// Re-export helpers in case callers want to render their own pay-button
+// variant (e.g. a QR code, or a custom TonConnect-styled CTA).
+export { buildCommentPayload, buildDeepLink };
