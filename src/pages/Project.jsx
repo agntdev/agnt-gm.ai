@@ -88,6 +88,7 @@ export default function Project() {
             "Pay X TON" buttons on screen confused owners — kept the
             stage-card one inside <StagesSection> as the single source. */}
         <EditTasksPanel live={live} isOwner={isOwner} refresh={refresh} />
+        <PublishPanel live={live} isOwner={isOwner} refresh={refresh} />
         <StagesSection live={live} isOwner={isOwner} refresh={refresh} />
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
           {tab === "contribute" && (
@@ -808,7 +809,7 @@ function StageCard({ stage, isLast, isOwner, refresh, live }) {
         </div>
       )}
 
-      {stage.status === "pending" && isOwner && (
+      {stage.status === "pending" && isOwner && tonPool > 0 && (
         <StageFundCTA stage={stage} refresh={refresh} />
       )}
 
@@ -1671,6 +1672,134 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
         />
       )}
     </>
+  );
+}
+
+// ─────────────────────── PublishPanel ───────────────────────
+//
+// Manual "Publish project" CTA for the owner of a `ready_to_publish`
+// project. Publishing deploys the jetton and creates the GitHub repo
+// (~10–60s), flipping the project to `live`.
+//
+// When to show the button (owner + status === ready_to_publish):
+//   - pool === 0                       → publish available immediately
+//                                        (there's no deposit to wait on;
+//                                        without this the project would
+//                                        hang in ready_to_publish forever)
+//   - pool > 0 && funded_at == null    → NOT here — the stage-card
+//                                        "Pay X TON" CTA handles funding,
+//                                        which auto-publishes on confirm
+//   - pool > 0 && funded_at != null    → publish available (manual
+//                                        fallback if the auto-publish
+//                                        watcher didn't fire)
+function PublishPanel({ live, isOwner, refresh }) {
+  const { token } = useAuth();
+  const [phase, setPhase] = useState("idle"); // idle | publishing | done | error
+  const [errorMsg, setErrorMsg] = useState("");
+  const [repoUrl, setRepoUrl] = useState(null);
+
+  // Success card persists even after `refresh` flips the project to
+  // `live` (which would otherwise drop this panel via the guard below),
+  // so the owner still sees the confirmation + repo link.
+  if (phase === "done") {
+    return (
+      <div style={{
+        marginTop: 16, padding: 16,
+        border: "1px solid var(--accent)", borderRadius: 10,
+        background: "var(--accent-soft)",
+        display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+      }}>
+        <Icon name="check" size={16} />
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "var(--accent-fg)" }}>
+            Project published — it's live
+          </div>
+          <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5 }}>
+            The jetton is deployed and the GitHub repository is created. Agents can pick up tasks now.
+          </div>
+        </div>
+        {repoUrl && (
+          <a href={repoUrl} target="_blank" rel="noreferrer" className="btn-primary-big" style={{ background: "var(--accent)", color: "white", textDecoration: "none" }}>
+            <Icon name="external" size={12} /> View repository
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  if (!live || !isOwner || live.status !== "ready_to_publish") return null;
+
+  const pool = Number(live.ton_reward_pool_nano) || 0;
+  const funded = live.ton_pool_funded_at != null;
+  // pool>0 && not-funded → funding (and its auto-publish) is owned by the
+  // stage-card "Pay X TON" CTA; don't show a second publish path here.
+  if (pool > 0 && !funded) return null;
+
+  const publishing = phase === "publishing";
+
+  async function onPublish() {
+    setErrorMsg("");
+    setPhase("publishing");
+    const res = await api.publishProject(live.slug || live.id, token);
+    if (res.ok) {
+      const data = res.data || {};
+      setRepoUrl(data.repo_url || data.project?.github_repo_url || live.github_repo_url || null);
+      setPhase("done");
+      refresh?.();
+      return;
+    }
+    const data = res.data || {};
+    if (res.status === 409) {
+      setErrorMsg(`Status changed to ${data.status || "not ready_to_publish"} — someone may have published already. Refreshing…`);
+      refresh?.();
+    } else if (res.status === 412) {
+      setErrorMsg(data.hint || data.error || "The TON reward pool isn't funded yet — send the deposit first.");
+    } else if (res.status === 403) {
+      setErrorMsg("Only the project owner can publish.");
+    } else if (res.status === 404) {
+      setErrorMsg("Project not found. Refresh the page.");
+    } else if (res.status === 401) {
+      setErrorMsg("Your session expired. Sign in again, then retry.");
+    } else {
+      setErrorMsg(data.details || data.error || `Publish failed (HTTP ${res.status}). Try again.`);
+    }
+    setPhase("error");
+  }
+
+  return (
+    <div className="agnt-resp-banner" style={{
+      marginTop: 16, padding: 16,
+      border: "1px solid var(--border-strong)", borderRadius: 10,
+      background: "var(--bg-soft)",
+      display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+    }}>
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Icon name="rocket" size={14} />
+          <h3 style={{ margin: 0, fontSize: 14, fontFamily: "JetBrains Mono, monospace" }}>
+            Publish project
+          </h3>
+        </div>
+        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--fg-muted)", lineHeight: 1.5 }}>
+          {funded
+            ? "The reward pool is funded. Publishing deploys the jetton and creates the GitHub repository — one issue per task. Takes ~10–60s."
+            : "This project has no TON reward pool, so there's no deposit to wait on. Publish now to deploy the jetton and create the GitHub repository (one issue per task). Takes ~10–60s."}
+        </p>
+        {errorMsg && (
+          <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--danger)" }}>{errorMsg}</div>
+        )}
+      </div>
+      <button
+        type="button"
+        className="btn-primary-big"
+        style={{ background: "var(--accent)", opacity: publishing ? 0.6 : 1 }}
+        disabled={publishing}
+        onClick={onPublish}
+      >
+        <Icon name="rocket" size={12} />
+        {publishing ? " Publishing…" : phase === "error" ? " Retry publish" : " Publish"}
+      </button>
+    </div>
   );
 }
 
