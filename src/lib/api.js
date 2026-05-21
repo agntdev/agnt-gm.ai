@@ -192,10 +192,15 @@ export const api = {
   // project. Status-gated server-side (409 on `live`/etc), rate-limited
   // at 30 calls/hour/agent.
   //
-  // Body  : { tasks: [{slug?, title, body_md, difficulty?, weight, tags?}],
-  //           skip_coherence?: boolean }
+  // Descriptions-only contract (2026-05-21): the owner edits only the
+  // description; the LLM assigns title/slug/weight/difficulty/tags.
+  // Body  : { tasks: [{ id?, body_md }], skip_coherence?: boolean }
+  //           - id present  → existing task (re-describe, keep slug)
+  //           - id absent   → new task (LLM names + weights it)
+  //           - array order = display order
   // Resp  : { ok, project_id, tasks_replaced, tasks_inserted,
-  //           tasks_updated, tasks_deleted, tasks: [...] }
+  //           tasks_updated, tasks_deleted,
+  //           tasks: [{ id, slug, title, body_md, weight, difficulty, tags }] }
   // Err   : 400 { layer1_errors? | llm_reject + llm_reasons }
   //         409 { error, current_status }
   //         429 rate limit

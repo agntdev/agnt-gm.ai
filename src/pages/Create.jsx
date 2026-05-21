@@ -189,7 +189,7 @@ export default function Create() {
   async function onSubmitManual() {
     setModerationReason("");
     setErrorMsg("");
-    const errs = validateManualPlan(manual, "project");
+    const errs = validateManualPlan(manual, "project", { descriptionsOnly: true });
     if (errs.length > 0) {
       setErrorMsg(errs[0]);
       triggerShake();
@@ -213,14 +213,9 @@ export default function Create() {
         plan_md: manual.plan_md.trim() || undefined,
         readme_md: manual.readme_md.trim() || undefined,
         owner_share_bps: Number(manual.owner_share_bps) || 0,
-        tasks: manual.tasks.map((t) => ({
-          slug: t.slug.trim().toUpperCase(),
-          title: t.title.trim(),
-          body_md: t.body_md,
-          difficulty: t.difficulty || undefined,
-          weight: Number(t.weight),
-          tags: (t.tags && t.tags.length) ? t.tags : undefined,
-        })),
+        // Descriptions-only: the owner writes the description; the LLM
+        // assigns title / slug / weight / difficulty / tags on submit.
+        tasks: manual.tasks.map((t) => ({ body_md: t.body_md || "" })),
       },
     };
     const tonAmount = parseFloat(form.ton_reward_pool);
@@ -1070,7 +1065,7 @@ function ManualForm({
         </div>
 
         <SectionHeader
-          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} · weights must sum to ${(1 - (Number(manual.owner_share_bps) || 0) / 10_000).toFixed(2)}`}
+          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} · AI sets titles & weights on submit`}
         >
           Tasks
         </SectionHeader>
@@ -1078,7 +1073,7 @@ function ManualForm({
           tasks={manual.tasks}
           onChange={setManualTasks}
           isStage={false}
-          ownerShareBps={manual.owner_share_bps}
+          descriptionsOnly
         />
 
         <SectionHeader hint="Pool funds via TonConnect after the plan is accepted.">

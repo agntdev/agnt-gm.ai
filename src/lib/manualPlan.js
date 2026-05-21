@@ -45,6 +45,13 @@ export function emptyTask({ tasks = [], stageNumber } = {}) {
   };
 }
 
+// New row for the descriptions-only editor: just a body. The LLM assigns
+// title / slug / weight / difficulty / tags on save, so we don't seed
+// any of them (no `id` → server treats it as a brand-new task).
+export function emptyDescriptionTask() {
+  return { body_md: "" };
+}
+
 // Sum of weights as a number (NaN-safe).
 export function weightSum(tasks) {
   return (tasks || []).reduce((s, t) => s + (Number(t.weight) || 0), 0);
@@ -67,13 +74,60 @@ export function maxWeightSum(_ctx) {
   return 1.0;
 }
 
+// Whole-body placeholder strings the server rejects (case-insensitive,
+// trimmed). Matches isPlaceholderBody in builder_project_edit.go.
+const PLACEHOLDER_BODIES = new Set([
+  "todo", "wip", "fixme", "tbd", "test", "lorem ipsum", "placeholder", "...",
+]);
+
+// Count distinct words of length >= minLen (mirrors the server's
+// CountUniqueLongWords floor of 5 used to reject filler bodies).
+function countUniqueLongWords(text, minLen = 3) {
+  const seen = new Set();
+  for (const w of String(text || "").toLowerCase().match(/[a-z0-9]+/gi) || []) {
+    if (w.length >= minLen) seen.add(w);
+  }
+  return seen.size;
+}
+
+// Validate a single description (body_md) the same way the server does
+// for the descriptions-only flows. Returns an error string or null.
+function describeBodyError(body) {
+  const trimmed = String(body || "").trim();
+  if (trimmed.length < BODY_MD_MIN) return `description too short (min ${BODY_MD_MIN} chars)`;
+  if (trimmed.length > BODY_MD_MAX) return `description too long (max ${(BODY_MD_MAX / 1024).toFixed(0)}k chars)`;
+  if (PLACEHOLDER_BODIES.has(trimmed.toLowerCase())) return "description is a placeholder — write a real task description";
+  if (countUniqueLongWords(trimmed, 3) < 5) return "description looks like filler — add at least 5 distinct words";
+  return null;
+}
+
+// Lean validation for the descriptions-only task editor (project edit +
+// manual create). The LLM assigns title / weight / difficulty / slug on
+// save, so the only thing we check client-side is the description text
+// and the 1..50 count. Returns an array of human-readable errors.
+export function validateDescriptions(tasks) {
+  const errs = [];
+  const list = tasks || [];
+  if (list.length === 0) errs.push("Add at least one task.");
+  if (list.length > MAX_TASKS) errs.push(`Too many tasks (max ${MAX_TASKS}).`);
+  list.forEach((t, i) => {
+    const e = describeBodyError(t.body_md);
+    if (e) errs.push(`Task #${i + 1}: ${e}`);
+  });
+  return errs;
+}
+
 // Validate a manual plan body against the same rules the server enforces.
 // Returns an array of human-readable error strings (empty on success).
 //
 // `mode` is "project" (full plan) or "stage" (just the tasks list).
-export function validateManualPlan(plan, mode = "project") {
+// `opts.descriptionsOnly` switches the per-task checks to the lean
+// description-only rules (no slug/title/weight) — the LLM assigns those
+// fields server-side on submit.
+export function validateManualPlan(plan, mode = "project", opts = {}) {
   const errs = [];
   const isStage = mode === "stage";
+  const descriptionsOnly = !!opts.descriptionsOnly;
 
   if (!isStage) {
     const name = String(plan.name || "").trim();
@@ -95,6 +149,13 @@ export function validateManualPlan(plan, mode = "project") {
   }
 
   const tasks = plan.tasks || [];
+
+  // Descriptions-only: defer slug/title/weight to the LLM, just check
+  // the description text + count.
+  if (descriptionsOnly) {
+    return errs.concat(validateDescriptions(tasks));
+  }
+
   if (tasks.length === 0) errs.push("Add at least one task.");
   if (tasks.length > MAX_TASKS) errs.push(`Too many tasks (max ${MAX_TASKS}).`);
 
