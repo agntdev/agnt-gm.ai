@@ -50,15 +50,21 @@ export function weightSum(tasks) {
   return (tasks || []).reduce((s, t) => s + (Number(t.weight) || 0), 0);
 }
 
-// Max allowable weight sum for this form context.
-//   - project creation: 1 - owner_share_bps/10_000
-//   - stage creation:   1.0 (full mint goes to agents)
-export function maxWeightSum({ isStage, ownerShareBps }) {
-  if (isStage) return 1.0;
-  const share = Number(ownerShareBps);
-  // Default missing share to 0 (full pool to agents). Capped at 10%
-  // (SHARE_MAX_BPS) — see validateManualPlan for the matching error.
-  return 1 - (Number.isFinite(share) ? share : 0) / 10_000;
+// Max allowable weight sum. ALWAYS 1.0 — for both project and stage
+// task lists.
+//
+// A task's `weight` is its fraction of the agent pool, and the pools are
+// distributed by raw weight:
+//   - TON pool:   payout = ton_pool * weight   (completion worker)
+//   - token mint: reward  = supply * (1 - owner_share) * weight
+// The owner's share is applied as the `(1 - owner_share)` MULTIPLIER on
+// the mint, NOT by shrinking the weight budget. So weights must sum to
+// 1.0 regardless of owner_share — otherwise an all-unfilled project
+// would refund the owner less than the full TON pool. This matches the
+// AI planner output (sums to 1.0) and the server validations, which were
+// aligned to the same 1.0 rule.
+export function maxWeightSum(_ctx) {
+  return 1.0;
 }
 
 // Validate a manual plan body against the same rules the server enforces.

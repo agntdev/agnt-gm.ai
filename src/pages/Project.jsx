@@ -21,7 +21,7 @@ import {
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
 import OwnerPaymentScreen from "../components/ownerPayment.jsx";
 import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
-import { emptyAddTask, validateAddTasks, validateManualPlan } from "../lib/manualPlan.js";
+import { emptyAddTask, validateAddTasks, validateManualPlan, maxWeightSum, weightSum } from "../lib/manualPlan.js";
 import { useAuth } from "../lib/auth.js";
 
 export default function Project() {
@@ -1674,6 +1674,29 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
   );
 }
 
+// Proportionally rescale a task list's weights so they sum to `budget`,
+// preserving relative sizes. Any float residue from rounding is absorbed
+// into the largest-weight task so the total lands exactly on budget
+// (the backend tolerates ±0.001, but we aim for exact). Returns a new
+// array; a no-op (returns the input mapped) when already on budget or
+// when the current sum is 0.
+function rescaleToBudget(tasks, budget) {
+  const list = tasks || [];
+  const sum = weightSum(list);
+  if (sum <= 0 || Math.abs(sum - budget) <= 0.0005) return list;
+  const k = budget / sum;
+  let out = list.map((t) => ({ ...t, weight: Number(((Number(t.weight) || 0) * k).toFixed(6)) }));
+  // Absorb the rounding residue into the heaviest task.
+  const newSum = weightSum(out);
+  const residue = Number((budget - newSum).toFixed(6));
+  if (Math.abs(residue) > 1e-9 && out.length) {
+    let maxIdx = 0;
+    out.forEach((t, i) => { if ((t.weight || 0) > (out[maxIdx].weight || 0)) maxIdx = i; });
+    out[maxIdx] = { ...out[maxIdx], weight: Number(((out[maxIdx].weight || 0) + residue).toFixed(6)) };
+  }
+  return out;
+}
+
 // ─────────────────────── EditTasksPanel ───────────────────────
 //
 // Visible only when the project is in `ready_to_publish` AND the
@@ -1745,6 +1768,14 @@ function EditTasksPanel({ live, isOwner, refresh }) {
         tags: Array.isArray(t.tags) ? t.tags : [],
       }));
     }
+
+    // Normalise weights to the 1.0 budget the backend enforces. AI-drafted
+    // projects already sum to ~1.0 (no-op), but older manually-created
+    // projects whose weights summed to 1 - owner_share get rescaled up so
+    // the loaded list is immediately valid — relative sizes preserved, so
+    // the owner can just edit copy and save without re-balancing.
+    full = rescaleToBudget(full, maxWeightSum({ isStage: false }));
+
     setTasks(full);
     setPhase("editing");
   }
@@ -1761,15 +1792,15 @@ function EditTasksPanel({ live, isOwner, refresh }) {
     // and synthesize a full plan so the validator only really tests
     // the bit the owner is editing (the tasks + weight budget).
     //
-    // token_total_supply on the DTO is in smallest units (decimals=9);
-    // the validator wants whole tokens. Divide before passing.
-    const decimals = live.token_decimals ?? 9;
-    const supplyWhole = (Number(live.token_total_supply) || 0) / Math.pow(10, decimals);
+    // token_total_supply on the ProjectOAS DTO is already in WHOLE tokens
+    // (the create handler stores mp.TotalSupply verbatim, range 1M..1T) —
+    // do NOT divide by 10^decimals or it falls under the 1M minimum and
+    // trips a spurious "Total supply must be 1,000,000…" error.
     const errs = validateManualPlan(
       {
         name: live.name,
         token_symbol: live.token_symbol,
-        total_supply: supplyWhole,
+        total_supply: Number(live.token_total_supply) || 0,
         owner_share_bps: live.owner_share_bps ?? 0,
         tasks,
       },
@@ -1899,7 +1930,7 @@ function EditTasksPanel({ live, isOwner, refresh }) {
             Edit tasks
           </div>
           <span style={{ fontSize: 10.5, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace" }}>
-            {tasks.length} task{tasks.length === 1 ? "" : "s"} · weights must sum to {(1 - (Number(live.owner_share_bps) || 0) / 10_000).toFixed(2)}
+            {tasks.length} task{tasks.length === 1 ? "" : "s"} · weights must sum to {maxWeightSum({ isStage: false, ownerShareBps: live.owner_share_bps }).toFixed(2)}
           </span>
         </div>
 
