@@ -7,11 +7,13 @@ import { Icon } from "./atoms.jsx";
 import {
   BODY_MD_MAX,
   BODY_MD_WARN,
+  BODY_MD_MIN,
   DIFFICULTIES,
   MAX_TASKS,
   TITLE_MAX,
   budgetState,
   emptyTask,
+  emptyDescriptionTask,
 } from "../lib/manualPlan.js";
 
 // Tiny global stylesheet — keyframes can't live in inline `style={}`.
@@ -491,6 +493,124 @@ function clamp01(n) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// DescTaskRow — the lean, descriptions-only task row. Used by the
+// pre-publish edit-tasks panel and the manual create form. The owner
+// edits ONLY the description; the LLM assigns title / slug / weight /
+// difficulty / tags on save. For existing tasks (carry an `id` or
+// `slug`) we surface those server-assigned values as read-only chips so
+// the owner has context for what they're re-describing.
+// ─────────────────────────────────────────────────────────────────────
+function DescTaskRow({ task, index, onChange, onRemove }) {
+  const [bodyFocused, setBodyFocused] = useState(false);
+  const isExisting = !!(task.id || task.slug);
+  const weightPct = Number.isFinite(Number(task.weight)) && Number(task.weight) > 0
+    ? `${(Number(task.weight) * 100).toFixed(0)}%`
+    : null;
+
+  const chip = (text, title) => (
+    <span
+      title={title}
+      style={{
+        fontFamily: "JetBrains Mono, monospace",
+        fontSize: 10, fontWeight: 800, letterSpacing: "0.04em",
+        padding: "3px 8px", borderRadius: 4,
+        background: "var(--bg-soft)", color: "var(--fg-muted)",
+        border: "1px solid var(--border)", whiteSpace: "nowrap",
+      }}
+    >
+      {text}
+    </span>
+  );
+
+  return (
+    <div
+      className="agnt-fade-in"
+      style={{
+        padding: "12px 14px",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        background: "var(--bg)",
+        display: "flex", flexDirection: "column", gap: 8,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+          {isExisting ? (
+            <>
+              {task.slug && chip(task.slug, "Task slug — assigned by the platform")}
+              {weightPct && chip(weightPct, "Reward weight — assigned by the AI")}
+              {task.difficulty && chip(String(task.difficulty).toUpperCase(), "Difficulty — assigned by the AI")}
+              {task.title && (
+                <span style={{
+                  fontSize: 12.5, fontWeight: 700, color: "var(--fg)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
+                }}>
+                  {task.title}
+                </span>
+              )}
+            </>
+          ) : (
+            chip("NEW · AI names it", "Title, weight and difficulty are assigned by the AI on save")
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove task ${index + 1}`}
+          title="Remove task"
+          style={{
+            display: "grid", placeItems: "center",
+            width: 30, height: 30, padding: 0, flexShrink: 0,
+            border: "1px solid var(--border)", background: "var(--bg-soft)",
+            borderRadius: 6, color: "var(--fg-muted)", cursor: "pointer",
+            transition: "color 0.15s ease, border-color 0.15s ease",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--danger)"; e.currentTarget.style.borderColor = "var(--danger)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-muted)"; e.currentTarget.style.borderColor = "var(--border)"; }}
+        >
+          <Icon name="x" size={12} />
+        </button>
+      </div>
+
+      <div style={{ position: "relative" }}>
+        <textarea
+          value={task.body_md || ""}
+          onChange={(e) => onChange({ ...task, body_md: e.target.value })}
+          onFocus={() => setBodyFocused(true)}
+          onBlur={() => setBodyFocused(false)}
+          placeholder="Describe what ships in this task — scope, acceptance criteria, constraints. The AI turns this into a titled, weighted task."
+          rows={bodyFocused || (task.body_md || "").length > 60 ? 5 : 3}
+          maxLength={BODY_MD_MAX}
+          style={{
+            ...inputStyle,
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 12, lineHeight: 1.55, resize: "vertical",
+            transition: "min-height 0.18s ease", paddingBottom: 22,
+          }}
+        />
+        {(bodyFocused || (task.body_md || "").length > BODY_MD_WARN || (task.body_md || "").length < BODY_MD_MIN) && (
+          <span
+            style={{
+              position: "absolute", right: 10, bottom: 8,
+              fontFamily: "JetBrains Mono, monospace", fontSize: 10,
+              color: (task.body_md || "").length >= BODY_MD_MAX ? "var(--danger)"
+                : (task.body_md || "").length < BODY_MD_MIN ? "#b45309"
+                : "var(--fg-muted)",
+              background: "var(--bg)", padding: "1px 6px", borderRadius: 4,
+              pointerEvents: "none", fontWeight: 700,
+            }}
+          >
+            {(task.body_md || "").length < BODY_MD_MIN
+              ? `${(task.body_md || "").length} / ${BODY_MD_MIN} min`
+              : `${(task.body_md || "").length.toLocaleString()} / ${(BODY_MD_MAX / 1024).toFixed(0)}k`}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // TasksEditor — the full repeating-tasks UX. Used in both the project
 // form (project mode) and the stage form (stage mode).
 //
@@ -511,12 +631,20 @@ export function TasksEditor({
   // `newTaskFactory` overrides the default emptyTask shape — used by
   // the add-tasks form to mint rows with `weight_within_new` zeroed.
   newTaskFactory,
+  // `descriptionsOnly` switches to the lean editor: the owner edits only
+  // the description; the LLM assigns title/slug/weight/difficulty/tags
+  // on save. Hides the per-task weight/advanced fields, the weight
+  // budget meter and auto-balance. Used by the pre-publish edit-tasks
+  // panel and the manual create form.
+  descriptionsOnly = false,
 }) {
   function add() {
     if (tasks.length >= MAX_TASKS) return;
-    const next = newTaskFactory
-      ? newTaskFactory({ tasks, stageNumber })
-      : emptyTask({ tasks, stageNumber });
+    const next = descriptionsOnly
+      ? emptyDescriptionTask()
+      : newTaskFactory
+        ? newTaskFactory({ tasks, stageNumber })
+        : emptyTask({ tasks, stageNumber });
     onChange([...tasks, next]);
   }
   function patchAt(i, next) {
@@ -546,14 +674,24 @@ export function TasksEditor({
         </div>
       ) : (
         tasks.map((t, i) => (
-          <TaskRow
-            key={i}
-            task={t}
-            index={i}
-            onChange={(next) => patchAt(i, next)}
-            onRemove={() => removeAt(i)}
-            weightField={weightField}
-          />
+          descriptionsOnly ? (
+            <DescTaskRow
+              key={i}
+              task={t}
+              index={i}
+              onChange={(next) => patchAt(i, next)}
+              onRemove={() => removeAt(i)}
+            />
+          ) : (
+            <TaskRow
+              key={i}
+              task={t}
+              index={i}
+              onChange={(next) => patchAt(i, next)}
+              onRemove={() => removeAt(i)}
+              weightField={weightField}
+            />
+          )
         ))
       )}
 
@@ -588,7 +726,7 @@ export function TasksEditor({
         >
           + Add task {tasks.length > 0 && <span style={{ opacity: 0.6 }}>({tasks.length}/{MAX_TASKS})</span>}
         </button>
-        {tasks.length >= 2 && (
+        {!descriptionsOnly && tasks.length >= 2 && (
           <button
             type="button"
             onClick={autoBalance}
@@ -611,12 +749,14 @@ export function TasksEditor({
         )}
       </div>
 
-      <BudgetMeter
-        tasks={tasks}
-        isStage={isStage}
-        ownerShareBps={ownerShareBps}
-        weightField={weightField}
-      />
+      {!descriptionsOnly && (
+        <BudgetMeter
+          tasks={tasks}
+          isStage={isStage}
+          ownerShareBps={ownerShareBps}
+          weightField={weightField}
+        />
+      )}
     </div>
   );
 }

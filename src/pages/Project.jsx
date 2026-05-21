@@ -21,7 +21,7 @@ import {
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
 import OwnerPaymentScreen from "../components/ownerPayment.jsx";
 import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
-import { emptyAddTask, validateAddTasks, validateManualPlan, maxWeightSum, weightSum } from "../lib/manualPlan.js";
+import { emptyAddTask, validateAddTasks, validateManualPlan, validateDescriptions } from "../lib/manualPlan.js";
 import { useAuth } from "../lib/auth.js";
 
 export default function Project() {
@@ -1674,43 +1674,23 @@ function AddTasksForm({ stage, live, onCancel, onDone }) {
   );
 }
 
-// Proportionally rescale a task list's weights so they sum to `budget`,
-// preserving relative sizes. Any float residue from rounding is absorbed
-// into the largest-weight task so the total lands exactly on budget
-// (the backend tolerates ±0.001, but we aim for exact). Returns a new
-// array; a no-op (returns the input mapped) when already on budget or
-// when the current sum is 0.
-function rescaleToBudget(tasks, budget) {
-  const list = tasks || [];
-  const sum = weightSum(list);
-  if (sum <= 0 || Math.abs(sum - budget) <= 0.0005) return list;
-  const k = budget / sum;
-  let out = list.map((t) => ({ ...t, weight: Number(((Number(t.weight) || 0) * k).toFixed(6)) }));
-  // Absorb the rounding residue into the heaviest task.
-  const newSum = weightSum(out);
-  const residue = Number((budget - newSum).toFixed(6));
-  if (Math.abs(residue) > 1e-9 && out.length) {
-    let maxIdx = 0;
-    out.forEach((t, i) => { if ((t.weight || 0) > (out[maxIdx].weight || 0)) maxIdx = i; });
-    out[maxIdx] = { ...out[maxIdx], weight: Number(((out[maxIdx].weight || 0) + residue).toFixed(6)) };
-  }
-  return out;
-}
-
 // ─────────────────────── EditTasksPanel ───────────────────────
 //
 // Visible only when the project is in `ready_to_publish` AND the
 // viewer is the owner. Lets the owner rewrite the AI-drafted task
 // list before paying the pool (and triggering auto-publish).
 //
+// Descriptions-only contract (2026-05-21): the owner edits ONLY the
+// description of each task and can add / delete tasks. The LLM assigns
+// title / slug / weight / difficulty / tags on save. So:
+//   - load preserves each task's `id` (existing) for the diff;
+//   - save sends { tasks: [{ id?, body_md }] } — no weight/slug/etc;
+//   - the 200 response is authoritative and we re-hydrate the chips.
+// Requires the matching backend update to PUT /projects/:id/tasks.
+//
 // Lifecycle:
 //   collapsed → click "Edit tasks" → loading → editing →
 //     submit → saving → done (panel collapses, refresh fires)
-//
-// Backend `PUT /projects/:id/tasks` is mocked in api.updateProjectTasks
-// for now (spec sent to backend dev). The mock returns success and the
-// edited list — good enough to wire the UI end-to-end. When the real
-// endpoint lands, only api.js changes; this component is unchanged.
 function EditTasksPanel({ live, isOwner, refresh }) {
   const { token } = useAuth();
   const [phase, setPhase] = useState("idle"); // idle | loading | editing | saving | done
@@ -1731,18 +1711,16 @@ function EditTasksPanel({ live, isOwner, refresh }) {
     setLlmReasons(null);
     setPhase("loading");
 
-    // Two-step load: first list (cheap), then a full per-task fetch
-    // for body_md / weight / difficulty / tags that the trimmed list
-    // doesn't carry today. The backend spec proposes a ?full=true to
-    // collapse this into one round-trip; the helper passes the flag
-    // already, so when the backend honours it we just keep the
-    // tasks-from-list as-is and skip the per-task fetches.
+    // Two-step load: first list (cheap), then a full per-task fetch for
+    // body_md that the trimmed list doesn't carry today. We keep the
+    // server-assigned slug/title/weight/difficulty around as read-only
+    // CONTEXT (the descriptions-only editor surfaces them as chips), and
+    // crucially preserve each task's immutable `id` so the save can tell
+    // the backend which rows are existing (re-describe) vs new (insert).
     const listRes = await api.listProjectTasks(live.slug || live.id, { full: true });
     const rough = listRes?.tasks || [];
     let full = rough;
-    const needsBackfill = rough.some(
-      (t) => t.body_md == null || t.weight == null,
-    );
+    const needsBackfill = rough.some((t) => t.body_md == null);
     if (needsBackfill) {
       const fulls = await Promise.all(
         rough.map((t) => api.getTask(live.slug || live.id, t.slug)),
@@ -1750,31 +1728,24 @@ function EditTasksPanel({ live, isOwner, refresh }) {
       full = fulls.map((envelope, i) => {
         const detail = envelope?.task || envelope || {};
         return {
-          slug: rough[i].slug,
+          id: detail.id ?? rough[i].id,
+          slug: detail.slug ?? rough[i].slug,
           title: detail.title ?? rough[i].title ?? "",
           body_md: detail.body_md ?? "",
-          difficulty: detail.difficulty || "medium",
-          weight: typeof detail.weight === "number" ? detail.weight : 0,
-          tags: Array.isArray(detail.tags) ? detail.tags : [],
+          difficulty: detail.difficulty || undefined,
+          weight: typeof detail.weight === "number" ? detail.weight : undefined,
         };
       });
     } else {
       full = rough.map((t) => ({
+        id: t.id,
         slug: t.slug,
         title: t.title || "",
         body_md: t.body_md || "",
-        difficulty: t.difficulty || "medium",
-        weight: typeof t.weight === "number" ? t.weight : 0,
-        tags: Array.isArray(t.tags) ? t.tags : [],
+        difficulty: t.difficulty || undefined,
+        weight: typeof t.weight === "number" ? t.weight : undefined,
       }));
     }
-
-    // Normalise weights to the 1.0 budget the backend enforces. AI-drafted
-    // projects already sum to ~1.0 (no-op), but older manually-created
-    // projects whose weights summed to 1 - owner_share get rescaled up so
-    // the loaded list is immediately valid — relative sizes preserved, so
-    // the owner can just edit copy and save without re-balancing.
-    full = rescaleToBudget(full, maxWeightSum({ isStage: false }));
 
     setTasks(full);
     setPhase("editing");
@@ -1785,39 +1756,25 @@ function EditTasksPanel({ live, isOwner, refresh }) {
     setLayer1Errors([]);
     setLlmReasons(null);
 
-    // Validate against the WHOLE plan, not just the tasks list — the
-    // validator's "project" mode runs identity / tokenomics checks that
-    // fail loudly on missing name/symbol/supply. Those fields are
-    // already locked in on the existing project; pull them off `live`
-    // and synthesize a full plan so the validator only really tests
-    // the bit the owner is editing (the tasks + weight budget).
-    //
-    // token_total_supply on the ProjectOAS DTO is already in WHOLE tokens
-    // (the create handler stores mp.TotalSupply verbatim, range 1M..1T) —
-    // do NOT divide by 10^decimals or it falls under the 1M minimum and
-    // trips a spurious "Total supply must be 1,000,000…" error.
-    const errs = validateManualPlan(
-      {
-        name: live.name,
-        token_symbol: live.token_symbol,
-        total_supply: Number(live.token_total_supply) || 0,
-        owner_share_bps: live.owner_share_bps ?? 0,
-        tasks,
-      },
-      "project",
-    );
+    // Descriptions-only flow: the owner edits only body_md; the LLM
+    // assigns title / slug / weight / difficulty / tags on save. So the
+    // client-side check is just the description text + the 1..50 count —
+    // no weight budget, no supply, no name/symbol (those are immutable
+    // on an existing project and never part of task editing).
+    const errs = validateDescriptions(tasks);
     if (errs.length > 0) { setErrorMsg(errs[0]); return; }
 
     setPhase("saving");
+    // Per task we send only an identity handle + the description:
+    //   - existing task → { id, body_md } (server keeps/reassigns slug etc)
+    //   - new task      → { body_md }      (server + LLM generate the rest)
+    // Array order = display order.
     const body = {
-      tasks: tasks.map((t) => ({
-        slug: (t.slug || "").trim().toUpperCase() || undefined,
-        title: String(t.title || "").trim(),
-        body_md: t.body_md || "",
-        difficulty: t.difficulty || undefined,
-        weight: Number(t.weight),
-        tags: (t.tags && t.tags.length) ? t.tags : undefined,
-      })),
+      tasks: tasks.map((t) => (
+        t.id
+          ? { id: t.id, body_md: t.body_md || "" }
+          : { body_md: t.body_md || "" }
+      )),
     };
     if (skipCoherence) body.skip_coherence = true;
 
@@ -1860,6 +1817,19 @@ function EditTasksPanel({ live, isOwner, refresh }) {
       updated:  Number(data.tasks_updated)  || 0,
       deleted:  Number(data.tasks_deleted)  || 0,
     });
+    // Re-hydrate from the canonical list the server returns — it carries
+    // the LLM-assigned title / slug / weight / difficulty so a re-open
+    // (or the brief pre-collapse view) shows the authoritative values.
+    if (Array.isArray(data.tasks)) {
+      setTasks(data.tasks.map((t) => ({
+        id: t.id,
+        slug: t.slug,
+        title: t.title || "",
+        body_md: t.body_md || "",
+        difficulty: t.difficulty || undefined,
+        weight: typeof t.weight === "number" ? t.weight : undefined,
+      })));
+    }
     setPhase("done");
     refresh?.();
     // Auto-collapse after a short success display.
@@ -1930,7 +1900,7 @@ function EditTasksPanel({ live, isOwner, refresh }) {
             Edit tasks
           </div>
           <span style={{ fontSize: 10.5, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace" }}>
-            {tasks.length} task{tasks.length === 1 ? "" : "s"} · weights must sum to {maxWeightSum({ isStage: false, ownerShareBps: live.owner_share_bps }).toFixed(2)}
+            {tasks.length} task{tasks.length === 1 ? "" : "s"} · AI sets titles & weights on save
           </span>
         </div>
 
@@ -1938,7 +1908,7 @@ function EditTasksPanel({ live, isOwner, refresh }) {
           tasks={tasks}
           onChange={setTasks}
           isStage={false}
-          ownerShareBps={live.owner_share_bps ?? 0}
+          descriptionsOnly
         />
 
         {llmReasons && (
