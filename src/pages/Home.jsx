@@ -27,7 +27,7 @@ function ProjectPreview({ project }) {
       </div>
       {project.status && (
         <div className={`project-status-pill ${project.status}`}>
-          {project.status.replace("-", " ")}
+          {project.statusLabel || project.status.replace("-", " ")}
         </div>
       )}
       {project.liveUrl && (
@@ -201,6 +201,13 @@ function apiProjectToCard(live, taskCounts) {
     ready_to_publish: "hot",
     completed: "completed",
   })[live.status];
+  // Human badge label that matches the real status (the old card always
+  // read "SHIPPING"). live → LIVE, ready_to_publish → FUNDING, etc.
+  const statusLabel = ({
+    live: "LIVE",
+    ready_to_publish: "FUNDING",
+    completed: "DONE",
+  })[live.status] || (live.status ? live.status.replace(/_/g, " ").toUpperCase() : null);
 
   const counts = taskCounts?.[live.slug] || { open: 0, total: 0, done: 0 };
   const daysSinceCreated = live.created_at
@@ -248,12 +255,21 @@ function apiProjectToCard(live, taskCounts) {
       tokens: `${supplyLabel} $${live.token_symbol || "TBD"}`,
       crypto: `${tonPoolLabel} TON`,
     },
-    tasksOpen: counts.open,
+    // Prefer the server-computed open count; fall back to the per-project
+    // task fetch (taskCounts) until the backend field is deployed.
+    tasksOpen: live.open_tasks ?? counts.open,
     tasksClosed: counts.done,
     contributors: 0,
     // Distinct agents with an in-flight PR (opened, not yet merged/closed),
     // computed server-side. 0 until the project has live PR activity.
     agentsActive: live.active_agents ?? 0,
+    // Sort/highlight inputs (all server-computed; 0/null-safe).
+    statusLabel,
+    tonPoolNano: Number(live.ton_reward_pool_nano) || 0,
+    createdAtMs: live.created_at ? new Date(live.created_at).getTime() : 0,
+    openEasy: live.open_easy ?? 0,
+    openHard: live.open_hard ?? 0,
+    prsMerged7d: live.prs_merged_7d ?? 0,
     daysLeft,
     progress: counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0,
     price: 0,
@@ -268,6 +284,13 @@ function apiProjectToCard(live, taskCounts) {
     apiStatus: live.status,
     githubRepoUrl: live.github_repo_url,
   };
+}
+
+// TON reward per open task — the "best per task" sort key. Projects with
+// no open tasks or no pool score 0 so they rank last.
+function perTaskValue(p) {
+  if (!p.tonPoolNano || !p.tasksOpen) return 0;
+  return p.tonPoolNano / p.tasksOpen;
 }
 
 // Hostname of a URL for the browser-chrome address bar (strips scheme +
@@ -302,7 +325,8 @@ function deriveSpark(seed) {
 
 export default function Home() {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState("active");
+  const [filter, setFilter] = useState("live");
+  const [sort, setSort] = useState("hottest");
   const [stats, setStats] = useState(null);
   const [liveProjects, setLiveProjects] = useState(null); // null = loading, [] = loaded empty
   const [taskCounts, setTaskCounts] = useState({});
@@ -351,14 +375,38 @@ export default function Home() {
     return liveProjects.map((p) => apiProjectToCard(p, taskCounts));
   }, [liveProjects, taskCounts]);
 
+  // Status filter (1:1 with project status) + sort/highlight dimension,
+  // applied in sequence: filter the set, then rank it.
   const filtered = useMemo(() => {
     if (!projects) return [];
-    if (filter === "active") return projects.filter((p) => p.apiStatus === "live" || p.apiStatus === "ready_to_publish");
-    if (filter === "live") return projects.filter((p) => p.apiStatus === "live");
-    if (filter === "new") return projects.filter((p) => p.isNew);
-    if (filter === "completed") return projects.filter((p) => p.apiStatus === "completed");
-    return projects;
-  }, [filter, projects]);
+    // 1. Status filter.
+    let set = projects;
+    if (filter === "live")      set = projects.filter((p) => p.apiStatus === "live");
+    else if (filter === "funding")   set = projects.filter((p) => p.apiStatus === "ready_to_publish");
+    else if (filter === "completed") set = projects.filter((p) => p.apiStatus === "completed");
+    // "all" → everything.
+
+    // 2. Sort. Each comparator returns a number; we copy before sort so we
+    // don't mutate the memoized `projects`.
+    const ranked = [...set];
+    const cmp = {
+      // Hottest: merge momentum, then who's working, then open work.
+      hottest:     (a, b) => (b.prsMerged7d - a.prsMerged7d) || (b.agentsActive - a.agentsActive) || (b.tasksOpen - a.tasksOpen),
+      top_reward:  (a, b) => b.tonPoolNano - a.tonPoolNano,
+      // Best per task: pool ÷ open tasks (juiciest bounty). Projects with
+      // no open tasks or no pool sink to the bottom.
+      per_task:    (a, b) => perTaskValue(b) - perTaskValue(a),
+      // Ending soon: nearest deadline first; null deadlines last.
+      ending_soon: (a, b) => (a.daysLeft ?? Infinity) - (b.daysLeft ?? Infinity),
+      newest:      (a, b) => b.createdAtMs - a.createdAtMs,
+      // Beginner-friendly: most easy open tasks, fewest hard.
+      beginner:    (a, b) => (b.openEasy - a.openEasy) || (a.openHard - b.openHard),
+      // Heavy: most hard open tasks, then most open tasks overall.
+      heavy:       (a, b) => (b.openHard - a.openHard) || (b.tasksOpen - a.tasksOpen),
+    }[sort];
+    if (cmp) ranked.sort(cmp);
+    return ranked;
+  }, [filter, sort, projects]);
 
   // Hero stats — read from /builder/stats; show "—" while loading.
   // The four slots tell the "earn here now" story: open money, open work,
@@ -446,9 +494,8 @@ export default function Home() {
           </div>
           <div className="tabs">
             {[
-              ["active", "Active"],
               ["live", "Live"],
-              ["new", "New"],
+              ["funding", "Funding"],
               ["completed", "Completed"],
               ["all", "All"],
             ].map(([f, label]) => (
@@ -457,6 +504,38 @@ export default function Home() {
               </button>
             ))}
           </div>
+        </div>
+        {/* Sort / highlight chips — rank the filtered set. */}
+        <div className="agnt-sort-row" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+          {[
+            ["hottest", "🔥 Hottest"],
+            ["top_reward", "💰 Top reward"],
+            ["per_task", "💸 Best per task"],
+            ["ending_soon", "⚡ Ending soon"],
+            ["newest", "🆕 Newest"],
+            ["beginner", "🐣 Beginner-friendly"],
+            ["heavy", "🏋 Heavy"],
+          ].map(([s, label]) => {
+            const active = sort === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSort(s)}
+                style={{
+                  padding: "5px 11px", borderRadius: 999, cursor: "pointer",
+                  border: `1px solid ${active ? "var(--fg)" : "var(--border)"}`,
+                  background: active ? "var(--fg)" : "var(--bg)",
+                  color: active ? "var(--bg)" : "var(--fg-muted)",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 11, fontWeight: 700, letterSpacing: "0.02em",
+                  transition: "all 0.12s ease",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
         {projects === null ? (
           <div style={{ padding: "40px 0", color: "var(--fg-muted)", fontSize: 13, textAlign: "center" }}>
@@ -468,7 +547,7 @@ export default function Home() {
             background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
           }}>
             <div style={{ fontWeight: 700, color: "var(--fg)", marginBottom: 6 }}>
-              {filter === "active" ? "No active projects yet." : "No projects match this filter."}
+              {filter === "live" ? "No live projects yet." : "No projects match this filter."}
             </div>
             Be the first —{" "}
             <button
