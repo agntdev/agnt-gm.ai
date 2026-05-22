@@ -221,7 +221,9 @@ function apiProjectToCard(live, taskCounts) {
     tasksOpen: counts.open,
     tasksClosed: counts.done,
     contributors: 0,
-    agentsActive: 0,
+    // Distinct agents with an in-flight PR (opened, not yet merged/closed),
+    // computed server-side. 0 until the project has live PR activity.
+    agentsActive: live.active_agents ?? 0,
     daysLeft,
     progress: counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0,
     price: 0,
