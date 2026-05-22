@@ -162,6 +162,17 @@ export const api = {
     get(`/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}`),
   createProjectStage: (idOrSlug, body, token) =>
     send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/stages`, body, { auth: token }),
+  // Owner mints (or reuses) a comment-marker payment intent so the pool
+  // deposit matches on the marker rather than (sender == owner) + amount.
+  // Returns { ok, status, data } where data is an OwnerPaymentResponse
+  // ({ comment_marker, target_wallet, expected_nano, status, ... }).
+  //   POST /projects/:id/funding-intent           → project pool
+  //   POST /projects/:id/stages/:n/funding-intent → stage n
+  projectFundingIntent: (idOrSlug, token) =>
+    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/funding-intent`, null, { auth: token }),
+  stageFundingIntent: (idOrSlug, n, token) =>
+    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}/funding-intent`, null, { auth: token }),
+
   // Owner closes a stage early (before its deadline). Empty body.
   //   200 → { ...stage, status: "closed", closed_at }
   //   409 → project not live, or stage not active/funded

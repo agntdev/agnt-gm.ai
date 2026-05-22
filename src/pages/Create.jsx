@@ -11,6 +11,7 @@ import {
   inputStyle,
   monoInputStyle,
 } from "../components/manualForm.jsx";
+import { buildCommentPayload } from "../components/ownerPayment.jsx";
 import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
 import { validateManualPlan } from "../lib/manualPlan.js";
 import { useAuth, setManualToken, githubLoginUrl } from "../lib/auth.js";
@@ -307,10 +308,25 @@ export default function Create() {
       const amount = fundingInstructions.amount_nano != null
         ? String(fundingInstructions.amount_nano)
         : String(project?.ton_reward_pool_nano ?? 0);
-      const message = { address: fundingInstructions.address, amount };
+      let message = { address: fundingInstructions.address, amount };
       // Pass the server-provided BoC payload through if it gave us one (used by
       // the backend to correlate the transfer to this specific project).
       if (fundingInstructions.payload) message.payload = fundingInstructions.payload;
+      // Preferred: mint a comment-marker funding intent so the deposit
+      // matches on the marker even if the paying wallet differs from the
+      // bound owner. Falls back to the bare transfer above if the endpoint
+      // isn't available yet.
+      const idOrSlug = project?.id || project?.slug;
+      if (idOrSlug && token) {
+        const intentRes = await api.projectFundingIntent(idOrSlug, token);
+        if (intentRes?.ok && intentRes.data?.comment_marker) {
+          message = {
+            address: intentRes.data.target_wallet || fundingInstructions.address,
+            amount: String(intentRes.data.expected_nano ?? amount),
+            payload: buildCommentPayload(intentRes.data.comment_marker),
+          };
+        }
+      }
       const result = await tonConnectUI.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 360,
         messages: [message],
