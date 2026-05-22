@@ -30,6 +30,30 @@ function ProjectPreview({ project }) {
           {project.status.replace("-", " ")}
         </div>
       )}
+      {project.liveUrl && (
+        <a
+          href={project.liveUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          title={`Open the live site — ${project.liveUrl}`}
+          style={{
+            position: "absolute", bottom: 8, right: 8,
+            display: "inline-flex", alignItems: "center", gap: 5,
+            padding: "4px 9px", borderRadius: 999,
+            background: "rgba(255,255,255,0.94)",
+            border: "1px solid var(--border)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 9.5, fontWeight: 800, letterSpacing: "0.05em",
+            textTransform: "uppercase", color: "var(--fg)",
+            textDecoration: "none",
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--accent)" }} />
+          Live site <Icon name="external" size={10} />
+        </a>
+      )}
     </div>
   );
 }
@@ -213,7 +237,13 @@ function apiProjectToCard(live, taskCounts) {
       bg: `oklch(0.94 0.07 ${hue})`,
       fg: `oklch(0.4 0.16 ${hue})`,
     },
-    preview: { url: `${live.slug}.pages.dev`, color: `oklch(0.94 0.06 ${hue})` },
+    // Live deployed site (GitHub Pages today). Drives the "live site"
+    // link on the card; null until /publish enables Pages.
+    liveUrl: live.live_url || null,
+    preview: {
+      url: live.live_url ? hostFromUrl(live.live_url) : `${live.slug}.pages.dev`,
+      color: `oklch(0.94 0.06 ${hue})`,
+    },
     rewardPool: {
       tokens: `${supplyLabel} $${live.token_symbol || "TBD"}`,
       crypto: `${tonPoolLabel} TON`,
@@ -238,6 +268,12 @@ function apiProjectToCard(live, taskCounts) {
     apiStatus: live.status,
     githubRepoUrl: live.github_repo_url,
   };
+}
+
+// Hostname of a URL for the browser-chrome address bar (strips scheme +
+// path). Falls back to the raw string if it isn't a parseable URL.
+function hostFromUrl(u) {
+  try { return new URL(u).host; } catch { return String(u || "").replace(/^https?:\/\//, ""); }
 }
 
 // Tiny string hash for deterministic per-slug colors / sparklines.
