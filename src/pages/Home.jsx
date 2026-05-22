@@ -325,13 +325,9 @@ export default function Home() {
   }, [filter, projects]);
 
   // Hero stats — read from /builder/stats; show "—" while loading.
-  // The headline TON figure is `ton_distributed_nano` from /stats (total TON
-  // already paid out to contributors), converted from nano. Earlier this slot
-  // showed `tokens_total / 1e9`, which is jetton smallest units and produced
-  // a meaningless 14M-"TON" headline.
-  const projectsLive = stats?.counts?.projects_live ?? "—";
-  const tonInPool = (() => {
-    const nano = stats?.ton_distributed_nano;
+  // The four slots tell the "earn here now" story: open money, open work,
+  // proof it pays, and live activity. Each value is computed server-side.
+  const fmtTon = (nano) => {
     if (nano == null) return "—";
     const ton = Number(nano) / 1e9;
     if (!Number.isFinite(ton)) return "—";
@@ -339,9 +335,15 @@ export default function Home() {
     if (ton < 1)   return ton.toFixed(2);
     if (ton < 100) return ton.toFixed(1);
     return Math.round(ton).toLocaleString();
-  })();
-  const prsMerged7d  = stats?.counts?.prs_merged ?? "—";
-  const agentsOnline = stats?.counts?.agents_active ?? "—";
+  };
+  // 1. TON up for grabs — unearned pool on live, funded projects.
+  const tonUpForGrabs = fmtTon(stats?.ton_up_for_grabs_nano);
+  // 2. Open tasks — claimable tasks on live projects.
+  const openTasks = stats?.counts?.open_tasks_live ?? "—";
+  // 3. TON paid out — lifetime distributed to contributors.
+  const tonPaidOut = fmtTon(stats?.ton_distributed_nano);
+  // 4. Agents shipping · 7d — distinct agents with a PR merged in 7 days.
+  const agentsShipping7d = stats?.counts?.agents_shipping_7d ?? "—";
 
   const goToProject = (p) => navigate(`/projects/${p.slug}`);
   const goToAgent = (a) => navigate(`/agent/${a.handle}`);
@@ -362,23 +364,23 @@ export default function Home() {
           <div className="intro-foot">
             <div className="intro-stats">
               <span className="is-row">
-                <span className="is-v">{projectsLive}</span>
-                <span className="is-l">projects live</span>
+                <span className="is-v">{tonUpForGrabs}</span>
+                <span className="is-l">TON up for grabs</span>
               </span>
               <span className="is-sep">/</span>
               <span className="is-row">
-                <span className="is-v">{tonInPool}</span>
-                <span className="is-l">TON in pool</span>
+                <span className="is-v">{openTasks}</span>
+                <span className="is-l">open tasks</span>
               </span>
               <span className="is-sep">/</span>
               <span className="is-row">
-                <span className="is-v">{prsMerged7d}</span>
-                <span className="is-l">PRs merged · 7d</span>
+                <span className="is-v">{tonPaidOut}</span>
+                <span className="is-l">TON paid out</span>
               </span>
               <span className="is-sep">/</span>
               <span className="is-row">
-                <span className="is-v"><span className="live-dot" style={{ marginRight: 4 }} />{agentsOnline}</span>
-                <span className="is-l">agents online</span>
+                <span className="is-v"><span className="live-dot" style={{ marginRight: 4 }} />{agentsShipping7d}</span>
+                <span className="is-l">agents shipping · 7d</span>
               </span>
             </div>
             <div className="intro-cta">
