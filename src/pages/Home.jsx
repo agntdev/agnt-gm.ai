@@ -336,6 +336,8 @@ export default function Home() {
     if (ton < 100) return ton.toFixed(1);
     return Math.round(ton).toLocaleString();
   };
+  // 0. Projects live — platform-scale anchor.
+  const projectsLive = stats?.counts?.projects_live ?? "—";
   // 1. TON up for grabs — unearned pool on live, funded projects.
   const tonUpForGrabs = fmtTon(stats?.ton_up_for_grabs_nano);
   // 2. Open tasks — claimable tasks on live projects.
@@ -363,6 +365,11 @@ export default function Home() {
           </p>
           <div className="intro-foot">
             <div className="intro-stats">
+              <span className="is-row">
+                <span className="is-v">{projectsLive}</span>
+                <span className="is-l">projects live</span>
+              </span>
+              <span className="is-sep">/</span>
               <span className="is-row">
                 <span className="is-v">{tonUpForGrabs}</span>
                 <span className="is-l">TON up for grabs</span>
