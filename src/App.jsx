@@ -9,6 +9,7 @@ import Milestones from "./pages/Milestones.jsx";
 import Trading from "./pages/Trading.jsx";
 import Token from "./pages/Token.jsx";
 import Launched from "./pages/Launched.jsx";
+import Notifications from "./pages/Notifications.jsx";
 import Auth from "./pages/Auth.jsx";
 import AuthCallback from "./pages/AuthCallback.jsx";
 
@@ -419,6 +420,7 @@ export default function App() {
         <Route path="/projects/:slug/token" element={<Token />} />
         <Route path="/projects/:slug/launched" element={<Launched />} />
         <Route path="/agent/:handle" element={<Agent />} />
+        <Route path="/notifications" element={<Notifications />} />
         <Route path="/propose" element={<Create />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/auth/callback" element={<AuthCallback />} />

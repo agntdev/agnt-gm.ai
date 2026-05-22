@@ -4,6 +4,7 @@ import { useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-rea
 import Icon from "./Icon.jsx";
 import { api } from "../lib/api.js";
 import { getToken, setSession } from "../lib/auth.js";
+import { notifVisual, notifRelativeTime, notifHref } from "../lib/notifications.js";
 
 export { default as Icon } from "./Icon.jsx";
 
@@ -475,6 +476,194 @@ export function WalletButton() {
   );
 }
 
+// NotificationsBell — bell icon with an unread badge (polled every 30s)
+// and a dropdown of the 10 most recent notifications. Clicking one marks
+// it read and deeplinks to its project; "Read all" clears the badge.
+// Rendered only when the viewer is signed in (Nav gates it).
+function NotificationsBell() {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [count, setCount] = useState(0);
+  const [items, setItems] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const ref = useRef(null);
+
+  // Poll the unread count every 30s (and once on mount).
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return undefined;
+    let cancelled = false;
+    const tick = async () => {
+      const res = await api.notificationsUnreadCount(token);
+      if (!cancelled && res && typeof res.count === "number") setCount(res.count);
+    };
+    tick();
+    const t = setInterval(tick, 30000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [open]);
+
+  async function loadRecent() {
+    const token = getToken();
+    if (!token) return;
+    setLoading(true);
+    const res = await api.notifications(token, { limit: 10 });
+    setItems(res?.notifications || []);
+    setLoading(false);
+  }
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next) loadRecent();
+  }
+
+  function onItemClick(n) {
+    const token = getToken();
+    if (n.read_at == null && token) {
+      api.markNotificationRead(n.id, token);
+      setItems((list) => (list || []).map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)));
+      setCount((c) => Math.max(0, c - 1));
+    }
+    setOpen(false);
+    const href = notifHref(n);
+    if (href) navigate(href);
+  }
+
+  async function onReadAll() {
+    const token = getToken();
+    if (!token) return;
+    setCount(0);
+    setItems((list) => (list || []).map((x) => ({ ...x, read_at: x.read_at || new Date().toISOString() })));
+    await api.markAllNotificationsRead(token);
+  }
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        className="btn btn-bell"
+        onClick={toggle}
+        title="Notifications"
+        aria-label={count > 0 ? `Notifications (${count} unread)` : "Notifications"}
+        style={{ position: "relative", paddingLeft: 10, paddingRight: 10 }}
+      >
+        <Icon name="bell" size={14} />
+        {count > 0 && (
+          <span style={{
+            position: "absolute", top: -4, right: -4,
+            minWidth: 16, height: 16, padding: "0 4px",
+            borderRadius: 999, background: "var(--danger)", color: "white",
+            fontFamily: "JetBrains Mono, monospace", fontSize: 9.5, fontWeight: 800,
+            display: "grid", placeItems: "center", lineHeight: 1,
+            border: "2px solid var(--bg)",
+          }}>
+            {count > 99 ? "99+" : count}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0,
+            background: "var(--bg)", border: "1px solid var(--border-strong)",
+            borderRadius: 10, width: 340, maxWidth: "calc(100vw - 28px)",
+            zIndex: 50, boxShadow: "0 18px 40px rgba(10,10,10,0.12)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "10px 12px", borderBottom: "1px solid var(--border)",
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
+              Notifications
+            </span>
+            {count > 0 && (
+              <button
+                type="button"
+                onClick={onReadAll}
+                style={{
+                  background: "none", border: "none", cursor: "pointer", padding: 0,
+                  fontSize: 11, color: "var(--accent-fg)", fontWeight: 700,
+                }}
+              >
+                Read all
+              </button>
+            )}
+          </div>
+
+          <div style={{ maxHeight: 360, overflowY: "auto" }}>
+            {loading && items == null ? (
+              <div style={{ padding: 20, textAlign: "center", color: "var(--fg-muted)", fontSize: 12 }}>
+                Loading…
+              </div>
+            ) : (items && items.length > 0) ? (
+              items.map((n) => {
+                const { icon, color } = notifVisual(n.type);
+                const unread = n.read_at == null;
+                return (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => onItemClick(n)}
+                    style={{
+                      display: "flex", gap: 10, width: "100%", textAlign: "left",
+                      padding: "10px 12px", border: "none", cursor: "pointer",
+                      borderBottom: "1px solid var(--border)",
+                      background: unread ? "var(--accent-soft)" : "transparent",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <span style={{ color, marginTop: 1, flexShrink: 0 }}><Icon name={icon} size={14} /></span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--fg)", lineHeight: 1.4 }}>
+                        {n.title || n.type}
+                      </span>
+                      {n.body && (
+                        <span style={{ display: "block", fontSize: 11.5, color: "var(--fg-muted)", marginTop: 2, lineHeight: 1.45, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                          {n.body}
+                        </span>
+                      )}
+                      <span style={{ display: "block", fontSize: 10, color: "var(--fg-subtle)", marginTop: 3, fontFamily: "JetBrains Mono, monospace" }}>
+                        {notifRelativeTime(n.created_at)}
+                      </span>
+                    </span>
+                    {unread && <span style={{ width: 7, height: 7, borderRadius: 999, background: "var(--accent)", marginTop: 5, flexShrink: 0 }} />}
+                  </button>
+                );
+              })
+            ) : (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--fg-muted)", fontSize: 12 }}>
+                No notifications yet.
+              </div>
+            )}
+          </div>
+
+          <Link
+            to="/notifications"
+            onClick={() => setOpen(false)}
+            style={{
+              display: "block", padding: "10px 12px", textAlign: "center",
+              fontSize: 11.5, fontWeight: 700, color: "var(--fg-muted)",
+              textDecoration: "none", borderTop: "1px solid var(--border)",
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          >
+            View all notifications →
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
   const { pathname } = useLocation();
   const isHome = pathname === "/" || pathname.startsWith("/projects");
@@ -495,6 +684,7 @@ export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
         <div className="nav-spacer" />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <WalletButton />
+          {authed && <NotificationsBell />}
           {authed ? (
             <MyAgentMenu agent={agent} onSignOut={onSignOut} active={isAgent} />
           ) : (

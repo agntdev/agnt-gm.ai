@@ -1891,7 +1891,7 @@ function PublishPanel({ live, isOwner, refresh }) {
 //     submit → saving → done (panel collapses, refresh fires)
 function EditTasksPanel({ live, isOwner, refresh }) {
   const { token } = useAuth();
-  const [phase, setPhase] = useState("idle"); // idle | loading | editing | saving | done
+  const [phase, setPhase] = useState("idle"); // idle | loading | editing | saving | enriching | done
   const [tasks, setTasks] = useState([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [layer1Errors, setLayer1Errors] = useState([]);
@@ -1900,6 +1900,51 @@ function EditTasksPanel({ live, isOwner, refresh }) {
   // Last successful response counters — drives the brief "Saved: N
   // updated · M added · K removed" toast under the panel header.
   const [lastSaved, setLastSaved] = useState(null);
+
+  const idOrSlug = live?.slug || live?.id;
+
+  // Save is async: PUT /tasks returns 202 (descriptions stored) while the
+  // LLM assigns title/weight/difficulty/slug in the background. Poll the
+  // project every ~2s until tasks_enrich_status flips to idle (done) or
+  // failed, then re-hydrate the chips from the canonical list. Declared
+  // before the early-return below to keep hook order stable.
+  useEffect(() => {
+    if (phase !== "enriching" || !idOrSlug) return undefined;
+    let cancelled = false;
+    let timer;
+    const poll = async () => {
+      const res = await api.getProject(idOrSlug);
+      if (cancelled) return;
+      const proj = res?.project || res;
+      const st = proj?.tasks_enrich_status;
+      if (st === "updating") {
+        timer = setTimeout(poll, 2000);
+        return;
+      }
+      if (st === "failed") {
+        setErrorMsg("The AI step that titles & weights the tasks failed. Your descriptions are saved — click Save again to re-run it.");
+        setPhase("editing");
+        return;
+      }
+      // idle (or a backend that doesn't report the field) → done.
+      const listRes = await api.listProjectTasks(idOrSlug, { full: true });
+      if (cancelled) return;
+      setTasks((listRes?.tasks || []).map((t) => ({
+        id: t.id,
+        slug: t.slug,
+        title: t.title || "",
+        body_md: t.body_md || "",
+        difficulty: t.difficulty || undefined,
+        weight: typeof t.weight === "number" ? t.weight : undefined,
+      })));
+      setPhase("done");
+      refresh?.();
+      setTimeout(() => { if (!cancelled) setPhase("idle"); }, 1800);
+    };
+    timer = setTimeout(poll, 2000);
+    return () => { cancelled = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, idOrSlug]);
 
   if (!live || !isOwner || live.status !== "ready_to_publish") return null;
 
@@ -2005,9 +2050,10 @@ function EditTasksPanel({ live, isOwner, refresh }) {
       return;
     }
 
-    // Server returns counters separately when the slug-preserving
-    // diff applies — surface them so the owner sees "kept 4, added 2,
-    // removed 1" rather than a generic "saved".
+    // 202 Accepted — descriptions are stored, but the LLM is still
+    // assigning title/weight/difficulty/slug. Surface the counters and
+    // hand off to the enrich-poll effect, which watches
+    // tasks_enrich_status and re-hydrates the chips when it lands.
     const data = res.data || {};
     setLastSaved({
       replaced: Number(data.tasks_replaced) || tasks.length,
@@ -2015,23 +2061,7 @@ function EditTasksPanel({ live, isOwner, refresh }) {
       updated:  Number(data.tasks_updated)  || 0,
       deleted:  Number(data.tasks_deleted)  || 0,
     });
-    // Re-hydrate from the canonical list the server returns — it carries
-    // the LLM-assigned title / slug / weight / difficulty so a re-open
-    // (or the brief pre-collapse view) shows the authoritative values.
-    if (Array.isArray(data.tasks)) {
-      setTasks(data.tasks.map((t) => ({
-        id: t.id,
-        slug: t.slug,
-        title: t.title || "",
-        body_md: t.body_md || "",
-        difficulty: t.difficulty || undefined,
-        weight: typeof t.weight === "number" ? t.weight : undefined,
-      })));
-    }
-    setPhase("done");
-    refresh?.();
-    // Auto-collapse after a short success display.
-    setTimeout(() => setPhase("idle"), 1800);
+    setPhase("enriching");
   }
 
   // ──────────────────────── render ────────────────────────
@@ -2079,6 +2109,27 @@ function EditTasksPanel({ live, isOwner, refresh }) {
       }}>
         <span className="live-dot" />
         <span style={{ fontSize: 12.5, color: "var(--fg)" }}>Loading current task list…</span>
+      </div>
+    );
+  }
+
+  if (phase === "enriching") {
+    return (
+      <div style={{
+        marginTop: 16, padding: 14,
+        border: "1px solid var(--border-strong)", borderRadius: 10,
+        background: "var(--bg-soft)",
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+      }}>
+        <span className="live-dot" />
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
+            Updating tasks…
+          </div>
+          <div style={{ marginTop: 4, fontSize: 12, color: "var(--fg-muted)", lineHeight: 1.5 }}>
+            Descriptions saved. The AI is assigning titles, weights and difficulty — this takes a few seconds.
+          </div>
+        </div>
       </div>
     );
   }

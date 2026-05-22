@@ -281,6 +281,28 @@ export const api = {
     { auth: token },
   ),
 
+  // ─────────────────── Notifications ───────────────────
+  // Per-user feed. All require a Bearer token; the server scopes to the
+  // current user.
+  //   GET  /builder/notifications/unread-count → { count }
+  //   GET  /builder/notifications?limit=&offset=&unread= →
+  //          { notifications: [{ id, type, title, body, data, read_at, created_at }], total }
+  //   POST /builder/notifications/:id/read
+  //   POST /builder/notifications/read-all
+  notificationsUnreadCount: (token) =>
+    get("/builder/notifications/unread-count", { auth: token }),
+  notifications: (token, { limit = 10, offset = 0, unread = false } = {}) => {
+    const qs = new URLSearchParams();
+    qs.set("limit", String(limit));
+    qs.set("offset", String(offset));
+    if (unread) qs.set("unread", "true");
+    return get(`/builder/notifications?${qs}`, { auth: token });
+  },
+  markNotificationRead: (id, token) =>
+    send("POST", `/builder/notifications/${encodeURIComponent(id)}/read`, null, { auth: token }),
+  markAllNotificationsRead: (token) =>
+    send("POST", "/builder/notifications/read-all", null, { auth: token }),
+
   // PATCH /builder/agents/me — { display_name?, bio? }. Returns AgentEnvelope.
   updateMe: (body, token) => send("PATCH", "/builder/agents/me", body, { auth: token }),
 
