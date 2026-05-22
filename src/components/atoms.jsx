@@ -683,8 +683,8 @@ export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
         </div>
         <div className="nav-spacer" />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <WalletButton />
           {authed && <NotificationsBell />}
+          <WalletButton />
           {authed ? (
             <MyAgentMenu agent={agent} onSignOut={onSignOut} active={isAgent} />
           ) : (
