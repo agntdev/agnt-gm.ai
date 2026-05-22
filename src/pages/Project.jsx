@@ -810,7 +810,7 @@ function StageCard({ stage, isLast, isOwner, refresh, live }) {
       )}
 
       {stage.status === "pending" && isOwner && tonPool > 0 && (
-        <StageFundCTA stage={stage} refresh={refresh} />
+        <StageFundCTA stage={stage} live={live} refresh={refresh} />
       )}
 
       {stage.status === "active" && isOwner && (
@@ -889,9 +889,10 @@ function CloseStageEarly({ live, stage, refresh }) {
   );
 }
 
-function StageFundCTA({ stage, refresh }) {
+function StageFundCTA({ stage, live, refresh }) {
   const tonAddress = useTonAddress();
   const [tonConnectUI] = useTonConnectUI();
+  const { token } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [txSubmitted, setTxSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -914,17 +915,21 @@ function StageFundCTA({ stage, refresh }) {
         await tonConnectUI.openModal();
         if (!tonConnectUI.connected) { setSubmitting(false); return; }
       }
-      // Stage funding currently matches by amount + funding_address (no
-      // comment). But if the backend migrates this onto the owner-payment
-      // intent flow, it'll hand us either a ready BoC `funding_payload` or
-      // a `comment_marker` to encode — forward it as a TEP-74 text comment
-      // cell so the watcher can match on the strict marker prefix.
-      const message = { address: dest, amount };
-      const marker = stage.comment_marker || stage.funding_comment;
-      if (stage.funding_payload) {
-        message.payload = stage.funding_payload;
-      } else if (marker) {
-        message.payload = buildCommentPayload(marker);
+      // Preferred path: mint a comment-marker intent so the deposit
+      // matches on the marker — works even when the paying wallet differs
+      // from the bound owner wallet. Fall back to the legacy bare transfer
+      // (sender+amount matching) if the endpoint isn't available yet.
+      let message = { address: dest, amount };
+      const idOrSlug = live?.slug || live?.id || stage.project_id;
+      if (idOrSlug && token) {
+        const res = await api.stageFundingIntent(idOrSlug, stage.stage_number, token);
+        if (res?.ok && res.data?.comment_marker) {
+          message = {
+            address: res.data.target_wallet || dest,
+            amount: String(res.data.expected_nano ?? amount),
+            payload: buildCommentPayload(res.data.comment_marker),
+          };
+        }
       }
       await tonConnectUI.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 360,
