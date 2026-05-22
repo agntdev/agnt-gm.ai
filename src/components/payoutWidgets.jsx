@@ -116,20 +116,29 @@ export function PayoutTile({ label, ton, token, count, tone }) {
   );
 }
 
-// Re-usable 4-tile grid driven by a payout-summary DTO. Both agent and
+// Re-usable tile grid driven by a payout-summary DTO. Both agent and
 // project summary endpoints share the same shape, so the same renderer
 // works for both.
-export function SummaryTiles({ summary }) {
+//
+// `hidePending` drops the amber Pending tile. Used by the platform
+// Transparency widget, whose framing is "every TON *paid out*": pending
+// payouts haven't completed (they're awaiting the next cron or
+// quarantined for reconcile), so surfacing them there reads as if the
+// "paid out" stat includes unfinished payouts. Agent/project views keep
+// it — there it means "what you're still owed".
+export function SummaryTiles({ summary, hidePending = false }) {
   if (!summary) return null;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-      <PayoutTile
-        label="Pending"
-        ton={summary.pending?.ton_nano}
-        token={summary.pending?.token_total}
-        count={summary.pending?.payout_count}
-        tone="amber"
-      />
+      {!hidePending && (
+        <PayoutTile
+          label="Pending"
+          ton={summary.pending?.ton_nano}
+          token={summary.pending?.token_total}
+          count={summary.pending?.payout_count}
+          tone="amber"
+        />
+      )}
       <PayoutTile
         label="Lifetime"
         ton={summary.lifetime?.ton_nano}

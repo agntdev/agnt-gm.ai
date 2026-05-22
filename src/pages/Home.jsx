@@ -461,7 +461,9 @@ export default function Home() {
             {schedule && <NextPayoutChip schedule={schedule} />}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <SummaryTiles summary={payoutStats} />
+            {/* Platform widget is framed as "every TON paid out" — only
+                show completed (sent) totals, not the pending bucket. */}
+            <SummaryTiles summary={payoutStats} hidePending />
             <ExtraCountsRow
               items={[
                 { label: "agents paid", value: payoutStats.agents_paid_lifetime, icon: "users" },
