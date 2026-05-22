@@ -19,7 +19,7 @@ import {
   WeeklyBars,
 } from "../components/payoutWidgets.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
-import OwnerPaymentScreen from "../components/ownerPayment.jsx";
+import OwnerPaymentScreen, { buildCommentPayload } from "../components/ownerPayment.jsx";
 import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
 import { emptyAddTask, validateAddTasks, validateManualPlan, validateDescriptions } from "../lib/manualPlan.js";
 import { useAuth } from "../lib/auth.js";
@@ -914,9 +914,21 @@ function StageFundCTA({ stage, refresh }) {
         await tonConnectUI.openModal();
         if (!tonConnectUI.connected) { setSubmitting(false); return; }
       }
+      // Stage funding currently matches by amount + funding_address (no
+      // comment). But if the backend migrates this onto the owner-payment
+      // intent flow, it'll hand us either a ready BoC `funding_payload` or
+      // a `comment_marker` to encode — forward it as a TEP-74 text comment
+      // cell so the watcher can match on the strict marker prefix.
+      const message = { address: dest, amount };
+      const marker = stage.comment_marker || stage.funding_comment;
+      if (stage.funding_payload) {
+        message.payload = stage.funding_payload;
+      } else if (marker) {
+        message.payload = buildCommentPayload(marker);
+      }
       await tonConnectUI.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 360,
-        messages: [{ address: dest, amount }],
+        messages: [message],
       });
       setTxSubmitted(true);
       // Bump the parent stage list quickly — watcher takes ~10-60s.
