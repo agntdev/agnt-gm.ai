@@ -162,6 +162,14 @@ export const api = {
     get(`/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}`),
   createProjectStage: (idOrSlug, body, token) =>
     send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/stages`, body, { auth: token }),
+  // Owner closes a stage early (before its deadline). Empty body.
+  //   200 → { ...stage, status: "closed", closed_at }
+  //   409 → project not live, or stage not active/funded
+  //   403 → not owner · 404 → not found
+  // Does NOT finish the project, refund budget, or lock supply — the
+  // project stays live and a new stage can be started afterwards.
+  closeProjectStage: (idOrSlug, n, token) =>
+    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}/close`, null, { auth: token }),
 
   // Mutations — require a Bearer token (session JWT or amk_… API key).
   // Body shape mirrors `internal_handler.createProjectRequest`:

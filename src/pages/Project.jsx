@@ -816,6 +816,75 @@ function StageCard({ stage, isLast, isOwner, refresh, live }) {
       {stage.status === "active" && isOwner && (
         <AddTasksCTA stage={stage} refresh={refresh} live={live} />
       )}
+
+      {isOwner && live.status === "live" && (stage.status === "active" || stage.status === "funded") && (
+        <CloseStageEarly live={live} stage={stage} refresh={refresh} />
+      )}
+    </div>
+  );
+}
+
+// CloseStageEarly — owner-only "finish this stage before its deadline"
+// action. Shown only on a live project's active/funded stage. This does
+// NOT finish the project, refund budget, or lock supply — the project
+// stays live and a new stage can be started afterwards.
+function CloseStageEarly({ live, stage, refresh }) {
+  const { token } = useAuth();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+
+  async function onClose() {
+    setError("");
+    setPending(true);
+    const res = await api.closeProjectStage(live.slug || live.id, stage.stage_number, token);
+    setPending(false);
+    if (res.ok) {
+      setConfirmOpen(false);
+      refresh?.();
+      return;
+    }
+    const data = res.data || {};
+    if (res.status === 409) setError(data.error || "This stage can't be finished in its current state.");
+    else if (res.status === 403) setError("Only the project owner can finish a stage.");
+    else if (res.status === 404) setError("Project or stage not found. Refresh the page.");
+    else if (res.status === 401) setError("Your session expired. Sign in again, then retry.");
+    else setError(data.error || `Couldn't finish the stage (HTTP ${res.status}). Try again.`);
+  }
+
+  return (
+    <div style={{
+      padding: "12px 18px", borderTop: "1px solid var(--border)",
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      gap: 12, flexWrap: "wrap",
+    }}>
+      <div style={{ fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5, flex: 1, minWidth: 220 }}>
+        Finish this stage before its deadline. The project stays live — you can open the next stage afterwards.
+        {error && <div style={{ marginTop: 6, color: "var(--danger)" }}>{error}</div>}
+      </div>
+      <button
+        type="button"
+        className="btn"
+        onClick={() => { setError(""); setConfirmOpen(true); }}
+      >
+        Finish stage early
+      </button>
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Finish this stage early?"
+        confirmLabel="Finish stage"
+        loading={pending}
+        body={
+          <>
+            Close the current stage before its deadline? New tasks for it
+            won't be accepted. The project stays active — you can open the
+            next stage later.
+          </>
+        }
+        onCancel={() => { if (!pending) setConfirmOpen(false); }}
+        onConfirm={onClose}
+      />
     </div>
   );
 }
