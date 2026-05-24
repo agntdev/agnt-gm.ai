@@ -792,7 +792,7 @@ function StageCard({ stage, isLast, isOwner, refresh, live }) {
           </div>
           {stage.jetton_mint_amount > 0 && (
             <div style={{ fontSize: 10.5, color: "var(--fg-muted)", marginTop: 2 }}>
-              + {Number(stage.jetton_mint_amount).toLocaleString()} jetton units
+              + {(Number(stage.jetton_mint_amount) / Math.pow(10, live?.token_decimals ?? 0)).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${live?.token_symbol || "TBD"}
             </div>
           )}
         </div>
