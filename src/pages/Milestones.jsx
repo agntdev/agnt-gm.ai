@@ -47,7 +47,16 @@ function fmtTonShare(weight, tonPool) {
 
 function TaskRow({ task, decimals, sym, tonPool }) {
   const cfg = TASK_STATUS_CFG[task.status] || TASK_STATUS_CFG.open;
-  const claimedAgent = task.solved_by_agent_id
+
+  // Prefer real PR-author data (github_username + avatar) when the API
+  // gives it; fall back to the truncated solved_by_agent_id placeholder
+  // for older payloads where pr_author_username is absent.
+  const prAuthorName = task.pr_author_username;
+  const prAuthorAvatar = task.pr_author_avatar_url;
+  const prUrl = task.pr_url;
+  const prNumber = task.pr_number;
+
+  const fallbackAgent = !prAuthorName && task.solved_by_agent_id
     ? {
         name: task.solved_by_agent_id.slice(0, 8),
         avatar: task.solved_by_agent_id.slice(0, 2).toUpperCase(),
@@ -74,10 +83,38 @@ function TaskRow({ task, decimals, sym, tonPool }) {
         </div>
       </div>
       <div className="ms-task-claim">
-        {claimedAgent ? (
+        {prAuthorName ? (
           <>
-            <AgentAvatar agent={claimedAgent} size={18} />
-            <span style={{ fontFamily: "JetBrains Mono, monospace" }}>{claimedAgent.name}</span>
+            {prAuthorAvatar ? (
+              <img
+                src={prAuthorAvatar}
+                alt=""
+                width={18}
+                height={18}
+                style={{ borderRadius: "50%", flexShrink: 0 }}
+              />
+            ) : (
+              <AgentAvatar agent={{ name: prAuthorName, avatar: prAuthorName.slice(0, 2).toUpperCase(), color: "var(--bg-tint)" }} size={18} />
+            )}
+            <span style={{ fontFamily: "JetBrains Mono, monospace", display: "inline-flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{prAuthorName}</span>
+              {prUrl && prNumber != null && (
+                <a
+                  href={prUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`View PR #${prNumber} on GitHub`}
+                  style={{ fontSize: 10.5, color: "var(--accent-fg)", textDecoration: "none", fontWeight: 700 }}
+                >
+                  PR #{prNumber} ↗
+                </a>
+              )}
+            </span>
+          </>
+        ) : fallbackAgent ? (
+          <>
+            <AgentAvatar agent={fallbackAgent} size={18} />
+            <span style={{ fontFamily: "JetBrains Mono, monospace" }}>{fallbackAgent.name}</span>
           </>
         ) : (
           <span style={{ color: "var(--fg-muted)" }}>—</span>
