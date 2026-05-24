@@ -5,7 +5,6 @@ import {
   ExtraCountsRow,
   NextPayoutChip,
   SummaryTiles,
-  WeeklyBars,
 } from "../components/payoutWidgets.jsx";
 import { api } from "../lib/api.js";
 
@@ -589,9 +588,6 @@ export default function Home() {
                 { label: "projects paid", value: payoutStats.projects_paid_lifetime, icon: "layers" },
               ]}
             />
-            {payoutStats.weekly && payoutStats.weekly.length > 0 && (
-              <WeeklyBars weekly={payoutStats.weekly} title="Platform TON paid" />
-            )}
           </div>
         </section>
       )}
