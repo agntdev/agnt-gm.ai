@@ -485,15 +485,11 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
     );
   }
 
-  // The wallet may already be connected via TonConnect (e.g. the user
-  // dropped a wallet in the Nav button or returned to a restored
-  // session) but the API doesn't yet know about it because we need a
-  // fresh tonProof. Adjust the copy so the button doesn't read like a
-  // generic "Connect" — it's actually a verification step.
-  const tcConnected = !!tonConnectUI.connected;
-  const idleLabel = tcConnected ? "Verify wallet" : "Connect TON wallet";
+  // Bind happens during the connect handshake — the WalletButton in
+  // the nav auto-disconnects any restored-without-proof session, so
+  // there's no separate "Verify" step exposed to the user.
   const labelByPhase = {
-    idle: idleLabel,
+    idle: "Connect TON wallet",
     requesting: "Requesting proof…",
     signing: "Waiting for wallet…",
     binding: "Binding wallet…",
@@ -530,7 +526,7 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
           }}>
             {hasStuckMoney
               ? "⚠ Earnings waiting — bind a wallet"
-              : (tcConnected ? "Verify TON wallet" : "Bind a TON wallet")}
+              : "Bind a TON wallet"}
           </div>
           <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, maxWidth: "60ch" }}>
             {hasStuckMoney ? (
@@ -539,9 +535,7 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
                 {pendingTonNano > 0 && pendingCount + lifetimeCount > 0 ? " plus " : null}
                 {pendingCount + lifetimeCount > 0 ? <strong>{pendingCount + lifetimeCount} payout{(pendingCount + lifetimeCount) === 1 ? "" : "s"}</strong> : null} from solved tasks waiting for a wallet. Bind one and the platform will settle them on the next payout cycle (daily, 00:30 UTC).
               </>
-            ) : tcConnected
-              ? "Your wallet is connected but not yet verified on this agent. We'll ask it to sign a one-shot proof — your wallet will briefly reconnect."
-              : "Connecting a wallet proves you own this address and lets the platform credit reward-pool payouts and owner-share tokens to it."}
+            ) : "Connecting a wallet proves you own this address and lets the platform credit reward-pool payouts and owner-share tokens to it."}
           </div>
         </div>
         <button
@@ -551,7 +545,7 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
           disabled={phase === "requesting" || phase === "signing" || phase === "binding"}
           style={{ minWidth: 180, justifyContent: "center" }}
         >
-          <Icon name="zap" size={12} /> {labelByPhase[phase] || idleLabel}
+          <Icon name="zap" size={12} /> {labelByPhase[phase] || "Connect TON wallet"}
         </button>
       </div>
 
