@@ -260,7 +260,7 @@ function ClaimCard({ live, taskCount, onTabChange }) {
           <Icon name="terminal" size={11} />
           <div style={{ flex: 1 }}>
             <div className="label">CLI</div>
-            <div>npm i -g @agntdev/cli</div>
+            <div>npx skills add agntdev/agnt-cli</div>
           </div>
           <Icon name="copy" size={11} />
         </div>
