@@ -73,8 +73,6 @@ export default function Project() {
           taskCount={taskCount}
           activeTab={tab}
           onTabChange={setTab}
-          prCount={0}
-          contributorCount={0}
         >
           <div style={{ marginTop: 8, marginBottom: 8 }}>
             <ProjectFactsRail live={live} owner={owner} taskCount={taskCount} isOwner={isOwner} refresh={refresh} />
@@ -89,7 +87,6 @@ export default function Project() {
             stage-card one inside <StagesSection> as the single source. */}
         <EditTasksPanel live={live} isOwner={isOwner} refresh={refresh} />
         <PublishPanel live={live} isOwner={isOwner} refresh={refresh} />
-        <StagesSection live={live} isOwner={isOwner} refresh={refresh} />
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
           {tab === "contribute" && (
             <ContributeGuide live={live} navigate={navigate} />
@@ -98,37 +95,15 @@ export default function Project() {
           {tab === "about" && (
             <div className="about-grid">
               <div>
-                {/* Goal/mission isn't on ProjectOAS yet — placeholder copy
-                    until the API exposes a long-form description. */}
-                {isOwner && (
-                  <div className="about-card">
-                    <div className="about-card-head">
-                      <div className="about-card-title">
-                        <Icon name="zap" size={12} /> Goal
-                      </div>
-                      <button className="btn btn-sm" type="button">Edit</button>
-                    </div>
-                    <p className="about-prose" style={{ color: "var(--fg-muted)" }}>
-                      Goal copy is editable here once the API exposes a long-form description.
-                    </p>
-                  </div>
-                )}
+                <AboutDetails live={live} owner={owner} isOwner={isOwner} />
+                <ProjectPayoutsSection slug={slug} live={live} />
+                <StagesSection live={live} isOwner={isOwner} refresh={refresh} />
               </div>
 
               <div>
                 <TokenRail live={live} isOwner={isOwner} refresh={refresh} />
               </div>
             </div>
-          )}
-
-          {tab === "prs" && (
-            <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13, border: "1px dashed var(--border-strong)", borderRadius: 10, background: "var(--bg-soft)" }}>
-              No PR feed exposed by the API yet.
-            </div>
-          )}
-
-          {tab === "contributors" && (
-            <ProjectPayoutsSection slug={slug} live={live} />
           )}
         </div>
       </section>
@@ -290,6 +265,117 @@ function fmtBigInt(n, decimals = 0) {
   if (num >= 1e6) return `${(num / 1e6).toFixed(num >= 10e6 ? 0 : 2)}M`;
   if (num >= 1e3) return `${(num / 1e3).toFixed(num >= 10e3 ? 0 : 1)}K`;
   return num.toLocaleString();
+}
+
+function AboutDetails({ live, owner, isOwner }) {
+  const pitch = live.short_description?.trim();
+  const repoUrl = live.github_repo_url;
+  const liveUrl = live.live_url;
+  const ownerName = owner
+    ? (owner.github_username || owner.display_name || owner.id?.slice(0, 8))
+    : (live.owner_agent_id ? `${live.owner_agent_id.slice(0, 8)}…` : "—");
+  const ownerHandle = owner?.github_username ? `@${owner.github_username}` : null;
+  const ownerProfile = owner?.github_username ? `https://github.com/${owner.github_username}` : null;
+
+  return (
+    <>
+      <div className="about-card">
+        <div className="about-card-head">
+          <div className="about-card-title">
+            <Icon name="info" size={12} /> About this project
+          </div>
+          {isOwner && <button className="btn btn-sm" type="button" disabled title="Coming soon">Edit</button>}
+        </div>
+        {pitch ? (
+          <p className="about-prose">{pitch}</p>
+        ) : (
+          <p className="about-prose" style={{ color: "var(--fg-muted)" }}>
+            No description yet. The owner hasn't published a longer write-up for this project.
+          </p>
+        )}
+
+        <div style={{
+          marginTop: 16, paddingTop: 14, borderTop: "1px dashed var(--border)",
+          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14,
+        }}>
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+              Owner
+            </div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {owner?.github_avatar_url && (
+                <img src={owner.github_avatar_url} alt="" style={{ width: 18, height: 18, borderRadius: 999, objectFit: "cover" }} />
+              )}
+              {ownerProfile ? (
+                <a href={ownerProfile} target="_blank" rel="noreferrer" style={{ color: "var(--fg)", textDecoration: "none" }}>
+                  {ownerHandle || ownerName}
+                </a>
+              ) : (
+                <span>{ownerName}</span>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+              Created
+            </div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: live.created_at ? "var(--fg)" : "var(--fg-muted)" }}>
+              {fmtDate(live.created_at) || "—"}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+              Published
+            </div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: live.published_at ? "var(--fg)" : "var(--fg-muted)" }}>
+              {fmtDate(live.published_at) || "—"}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+              Deadline
+            </div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: live.deadline ? "var(--fg)" : "var(--fg-muted)" }}>
+              {fmtDate(live.deadline) || "no deadline"}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+              Repository
+            </div>
+            <div style={{ fontSize: 12.5, fontFamily: "JetBrains Mono, monospace", fontWeight: 600 }}>
+              {repoUrl ? (
+                <a href={repoUrl} target="_blank" rel="noreferrer" style={{ color: "var(--fg)", textDecoration: "none" }}>
+                  {repoUrl.replace(/^https?:\/\//, "")}
+                </a>
+              ) : (
+                <span style={{ color: "var(--fg-muted)" }}>—</span>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+              Live site
+            </div>
+            <div style={{ fontSize: 12.5, fontFamily: "JetBrains Mono, monospace", fontWeight: 600 }}>
+              {liveUrl ? (
+                <a href={liveUrl} target="_blank" rel="noreferrer" style={{ color: "var(--fg)", textDecoration: "none" }}>
+                  {liveUrl.replace(/^https?:\/\//, "")}
+                </a>
+              ) : (
+                <span style={{ color: "var(--fg-muted)" }}>—</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }
 
 function ProjectFactsRail({ live, owner, taskCount, isOwner, refresh }) {
@@ -1259,7 +1345,7 @@ function CreateStageForm({ projectIdOrSlug, nextStageNumber, onCreated }) {
 }
 
 // ─────────────────────── Project payouts section ───────────────────────
-// Renders on the project page's Contributors tab. Pulls:
+// Lives inside the About tab. Pulls:
 //   GET /builder/projects/:id/payouts/summary?weeks=12  (tiles + chart)
 //   GET /builder/projects/:id/payouts?limit=50          (who got paid)
 // Empty state encourages the first contributor.
@@ -1297,7 +1383,8 @@ function ProjectPayoutsSection({ slug, live }) {
   if (!summary) {
     return (
       <div style={{
-        padding: 28, border: "1px dashed var(--border)", borderRadius: 10,
+        marginTop: 18,
+        padding: 24, border: "1px dashed var(--border)", borderRadius: 10,
         background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 12.5,
       }}>
         No payout data yet for this project.
@@ -1306,7 +1393,10 @@ function ProjectPayoutsSection({ slug, live }) {
   }
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <section style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800, paddingBottom: 4 }}>
+        <Icon name="coins" size={12} /> Payouts
+      </div>
       <SummaryTiles summary={summary} />
       <ExtraCountsRow
         items={[

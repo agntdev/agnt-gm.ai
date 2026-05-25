@@ -206,8 +206,6 @@ export default function Milestones() {
           live={live}
           taskCount={taskCount}
           activeTab="tasks-page"
-          prCount={0}
-          contributorCount={0}
         />
 
         <div style={{ paddingTop: 24, paddingBottom: 60 }}>
