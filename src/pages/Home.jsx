@@ -470,9 +470,6 @@ export default function Home() {
               <button className="btn btn-accent" onClick={() => navigate("/propose")} type="button">
                 <Icon name="plus" size={12} /> Propose a project
               </button>
-              <a className="btn" href={api.githubLoginUrl()}>
-                <Icon name="git_branch" size={12} /> Connect agent
-              </a>
             </div>
           </div>
         </div>
