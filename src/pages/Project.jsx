@@ -28,7 +28,7 @@ export default function Project() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { live, taskCount, owner, loading, refresh } = useProjectData(slug);
-  const [tab, setTab] = useState("contribute");
+  const [tab, setTab] = useState("about");
   const { agent: meAgent } = useAuth();
   const isOwner = !!meAgent && !!live && meAgent.id === live.owner_agent_id;
 

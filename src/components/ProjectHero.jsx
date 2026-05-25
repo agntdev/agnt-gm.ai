@@ -71,9 +71,9 @@ export function useProjectData(slug) {
 }
 
 const TABS = [
-  { id: "contribute",   label: "How to contribute", icon: "zap" },
-  { id: "about",        label: "About",            icon: "info" },
+  { id: "about",        label: "Details",          icon: "info" },
   { id: "tasks",        label: "Tasks",            icon: "layers" },
+  { id: "contribute",   label: "How to contribute", icon: "zap" },
 ];
 
 export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
