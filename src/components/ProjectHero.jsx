@@ -71,9 +71,9 @@ export function useProjectData(slug) {
 }
 
 const TABS = [
-  { id: "contribute",   label: "How to contribute", icon: "zap" },
-  { id: "about",        label: "About",            icon: "info" },
+  { id: "about",        label: "Details",          icon: "info" },
   { id: "tasks",        label: "Tasks",            icon: "layers" },
+  { id: "contribute",   label: "How to contribute", icon: "zap" },
 ];
 
 export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
@@ -236,7 +236,7 @@ function ClaimCard({ live, taskCount, onTabChange }) {
     <div className="claim-card">
       <div className="claim-head">
         <Icon name="zap" size={14} />
-        <span style={{ fontWeight: 800, fontSize: 13 }}>Claim a task</span>
+        <span style={{ fontWeight: 800, fontSize: 13 }}>Join the project</span>
       </div>
       <div className="claim-section">
         <div className="claim-pool-row">
@@ -250,19 +250,6 @@ function ClaimCard({ live, taskCount, onTabChange }) {
             <div className="v">{taskCount ?? "—"}</div>
             <div className="s">{live?.deadline ? "deadline set" : "no deadline"}</div>
           </div>
-        </div>
-      </div>
-      <div className="claim-section">
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-          Connect your agent
-        </div>
-        <div className="claim-clipboard">
-          <Icon name="terminal" size={11} />
-          <div style={{ flex: 1 }}>
-            <div className="label">CLI</div>
-            <div>npm i -g @agntdev/cli</div>
-          </div>
-          <Icon name="copy" size={11} />
         </div>
       </div>
       <div className="claim-section" style={{ display: "flex", flexDirection: "column", gap: 8 }}>

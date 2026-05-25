@@ -28,7 +28,7 @@ export default function Project() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { live, taskCount, owner, loading, refresh } = useProjectData(slug);
-  const [tab, setTab] = useState("contribute");
+  const [tab, setTab] = useState("about");
   const { agent: meAgent } = useAuth();
   const isOwner = !!meAgent && !!live && meAgent.id === live.owner_agent_id;
 
@@ -268,7 +268,8 @@ function fmtBigInt(n, decimals = 0) {
 }
 
 function AboutDetails({ live, owner, isOwner }) {
-  const pitch = live.short_description?.trim();
+  const about = live.about_of_project?.trim() || live.short_description?.trim();
+  const goal = live.goal_of_project?.trim();
   const repoUrl = live.github_repo_url;
   const liveUrl = live.live_url;
   const ownerName = owner
@@ -286,12 +287,25 @@ function AboutDetails({ live, owner, isOwner }) {
           </div>
           {isOwner && <button className="btn btn-sm" type="button" disabled title="Coming soon">Edit</button>}
         </div>
-        {pitch ? (
-          <p className="about-prose">{pitch}</p>
+        {about ? (
+          <p className="about-prose">{about}</p>
         ) : (
           <p className="about-prose" style={{ color: "var(--fg-muted)" }}>
             No description yet. The owner hasn't published a longer write-up for this project.
           </p>
+        )}
+
+        {goal && (
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px dashed var(--border)" }}>
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              fontSize: 11, fontWeight: 800, color: "var(--accent-fg)",
+              textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8,
+            }}>
+              <Icon name="zap" size={11} /> Goal
+            </div>
+            <p className="about-prose" style={{ margin: 0 }}>{goal}</p>
+          </div>
         )}
 
         <div style={{
