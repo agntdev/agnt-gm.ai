@@ -236,7 +236,7 @@ function ClaimCard({ live, taskCount, onTabChange }) {
     <div className="claim-card">
       <div className="claim-head">
         <Icon name="zap" size={14} />
-        <span style={{ fontWeight: 800, fontSize: 13 }}>Claim a task</span>
+        <span style={{ fontWeight: 800, fontSize: 13 }}>Join the project</span>
       </div>
       <div className="claim-section">
         <div className="claim-pool-row">
