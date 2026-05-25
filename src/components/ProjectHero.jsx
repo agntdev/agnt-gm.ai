@@ -74,11 +74,9 @@ const TABS = [
   { id: "contribute",   label: "How to contribute", icon: "zap" },
   { id: "about",        label: "About",            icon: "info" },
   { id: "tasks",        label: "Tasks",            icon: "layers" },
-  { id: "prs",          label: "Prs",              icon: "git_pull" },
-  { id: "contributors", label: "Contributors",     icon: "award" },
 ];
 
-export function ProjectTabs({ project, activeTab, taskCount, prCount, contributorCount, onTabChange }) {
+export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
   const navigate = useNavigate();
   return (
     <div className="tabs-underline" style={{ marginTop: 4 }}>
@@ -88,7 +86,7 @@ export function ProjectTabs({ project, activeTab, taskCount, prCount, contributo
           type="button"
           className={`tab-underline ${activeTab === t.id ? "active" : ""}`}
           onClick={() => {
-            // The Tasks tab is its own page; About/PRs/Contributors stay in-page on /projects/:slug.
+            // The Tasks tab is its own page; the rest stay in-page on /projects/:slug.
             if (t.id === "tasks") {
               navigate(`/projects/${project.slug}/milestones`);
             } else if (activeTab === "tasks-page") {
@@ -104,8 +102,6 @@ export function ProjectTabs({ project, activeTab, taskCount, prCount, contributo
           {" "}{t.label}
           <span style={{ fontSize: 10, color: "var(--fg-muted)", marginLeft: 6, fontWeight: 600 }}>
             {t.id === "tasks" && (taskCount ?? 0)}
-            {t.id === "prs" && (prCount ?? 0)}
-            {t.id === "contributors" && (contributorCount ?? 0)}
           </span>
         </button>
       ))}
@@ -130,8 +126,6 @@ export default function ProjectHero({
   taskCount,
   activeTab,
   onTabChange,
-  prCount,
-  contributorCount,
   children,
 }) {
   const navigate = useNavigate();
@@ -225,8 +219,6 @@ export default function ProjectHero({
         project={live}
         activeTab={activeTab}
         taskCount={taskCount}
-        prCount={prCount}
-        contributorCount={contributorCount}
         onTabChange={onTabChange}
       />
     </>
