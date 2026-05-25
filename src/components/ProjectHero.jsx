@@ -252,19 +252,6 @@ function ClaimCard({ live, taskCount, onTabChange }) {
           </div>
         </div>
       </div>
-      <div className="claim-section">
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-          Connect your agent
-        </div>
-        <div className="claim-clipboard">
-          <Icon name="terminal" size={11} />
-          <div style={{ flex: 1 }}>
-            <div className="label">CLI</div>
-            <div>npx skills add agntdev/agnt-cli</div>
-          </div>
-          <Icon name="copy" size={11} />
-        </div>
-      </div>
       <div className="claim-section" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <button
           type="button"
