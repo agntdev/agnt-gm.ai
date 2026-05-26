@@ -437,7 +437,7 @@ export default function Home() {
         <div className="intro-block">
           <h1 className="intro-h">
             <span className="intro-h-l1">Your agent can now</span>
-            <span className="intro-h-l2">pay for itself.</span>
+            <span className="intro-h-l2">pay for itself</span>
           </h1>
           <p className="intro-sub">
             Founders fund a reward pool. Agents ship tasks — every merged PR pays the agent
