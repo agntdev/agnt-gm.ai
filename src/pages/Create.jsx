@@ -39,7 +39,14 @@ export default function Create() {
   // Manual-mode plan. Populated only when `mode === "manual"`. Kept in
   // parallel with the AI-mode `form` state so the user can switch back
   // and forth without losing what they typed in either mode.
-  const [mode, setMode] = useState("ai"); // "ai" | "manual"
+  // Three creation modes (all POST /builder/projects; backend picks the
+  // path by which fields are present):
+  //   quick  → raw_idea only (LLM invents name/token/supply/tasks)
+  //   guided → raw_idea + optional hints (name/symbol/supply/deadline/notes)
+  //   manual → full manual_plan (owner authors everything; LLM only enriches
+  //            task title/weight/difficulty and moderates)
+  // quick + guided share the same AI form; guided just surfaces the hints.
+  const [mode, setMode] = useState("quick");
   const [manual, setManual] = useState(() => ({
     name: "",
     token_symbol: "",
@@ -93,7 +100,7 @@ export default function Create() {
   useEffect(() => () => { if (pollAbort.current) clearTimeout(pollAbort.current); }, []);
 
   const ideaTooShort = form.raw_idea.trim().length < 20;
-  const ideaTooLong = form.raw_idea.length > 10_000;
+  const ideaTooLong = form.raw_idea.length > 32_768;
   const walletMissing = !tonAddress;
 
   async function pollUntilTerminal(idOrSlug) {
@@ -260,9 +267,13 @@ export default function Create() {
       raw_idea: form.raw_idea.trim(),
       owner_wallet_address: tonAddress,
     };
-    if (form.name.trim()) body.name = form.name.trim();
-    if (form.token_symbol.trim()) body.token_symbol = form.token_symbol.trim().toUpperCase();
-    if (form.task_notes.trim()) body.task_notes = form.task_notes.trim();
+    // Identity hints (name/token/supply/notes) only ship in Guided mode.
+    // Quick mode sends just the idea and lets the LLM invent everything.
+    if (mode === "guided") {
+      if (form.name.trim()) body.name = form.name.trim();
+      if (form.token_symbol.trim()) body.token_symbol = form.token_symbol.trim().toUpperCase();
+      if (form.task_notes.trim()) body.task_notes = form.task_notes.trim();
+    }
     if (form.deadline) {
       const days = parseInt(form.deadline, 10);
       if (Number.isFinite(days) && days > 0) {
@@ -279,9 +290,10 @@ export default function Create() {
     // Total supply: user enters whole tokens; API stores smallest units
     // (decimals=9). Compute with BigInt so 1B+ defaults don't overflow
     // Number.MAX_SAFE_INTEGER, then splice into the JSON as a raw integer.
+    // Total supply hint — Guided only. Quick omits it so the LLM picks.
     const supplyHuman = String(form.total_supply || "").trim().replace(/[,_\s]/g, "");
     let bodyJson;
-    if (/^\d+$/.test(supplyHuman) && supplyHuman !== "0") {
+    if (mode === "guided" && /^\d+$/.test(supplyHuman) && supplyHuman !== "0") {
       const supplyNano = (BigInt(supplyHuman) * 1_000_000_000n).toString();
       const PH = "__TS_PLACEHOLDER__";
       bodyJson = JSON.stringify({ ...body, total_supply: PH })
@@ -401,21 +413,25 @@ export default function Create() {
                 value={mode}
                 onChange={(m) => { setMode(m); setErrorMsg(""); setModerationReason(""); }}
                 options={[
-                  { value: "ai",     label: "AI plans for me",   icon: "zap" },
-                  { value: "manual", label: "I'll write it",     icon: "layers" },
+                  { value: "quick",  label: "Quick",  icon: "zap" },
+                  { value: "guided", label: "Guided", icon: "sparkles" },
+                  { value: "manual", label: "Manual", icon: "layers" },
                 ]}
               />
               <span style={{ fontSize: 11.5, color: "var(--fg-subtle)" }}>
-                {mode === "ai"
-                  ? "Describe the idea — the validator agent generates a README, plan, and tasks (~30–90s)."
-                  : "Author the plan + every task yourself. The platform only runs a content-moderation pass before accepting."}
+                {mode === "quick"
+                  ? "Just describe the idea — the agent invents the name, token, plan and tasks (~30–90s)."
+                  : mode === "guided"
+                  ? "Describe the idea and optionally set the name, token, supply and deadline. Blanks are filled by the agent."
+                  : "Author the plan + every task yourself. The platform only moderates and assigns task weights."}
               </span>
             </div>
 
             <RejectionBanner reason={moderationReason} onDismiss={() => setModerationReason("")} />
 
-            {mode === "ai" ? (
+            {mode !== "manual" ? (
               <Form
+                showHints={mode === "guided"}
                 form={form}
                 setField={setField}
                 ideaTooShort={ideaTooShort}
@@ -560,8 +576,8 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
 // (rarely touched — the validator agent picks all four if blank).
 // Pool / Deadline / Wallet stay always-visible because they're
 // commit-time decisions, not "defaults".
-function AiCustomizeDefaults({ form, setField }) {
-  const [open, setOpen] = useState(false);
+function AiCustomizeDefaults({ form, setField, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
   // Live summary on the collapsed header so users see the in-flight
   // values without expanding.
   const summary = (() => {
@@ -669,6 +685,7 @@ function AiCustomizeDefaults({ form, setField }) {
 }
 
 function Form({
+  showHints = false,
   form, setField, ideaTooShort, ideaTooLong, walletMissing, onSubmit, errorMsg,
   tonConnected, tonAddress, tonWalletName, onConnectWallet, onDisconnectWallet,
 }) {
@@ -693,7 +710,7 @@ function Form({
           <label className="field-label">
             Project idea
             <span style={{ float: "right", fontWeight: 500, color: ideaTooShort ? "var(--danger)" : "var(--fg-muted)" }}>
-              {form.raw_idea.length} / 20–10000 chars
+              {form.raw_idea.length} / 20–32768 chars
             </span>
           </label>
           <textarea
@@ -708,10 +725,12 @@ function Form({
               background: "var(--bg)", resize: "vertical",
             }}
           />
-          {ideaTooLong && <div className="field-hint" style={{ color: "var(--danger)" }}>Trim to 10,000 characters or fewer.</div>}
+          {ideaTooLong && <div className="field-hint" style={{ color: "var(--danger)" }}>Trim to 32,768 characters or fewer.</div>}
         </div>
 
-        <AiCustomizeDefaults form={form} setField={setField} />
+        {/* Guided mode surfaces the optional hints (name/token/supply/notes);
+            Quick mode hides them entirely and lets the LLM decide. */}
+        {showHints && <AiCustomizeDefaults form={form} setField={setField} defaultOpen />}
 
         <div className="field-row">
           <div className="field">
