@@ -19,20 +19,32 @@ import { api } from "../lib/api.js";
 //   owner     — AgentOAS | null
 //   loading   — true until the first /builder/projects/:slug response lands
 //
-// No fixtures, no fixture flash. Callers should render a loading skeleton
-// while live === null && loading is true, and a 404 view when live === false.
+// Callers should render a loading skeleton while live === null && loading
+// is true, and a 404 view when live === false.
+//
+// Module-level cache: stale-while-revalidate per slug. Navigating between
+// /projects/:slug and /projects/:slug/milestones used to flash a
+// "Loading project…" skeleton because each page mounted a fresh hook with
+// null state. We now prime state from the cache on mount, skip the
+// blanking step, and still refetch in the background so any updates
+// (Auto-review toggled, new task added) land within the same paint.
+const projectCache = new Map(); // slug -> { live, owner, tasks, taskCount }
+
 export function useProjectData(slug) {
-  const [live, setLive] = useState(null);
-  const [liveTasks, setLiveTasks] = useState(null);
-  const [taskCount, setTaskCount] = useState(null);
-  const [owner, setOwner] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cached = projectCache.get(slug);
+  const [live, setLive] = useState(cached?.live ?? null);
+  const [liveTasks, setLiveTasks] = useState(cached?.tasks ?? null);
+  const [taskCount, setTaskCount] = useState(cached?.taskCount ?? null);
+  const [owner, setOwner] = useState(cached?.owner ?? null);
+  const [loading, setLoading] = useState(!cached?.live);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    // Only show the loading skeleton on the initial slug load — silent
-    // refreshes (e.g. after a funding tx) shouldn't blow the page away.
-    if (tick === 0) {
+    const hasCache = !!projectCache.get(slug)?.live;
+    // Only blank the screen on the initial load of a slug we've never
+    // seen. Repeat visits (sibling tab navigation) and silent refreshes
+    // (e.g. after a funding tx) keep the prior content on screen.
+    if (tick === 0 && !hasCache) {
       setLive(null);
       setLiveTasks(null);
       setTaskCount(null);
@@ -50,11 +62,17 @@ export function useProjectData(slug) {
       }
       setLive(liveProject);
       setLoading(false);
-      if (typeof res?.task_count === "number") setTaskCount(res.task_count);
+      projectCache.set(slug, { ...(projectCache.get(slug) || {}), live: liveProject });
+      if (typeof res?.task_count === "number") {
+        setTaskCount(res.task_count);
+        projectCache.set(slug, { ...projectCache.get(slug), taskCount: res.task_count });
+      }
       if (liveProject.owner_agent_id) {
         api.agent(liveProject.owner_agent_id).then((a) => {
           if (cancelled) return;
-          setOwner(a?.agent || null);
+          const ownerObj = a?.agent || null;
+          setOwner(ownerObj);
+          projectCache.set(slug, { ...projectCache.get(slug), owner: ownerObj });
         });
       }
     });
@@ -63,6 +81,11 @@ export function useProjectData(slug) {
       const tasks = r?.tasks || [];
       setLiveTasks(tasks);
       setTaskCount((prev) => (prev == null ? tasks.length : prev));
+      projectCache.set(slug, {
+        ...(projectCache.get(slug) || {}),
+        tasks,
+        taskCount: projectCache.get(slug)?.taskCount ?? tasks.length,
+      });
     });
     return () => { cancelled = true; };
   }, [slug, tick]);
