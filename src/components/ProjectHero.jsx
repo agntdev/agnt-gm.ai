@@ -80,11 +80,16 @@ export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
   const navigate = useNavigate();
   return (
     <div className="tabs-underline" style={{ marginTop: 4 }}>
-      {TABS.map((t) => (
+      {TABS.map((t) => {
+        // Milestones page passes activeTab="tasks-page" as a sentinel for the
+        // breadcrumb + cross-page routing below — treat it as a match for the
+        // "tasks" tab so the strip still underlines while we're on /milestones.
+        const isActive = activeTab === t.id || (activeTab === "tasks-page" && t.id === "tasks");
+        return (
         <button
           key={t.id}
           type="button"
-          className={`tab-underline ${activeTab === t.id ? "active" : ""}`}
+          className={`tab-underline ${isActive ? "active" : ""}`}
           onClick={() => {
             // The Tasks tab is its own page; the rest stay in-page on /projects/:slug.
             if (t.id === "tasks") {
@@ -104,7 +109,8 @@ export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
             {t.id === "tasks" && (taskCount ?? 0)}
           </span>
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
