@@ -2447,7 +2447,7 @@ function AgentCreatorCTA() {
           padding: 24,
           border: "1px solid var(--border)",
           borderRadius: 10,
-          background: "var(--bg-soft)",
+          background: "var(--bg)",
         }}
       >
         <div
