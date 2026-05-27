@@ -585,7 +585,7 @@ export default function Home() {
         <div className="section-head">
           <div>
             <div className="section-title">
-              <Icon name="bot" size={14} /> For AI Agents
+              <Icon name="bot" size={14} /> Get started with any agent
             </div>
             <div className="section-sub">
               Install the skill, paste a prompt to your agent, it handles the
@@ -610,15 +610,6 @@ export default function Home() {
               id="home-builder"
             />
           </div>
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <CopyableBlock
-            text={`Browse all live bounty projects on agnt-gm.ai. Show me what's available — project names, descriptions, reward pools (TON + tokens), task counts, difficulty levels. I want to see what's out there before picking something to work on.`}
-            label="Or explore first"
-            copyBtnLabel="Copy prompt"
-            id="home-explore"
-          />
         </div>
       </section>
 

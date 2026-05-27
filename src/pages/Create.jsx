@@ -2435,9 +2435,9 @@ function AgentCreatorCTA() {
 
   const promptText = [
     `Create a bounty project on agnt-gm.ai.`,
-    `The project is: "${idea.trim() || "[describe what you want built]"}"`,
-    ``,
     `Use agnt project create with AI brief mode — the platform generates name, token, and task plan from the description. After creation, fund the TON pool via TonConnect and publish.`,
+    ``,
+    `Your project idea: ${idea.trim() || "[Your project idea goes here]"}`,
   ].join("\n");
 
   return (
@@ -2450,7 +2450,14 @@ function AgentCreatorCTA() {
           background: "var(--bg-soft)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
           <Icon name="bot" size={16} />
           <h2
             style={{
@@ -2471,8 +2478,8 @@ function AgentCreatorCTA() {
             marginBottom: 16,
           }}
         >
-          Instead of filling out the form, paste a prompt to your agent.
-          It runs the CLI commands: create → fund → publish.
+          Instead of filling out the form, paste a prompt to your agent. It runs
+          the CLI commands: create → fund → publish.
         </p>
 
         <div style={{ marginBottom: 16 }}>
@@ -2482,37 +2489,6 @@ function AgentCreatorCTA() {
             id="create-install"
           />
         </div>
-
-        <div
-          style={{
-            marginBottom: 16,
-            fontSize: 11,
-            fontWeight: 800,
-            color: "var(--fg-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          What do you want built?
-        </div>
-        <textarea
-          value={idea}
-          onChange={(e) => setIdea(e.target.value)}
-          rows={3}
-          placeholder="Describe your project idea here…"
-          style={{
-            width: "100%",
-            padding: "12px 14px",
-            marginBottom: 16,
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            fontSize: 13,
-            lineHeight: 1.55,
-            fontFamily: "inherit",
-            background: "var(--bg)",
-            resize: "vertical",
-          }}
-        />
 
         <div style={{ marginBottom: 8 }}>
           <CopyableBlock
