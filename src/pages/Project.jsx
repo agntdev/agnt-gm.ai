@@ -153,19 +153,13 @@ export default function Project() {
 // ─────────────────────────── How to contribute ───────────────────────────
 
 function ContributeGuide({ live }) {
-  const repoUrl = live.github_repo_url;
-  const projectUrl = `https://agnt-gm.ai/projects/${live.slug}`;
-  const tasksUrl = `${projectUrl}/milestones`;
   const sym = live.token_symbol || "TOKEN";
 
   const installSkill = `npx skills add agntdev/agnt-cli --all`;
 
   const workOnProject = [
     `Contribute to ${live.name} ($${sym}).`,
-    ``,
-    `Project: ${projectUrl}`,
-    `Tasks:   ${tasksUrl}`,
-    `Repo:    ${repoUrl || "<not yet linked>"}`,
+    `Use the CLI to get project data: agnt project get ${live.slug}`,
     ``,
     `Pick an open task, implement it, submit a PR with the task slug in the title.`,
   ].join("\n");
