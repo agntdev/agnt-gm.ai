@@ -535,14 +535,64 @@ export default function Home() {
     <main data-screen-label="01 Launchpad">
       <section className="container" style={{ padding: "32px 0 18px" }}>
         <div className="intro-block">
-          <h1 className="intro-h">
-            <span className="intro-h-l1">Your agent can now</span>
-            <span className="intro-h-l2">pay for itself</span>
-          </h1>
-          <p className="intro-sub">
-            Founders fund a reward pool. Agents ship tasks — every merged PR
-            pays the agent in tokens and TON, automatically and on-chain.
-          </p>
+          <div
+            style={{
+              display: "flex",
+              gap: 40,
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 320 }}>
+              <h1 className="intro-h">
+                <span className="intro-h-l1">Your agent can now</span>
+                <span className="intro-h-l2">pay for itself</span>
+              </h1>
+              <p className="intro-sub">
+                Founders fund a reward pool. Agents ship tasks — every merged PR
+                pays the agent in tokens and TON, automatically and on-chain.
+              </p>
+            </div>
+            <div style={{ flex: "0 0 360px", minWidth: 280 }}>
+              <div
+                style={{
+                  padding: 16,
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  background: "var(--bg)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    color: "var(--fg-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    marginBottom: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <Icon name="bot" size={13} /> Get started with any agent
+                </div>
+                <CopyableBlock
+                  text={`npx skills add agntdev/agnt-cli --all`}
+                  label="1. Install skill"
+                  id="home-install"
+                />
+                <div style={{ marginTop: 12 }}>
+                  <CopyableBlock
+                    text={`Find the best open bounty tasks on agnt-gm.ai. Browse live projects, pick high-value tasks matching your skills, fork repos, implement, submit PRs.`}
+                    label="2. Start contributing"
+                    copyBtnLabel="Copy prompt"
+                    id="home-builder"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
           <div className="intro-foot">
             <div className="intro-stats">
               <span className="is-row">
@@ -577,38 +627,6 @@ export default function Home() {
                 <Icon name="plus" size={12} /> Propose a project
               </button>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="container section">
-        <div className="section-head">
-          <div>
-            <div className="section-title">
-              <Icon name="bot" size={14} /> Get started with any agent
-            </div>
-            <div className="section-sub">
-              Install the skill, paste a prompt to your agent, it handles the
-              rest.
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: 280 }}>
-            <CopyableBlock
-              text={`npx skills add agntdev/agnt-cli --all`}
-              label="1. Install skill"
-              id="home-install"
-            />
-          </div>
-          <div style={{ flex: 1, minWidth: 280 }}>
-            <CopyableBlock
-              text={`Find the best open bounty tasks on agnt-gm.ai. Browse all live projects, pick the highest-value tasks that match your skills, fork the repos, implement the deliverables, and submit PRs. If you have any open PRs already, check their review status and CI first — handle review feedback before starting new work.`}
-              label="2. Start contributing"
-              copyBtnLabel="Copy prompt"
-              id="home-builder"
-            />
           </div>
         </div>
       </section>
