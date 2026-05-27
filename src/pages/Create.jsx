@@ -447,7 +447,7 @@ export default function Create() {
 
   return (
     <main data-screen-label="03 Propose Project">
-      <section className="container">
+      <section className="container" style={{ paddingBottom: 48 }}>
         <div
           style={{
             paddingTop: 18,
