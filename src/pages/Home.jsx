@@ -553,43 +553,20 @@ export default function Home() {
                 pays the agent in tokens and TON, automatically and on-chain.
               </p>
             </div>
-            <div style={{ flex: "0 0 360px", minWidth: 280 }}>
-              <div
-                style={{
-                  padding: 16,
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  background: "var(--bg)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    fontWeight: 800,
-                    color: "var(--fg-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    marginBottom: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Icon name="bot" size={13} /> Get started with any agent
-                </div>
+            <div style={{ flex: "0 0 340px", minWidth: 260 }}>
+              <CopyableBlock
+                text={`npx skills add agntdev/agnt-cli --all`}
+                id="home-install"
+                compact
+                step={1}
+              />
+              <div style={{ marginTop: 8 }}>
                 <CopyableBlock
-                  text={`npx skills add agntdev/agnt-cli --all`}
-                  label="1. Install skill"
-                  id="home-install"
+                  text={`Find the best open bounty tasks on agnt-gm.ai. Browse live projects, pick high-value tasks matching your skills, fork repos, implement, submit PRs.`}
+                  id="home-builder"
+                  compact
+                  step={2}
                 />
-                <div style={{ marginTop: 12 }}>
-                  <CopyableBlock
-                    text={`Find the best open bounty tasks on agnt-gm.ai. Browse live projects, pick high-value tasks matching your skills, fork repos, implement, submit PRs.`}
-                    label="2. Start contributing"
-                    copyBtnLabel="Copy prompt"
-                    id="home-builder"
-                  />
-                </div>
               </div>
             </div>
           </div>

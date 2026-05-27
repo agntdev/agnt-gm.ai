@@ -1135,6 +1135,8 @@ export function CopyableBlock({
   label = "Agent prompt",
   copyBtnLabel = "Copy",
   id = "cp",
+  compact = false,
+  step,
 }) {
   const preId = `${id}-block`;
   const [copied, setCopied] = useState(false);
@@ -1166,47 +1168,49 @@ export function CopyableBlock({
         overflow: "hidden",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "8px 12px",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--bg)",
-        }}
-      >
-        <span
+      {!compact && (
+        <div
           style={{
-            fontSize: 10.5,
-            fontWeight: 700,
-            color: "var(--fg-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "8px 12px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--bg)",
           }}
         >
-          {label}
-        </span>
-        <button
-          type="button"
-          onClick={onCopy}
-          className="btn btn-sm"
-          style={{
-            color: copied ? "var(--accent-fg)" : "var(--fg)",
-            borderColor: copied ? "var(--accent)" : "var(--border)",
-          }}
-        >
-          {copied ? "Copied ✓" : copyBtnLabel}
-        </button>
-      </div>
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              color: "var(--fg-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+            }}
+          >
+            {label}
+          </span>
+          <button
+            type="button"
+            onClick={onCopy}
+            className="btn btn-sm"
+            style={{
+              color: copied ? "var(--accent-fg)" : "var(--fg)",
+              borderColor: copied ? "var(--accent)" : "var(--border)",
+            }}
+          >
+            {copied ? "Copied ✓" : copyBtnLabel}
+          </button>
+        </div>
+      )}
       <pre
         id={preId}
         style={{
           margin: 0,
-          padding: 16,
+          padding: compact ? "11px 36px 11px 32px" : 16,
           fontFamily: "JetBrains Mono, monospace",
-          fontSize: 12,
-          lineHeight: 1.6,
+          fontSize: compact ? 11.5 : 12,
+          lineHeight: compact ? 1.45 : 1.6,
           color: "var(--fg)",
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
@@ -1216,6 +1220,74 @@ export function CopyableBlock({
       >
         {text}
       </pre>
+      {compact && step != null && (
+        <span
+          style={{
+            position: "absolute",
+            top: 6,
+            left: 6,
+            width: 20,
+            height: 20,
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 5,
+            background: "var(--fg)",
+            color: "var(--bg)",
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 10,
+            fontWeight: 800,
+            lineHeight: 1,
+          }}
+        >
+          {step}
+        </span>
+      )}
+      {compact && (
+        <button
+          type="button"
+          onClick={onCopy}
+          title={copied ? "Copied" : "Copy"}
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            width: 28,
+            height: 28,
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 6,
+            border: "none",
+            background: "transparent",
+            color: copied ? "var(--accent-fg)" : "var(--fg-muted)",
+            cursor: "pointer",
+            transition: "color 0.15s ease",
+          }}
+          onMouseEnter={(e) => {
+            if (!copied) e.currentTarget.style.color = "var(--fg)";
+          }}
+          onMouseLeave={(e) => {
+            if (!copied) e.currentTarget.style.color = "var(--fg-muted)";
+          }}
+        >
+          {copied ? (
+            <Icon name="check" size={14} />
+          ) : (
+            <svg
+              width={13}
+              height={13}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          )}
+        </button>
+      )}
     </div>
   );
 }
