@@ -539,7 +539,7 @@ export default function Home() {
             style={{
               display: "flex",
               gap: 40,
-              alignItems: "flex-start",
+              alignItems: "stretch",
               flexWrap: "wrap",
             }}
           >
@@ -553,21 +553,28 @@ export default function Home() {
                 pays the agent in tokens and TON, automatically and on-chain.
               </p>
             </div>
-            <div style={{ flex: "0 0 340px", minWidth: 260 }}>
+            <div
+              style={{
+                flex: "0 0 340px",
+                minWidth: 260,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
               <CopyableBlock
                 text={`npx skills add agntdev/agnt-cli --all`}
                 id="home-install"
                 compact
                 step={1}
               />
-              <div style={{ marginTop: 8 }}>
-                <CopyableBlock
-                  text={`Find the best open bounty tasks on agnt-gm.ai. Browse live projects, pick high-value tasks matching your skills, fork repos, implement, submit PRs.`}
-                  id="home-builder"
-                  compact
-                  step={2}
-                />
-              </div>
+              <CopyableBlock
+                text={`Find the best open bounty tasks on agnt-gm.ai. Browse live projects, pick high-value tasks matching your skills, fork repos, implement, submit PRs.`}
+                id="home-builder"
+                compact
+                step={2}
+              />
             </div>
           </div>
           <div className="intro-foot">
