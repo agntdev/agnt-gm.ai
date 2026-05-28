@@ -1206,53 +1206,90 @@ h1 .punch { color: var(--accent-fg); }
   transform: translateY(-1px);
   box-shadow: 0 4px 16px -4px rgba(0,0,0,0.06);
 }
-.project-preview {
-  height: 120px;
+.project-hero {
   position: relative;
-  background: var(--bg-soft);
-  border-bottom: 1px solid var(--border);
+  height: 168px;
   overflow: hidden;
+  background: var(--hero-tint, var(--bg-soft));
+  border-bottom: 1px solid var(--border);
+  isolation: isolate;
 }
-.project-preview-frame {
-  position: absolute; inset: 12px;
-  border-radius: 6px;
-  background: white;
-  border: 1px solid var(--border);
-  font-size: 8px;
+/* Layered gradients: soft radial bloom behind the logo + a faint linear
+   wash to give depth. Per-card hue comes through via --hero-tint. */
+.project-hero-bg {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(120% 80% at 50% 38%, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0) 60%),
+    radial-gradient(60% 50% at 50% 110%, color-mix(in oklch, var(--hero-ink, #000) 22%, transparent) 0%, transparent 70%),
+    linear-gradient(180deg, rgba(255,255,255,0.25), rgba(0,0,0,0.04));
+  pointer-events: none;
+}
+/* Subtle dot grid for texture, masked to fade toward center. */
+.project-hero::before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(0,0,0,0.10) 1px, transparent 1px);
+  background-size: 14px 14px;
+  opacity: 0.35;
+  -webkit-mask-image: radial-gradient(60% 60% at 50% 45%, transparent 0%, black 80%);
+          mask-image: radial-gradient(60% 60% at 50% 45%, transparent 0%, black 80%);
+  pointer-events: none;
+}
+.project-hero-stack {
+  position: relative; z-index: 1;
+  height: 100%;
   display: flex; flex-direction: column;
-  overflow: hidden;
+  align-items: center; justify-content: center;
+  gap: 7px;
+  padding: 14px 16px;
+  text-align: center;
 }
-.project-preview-bar {
-  height: 14px;
-  display: flex; align-items: center; gap: 4px;
-  padding: 0 6px;
-  background: var(--bg-soft);
-  border-bottom: 1px solid var(--border);
+.project-hero-logo-wrap {
+  border-radius: 14px;
+  padding: 4px;
+  background: rgba(255,255,255,0.85);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 6px 18px -6px rgba(0,0,0,0.20),
+    0 2px 4px rgba(0,0,0,0.06);
+  backdrop-filter: blur(6px);
 }
-.project-preview-bar .dot { width: 5px; height: 5px; border-radius: 999px; background: var(--border-strong); }
-.project-preview-url {
-  font-size: 7.5px; color: var(--fg-muted);
-  margin-left: 4px;
-  font-weight: 600;
+.project-hero-logo-wrap .token-avatar {
+  border-radius: 11px;
+  border-color: rgba(0,0,0,0.06);
 }
-.project-preview-content {
-  flex: 1; padding: 8px;
-  display: flex; flex-direction: column; gap: 4px;
+.project-hero-ticker {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px; font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--hero-ink, var(--fg));
+  margin-top: 2px;
 }
-.project-preview-block {
-  height: 6px; border-radius: 2px;
-  background: var(--accent-soft);
+.project-hero-repo {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px; font-weight: 600;
+  color: var(--fg-muted);
+  max-width: 88%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.project-preview-block:nth-child(2) { width: 70%; background: var(--bg-tint); }
-.project-preview-block:nth-child(3) { width: 50%; background: var(--bg-tint); }
-.project-preview-block.row {
-  display: flex; gap: 4px; height: auto; background: transparent;
+.project-hero-live {
+  position: absolute; bottom: 9px; right: 9px;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px; border-radius: 999px;
+  background: rgba(255,255,255,0.94);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--fg);
+  text-decoration: none;
+  z-index: 2;
 }
-.project-preview-block.row > * {
-  flex: 1; height: 14px; border-radius: 3px;
-  background: var(--bg-tint);
+.project-hero-live-dot {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 22%, transparent);
 }
-.project-preview-block.row > *:first-child { background: var(--accent-soft); }
 
 .project-status-pill {
   position: absolute; top: 10px; right: 10px;
@@ -1339,7 +1376,7 @@ h1 .punch { color: var(--accent-fg); }
   flex-direction: row;
   align-items: stretch;
 }
-.project-list .project-preview {
+.project-list .project-hero {
   width: 220px; height: auto;
   border-bottom: none;
   border-right: 1px solid var(--border);
