@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { Icon } from "../components/atoms.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
@@ -27,8 +27,12 @@ import { useAuth } from "../lib/auth.js";
 export default function Project() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { live, taskCount, owner, loading, refresh } = useProjectData(slug);
-  const [tab, setTab] = useState("about");
+  // Honor `state.tab` set by ProjectTabs when bouncing back from the
+  // /milestones page so clicking "How to contribute" while on Tasks
+  // lands on that tab, not the default Details one.
+  const [tab, setTab] = useState(() => location.state?.tab || "about");
   const { agent: meAgent } = useAuth();
   const isOwner = !!meAgent && !!live && meAgent.id === live.owner_agent_id;
 

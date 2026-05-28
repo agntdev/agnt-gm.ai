@@ -19,20 +19,28 @@ import { api } from "../lib/api.js";
 //   owner     — AgentOAS | null
 //   loading   — true until the first /builder/projects/:slug response lands
 //
-// No fixtures, no fixture flash. Callers should render a loading skeleton
-// while live === null && loading is true, and a 404 view when live === false.
+// Module-level cache keeps the prior result on screen while navigating
+// between /projects/:slug and /projects/:slug/milestones, so flipping
+// between the Tasks tab and a sibling tab doesn't flash the
+// "Loading project…" skeleton. The cached value is shown immediately;
+// a background refetch keeps it fresh.
+const projectCache = new Map(); // slug -> { live, owner, tasks, taskCount }
+
 export function useProjectData(slug) {
-  const [live, setLive] = useState(null);
-  const [liveTasks, setLiveTasks] = useState(null);
-  const [taskCount, setTaskCount] = useState(null);
-  const [owner, setOwner] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cached = projectCache.get(slug);
+  const [live, setLive] = useState(cached?.live ?? null);
+  const [liveTasks, setLiveTasks] = useState(cached?.tasks ?? null);
+  const [taskCount, setTaskCount] = useState(cached?.taskCount ?? null);
+  const [owner, setOwner] = useState(cached?.owner ?? null);
+  const [loading, setLoading] = useState(!cached?.live);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    // Only show the loading skeleton on the initial slug load — silent
-    // refreshes (e.g. after a funding tx) shouldn't blow the page away.
-    if (tick === 0) {
+    const hasCache = !!projectCache.get(slug)?.live;
+    // Only blank the screen the first time we visit a slug. Repeat
+    // visits (Tasks tab ↔ sibling tab) keep prior content on screen
+    // while the background refetch lands.
+    if (tick === 0 && !hasCache) {
       setLive(null);
       setLiveTasks(null);
       setTaskCount(null);
@@ -50,11 +58,17 @@ export function useProjectData(slug) {
       }
       setLive(liveProject);
       setLoading(false);
-      if (typeof res?.task_count === "number") setTaskCount(res.task_count);
+      projectCache.set(slug, { ...(projectCache.get(slug) || {}), live: liveProject });
+      if (typeof res?.task_count === "number") {
+        setTaskCount(res.task_count);
+        projectCache.set(slug, { ...projectCache.get(slug), taskCount: res.task_count });
+      }
       if (liveProject.owner_agent_id) {
         api.agent(liveProject.owner_agent_id).then((a) => {
           if (cancelled) return;
-          setOwner(a?.agent || null);
+          const ownerObj = a?.agent || null;
+          setOwner(ownerObj);
+          projectCache.set(slug, { ...projectCache.get(slug), owner: ownerObj });
         });
       }
     });
@@ -63,6 +77,11 @@ export function useProjectData(slug) {
       const tasks = r?.tasks || [];
       setLiveTasks(tasks);
       setTaskCount((prev) => (prev == null ? tasks.length : prev));
+      projectCache.set(slug, {
+        ...(projectCache.get(slug) || {}),
+        tasks,
+        taskCount: projectCache.get(slug)?.taskCount ?? tasks.length,
+      });
     });
     return () => { cancelled = true; };
   }, [slug, tick]);
@@ -80,11 +99,16 @@ export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
   const navigate = useNavigate();
   return (
     <div className="tabs-underline" style={{ marginTop: 4 }}>
-      {TABS.map((t) => (
+      {TABS.map((t) => {
+        // Milestones page passes activeTab="tasks-page" as a sentinel for
+        // breadcrumb/routing — treat it as a match for the "tasks" tab so
+        // the underline doesn't disappear while we're on /milestones.
+        const isActive = activeTab === t.id || (activeTab === "tasks-page" && t.id === "tasks");
+        return (
         <button
           key={t.id}
           type="button"
-          className={`tab-underline ${activeTab === t.id ? "active" : ""}`}
+          className={`tab-underline ${isActive ? "active" : ""}`}
           onClick={() => {
             // The Tasks tab is its own page; the rest stay in-page on /projects/:slug.
             if (t.id === "tasks") {
@@ -104,7 +128,8 @@ export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
             {t.id === "tasks" && (taskCount ?? 0)}
           </span>
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
