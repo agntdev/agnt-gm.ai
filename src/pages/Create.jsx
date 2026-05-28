@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useTonAddress, useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
-import { Icon } from "../components/atoms.jsx";
+import {
+  useTonAddress,
+  useTonConnectUI,
+  useTonWallet,
+} from "@tonconnect/ui-react";
+import { CopyableBlock, Icon } from "../components/atoms.jsx";
 import {
   Field,
   ModeSwitcher,
@@ -31,7 +35,7 @@ export default function Create() {
     total_supply: 1_000_000_000,
     deadline: "7", // number-of-days as a string; one of "1" | "3" | "7" | "14"
     task_notes: "",
-    ton_reward_pool: "5",   // TON; converted to nano (×1e9) on submit
+    ton_reward_pool: "5", // TON; converted to nano (×1e9) on submit
     auto_merge_enabled: true, // PATCH-able later via /projects/:id/auto-merge
   });
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -39,7 +43,14 @@ export default function Create() {
   // Manual-mode plan. Populated only when `mode === "manual"`. Kept in
   // parallel with the AI-mode `form` state so the user can switch back
   // and forth without losing what they typed in either mode.
-  const [mode, setMode] = useState("ai"); // "ai" | "manual"
+  // Three creation modes (all POST /builder/projects; backend picks the
+  // path by which fields are present):
+  //   quick  → raw_idea only (LLM invents name/token/supply/tasks)
+  //   guided → raw_idea + optional hints (name/symbol/supply/deadline/notes)
+  //   manual → full manual_plan (owner authors everything; LLM only enriches
+  //            task title/weight/difficulty and moderates)
+  // quick + guided share the same AI form; guided just surfaces the hints.
+  const [mode, setMode] = useState("quick");
   const [manual, setManual] = useState(() => ({
     name: "",
     token_symbol: "",
@@ -90,10 +101,15 @@ export default function Create() {
   const [fundingTxHash, setFundingTxHash] = useState(null);
   const [fundingErr, setFundingErr] = useState("");
 
-  useEffect(() => () => { if (pollAbort.current) clearTimeout(pollAbort.current); }, []);
+  useEffect(
+    () => () => {
+      if (pollAbort.current) clearTimeout(pollAbort.current);
+    },
+    [],
+  );
 
   const ideaTooShort = form.raw_idea.trim().length < 20;
-  const ideaTooLong = form.raw_idea.length > 10_000;
+  const ideaTooLong = form.raw_idea.length > 32_768;
   const walletMissing = !tonAddress;
 
   async function pollUntilTerminal(idOrSlug) {
@@ -103,15 +119,33 @@ export default function Create() {
       if (res?.project) {
         setProject(res.project);
         const s = res.project.status;
-        if (s === "ready_to_publish") { setPhase("ready"); return; }
-        if (s === "rejected") { setPhase("rejected"); setErrorMsg(res.project.rejection_reason || "Rejected by validator."); return; }
-        if (s === "failed")   { setPhase("failed");   setErrorMsg(res.project.rejection_reason || "Generation failed."); return; }
-        if (s === "live")     { setPhase("live"); return; }
+        if (s === "ready_to_publish") {
+          setPhase("ready");
+          return;
+        }
+        if (s === "rejected") {
+          setPhase("rejected");
+          setErrorMsg(res.project.rejection_reason || "Rejected by validator.");
+          return;
+        }
+        if (s === "failed") {
+          setPhase("failed");
+          setErrorMsg(res.project.rejection_reason || "Generation failed.");
+          return;
+        }
+        if (s === "live") {
+          setPhase("live");
+          return;
+        }
       }
-      await new Promise((r) => { pollAbort.current = setTimeout(r, POLL_INTERVAL_MS); });
+      await new Promise((r) => {
+        pollAbort.current = setTimeout(r, POLL_INTERVAL_MS);
+      });
     }
     setPhase("failed");
-    setErrorMsg(`Timed out after ${Math.round(POLL_MAX_MS / 60000)} min — backend may still be working. Refresh project page later.`);
+    setErrorMsg(
+      `Timed out after ${Math.round(POLL_MAX_MS / 60000)} min — backend may still be working. Refresh project page later.`,
+    );
   }
 
   // After the user submits a funding tx via TonConnect, the API's deposit
@@ -127,32 +161,51 @@ export default function Create() {
       const res = await api.getProject(idOrSlug);
       if (res?.project) {
         setProject(res.project);
-        if (res.project.status === "live") { setPhase("live"); return; }
+        if (res.project.status === "live") {
+          setPhase("live");
+          return;
+        }
         if (res.project.ton_pool_funded_at) everSawFunded = true;
       }
-      await new Promise((r) => { pollAbort.current = setTimeout(r, POLL_INTERVAL_MS); });
+      await new Promise((r) => {
+        pollAbort.current = setTimeout(r, POLL_INTERVAL_MS);
+      });
     }
     // Timed out — leave the user on ReviewPanel. If we saw the deposit
     // confirm but never flipped to `live`, the auto-publish must have
     // stalled; the project page link in the panel still works.
     if (!everSawFunded) {
-      setErrorMsg("Timed out waiting for the deposit watcher. The transfer may still confirm later — check the project page.");
+      setErrorMsg(
+        "Timed out waiting for the deposit watcher. The transfer may still confirm later — check the project page.",
+      );
     }
   }
 
-  function triggerShake() { setShakeKey((n) => n + 1); }
+  function triggerShake() {
+    setShakeKey((n) => n + 1);
+  }
 
   function handleApiResponse(res, opts = {}) {
     if (res.status === 401 || res.status === 403) {
       setPhase("idle");
-      setErrorMsg(token
-        ? "Authorization rejected by the API. Token may be expired or invalid."
-        : "Authorization required. Sign in or paste a token above.");
+      setErrorMsg(
+        token
+          ? "Authorization rejected by the API. Token may be expired or invalid."
+          : "Authorization required. Sign in or paste a token above.",
+      );
       setShowTokenEdit(true);
       return false;
     }
-    if (res.status === 429) { setPhase("idle"); setErrorMsg("Rate limit hit. Try again later (default 50 / 7d)."); return false; }
-    if (res.status === 503) { setPhase("idle"); setErrorMsg("Builder feature is currently disabled on the server."); return false; }
+    if (res.status === 429) {
+      setPhase("idle");
+      setErrorMsg("Rate limit hit. Try again later (default 50 / 7d).");
+      return false;
+    }
+    if (res.status === 503) {
+      setPhase("idle");
+      setErrorMsg("Builder feature is currently disabled on the server.");
+      return false;
+    }
     if (res.status === 400 && opts.manual && res.data?.rejection_reason) {
       setPhase("idle");
       setModerationReason(res.data.rejection_reason);
@@ -161,7 +214,12 @@ export default function Create() {
     }
     if (!res.ok) {
       setPhase("idle");
-      setErrorMsg(res.data?.error || res.data?.message || res.networkError || `HTTP ${res.status} — request failed.`);
+      setErrorMsg(
+        res.data?.error ||
+          res.data?.message ||
+          res.networkError ||
+          `HTTP ${res.status} — request failed.`,
+      );
       triggerShake();
       return false;
     }
@@ -174,7 +232,8 @@ export default function Create() {
     const poolNano = Number(res.data?.project?.ton_reward_pool_nano) || 0;
     let instr = apiInstr ?? null;
     if (!instr && poolNano > 0) {
-      const fundingAddr = res.data?.project?.funding_address || PLATFORM_TON_WALLET;
+      const fundingAddr =
+        res.data?.project?.funding_address || PLATFORM_TON_WALLET;
       if (fundingAddr) {
         instr = {
           address: fundingAddr,
@@ -190,7 +249,9 @@ export default function Create() {
   async function onSubmitManual() {
     setModerationReason("");
     setErrorMsg("");
-    const errs = validateManualPlan(manual, "project", { descriptionsOnly: true });
+    const errs = validateManualPlan(manual, "project", {
+      descriptionsOnly: true,
+    });
     if (errs.length > 0) {
       setErrorMsg(errs[0]);
       triggerShake();
@@ -230,8 +291,13 @@ export default function Create() {
       }
     }
     body.auto_merge_enabled = !!form.auto_merge_enabled;
-    const supplyNano = (BigInt(Math.trunc(Number(manual.total_supply))) * 1_000_000_000n).toString();
-    const bodyJson = JSON.stringify(body).replace(`"__TS_PLACEHOLDER__"`, supplyNano);
+    const supplyNano = (
+      BigInt(Math.trunc(Number(manual.total_supply))) * 1_000_000_000n
+    ).toString();
+    const bodyJson = JSON.stringify(body).replace(
+      `"__TS_PLACEHOLDER__"`,
+      supplyNano,
+    );
 
     const res = await api.createProjectRaw(bodyJson, token);
     if (!handleApiResponse(res, { manual: true })) return;
@@ -248,7 +314,10 @@ export default function Create() {
       setErrorMsg("Connect a TON wallet to set the owner address.");
       return;
     }
-    if (!token) { setShowTokenEdit(true); return; }
+    if (!token) {
+      setShowTokenEdit(true);
+      return;
+    }
     if (mode === "manual") return onSubmitManual();
 
     if (ideaTooShort || ideaTooLong) return;
@@ -260,9 +329,14 @@ export default function Create() {
       raw_idea: form.raw_idea.trim(),
       owner_wallet_address: tonAddress,
     };
-    if (form.name.trim()) body.name = form.name.trim();
-    if (form.token_symbol.trim()) body.token_symbol = form.token_symbol.trim().toUpperCase();
-    if (form.task_notes.trim()) body.task_notes = form.task_notes.trim();
+    // Identity hints (name/token/supply/notes) only ship in Guided mode.
+    // Quick mode sends just the idea and lets the LLM invent everything.
+    if (mode === "guided") {
+      if (form.name.trim()) body.name = form.name.trim();
+      if (form.token_symbol.trim())
+        body.token_symbol = form.token_symbol.trim().toUpperCase();
+      if (form.task_notes.trim()) body.task_notes = form.task_notes.trim();
+    }
     if (form.deadline) {
       const days = parseInt(form.deadline, 10);
       if (Number.isFinite(days) && days > 0) {
@@ -279,13 +353,18 @@ export default function Create() {
     // Total supply: user enters whole tokens; API stores smallest units
     // (decimals=9). Compute with BigInt so 1B+ defaults don't overflow
     // Number.MAX_SAFE_INTEGER, then splice into the JSON as a raw integer.
-    const supplyHuman = String(form.total_supply || "").trim().replace(/[,_\s]/g, "");
+    // Total supply hint — Guided only. Quick omits it so the LLM picks.
+    const supplyHuman = String(form.total_supply || "")
+      .trim()
+      .replace(/[,_\s]/g, "");
     let bodyJson;
-    if (/^\d+$/.test(supplyHuman) && supplyHuman !== "0") {
+    if (mode === "guided" && /^\d+$/.test(supplyHuman) && supplyHuman !== "0") {
       const supplyNano = (BigInt(supplyHuman) * 1_000_000_000n).toString();
       const PH = "__TS_PLACEHOLDER__";
-      bodyJson = JSON.stringify({ ...body, total_supply: PH })
-        .replace(`"${PH}"`, supplyNano);
+      bodyJson = JSON.stringify({ ...body, total_supply: PH }).replace(
+        `"${PH}"`,
+        supplyNano,
+      );
     } else {
       bodyJson = JSON.stringify(body);
     }
@@ -305,13 +384,15 @@ export default function Create() {
         await tonConnectUI.openModal();
         if (!tonConnectUI.connected) return;
       }
-      const amount = fundingInstructions.amount_nano != null
-        ? String(fundingInstructions.amount_nano)
-        : String(project?.ton_reward_pool_nano ?? 0);
+      const amount =
+        fundingInstructions.amount_nano != null
+          ? String(fundingInstructions.amount_nano)
+          : String(project?.ton_reward_pool_nano ?? 0);
       let message = { address: fundingInstructions.address, amount };
       // Pass the server-provided BoC payload through if it gave us one (used by
       // the backend to correlate the transfer to this specific project).
-      if (fundingInstructions.payload) message.payload = fundingInstructions.payload;
+      if (fundingInstructions.payload)
+        message.payload = fundingInstructions.payload;
       // Preferred: mint a comment-marker funding intent so the deposit
       // matches on the marker even if the paying wallet differs from the
       // bound owner. Falls back to the bare transfer above if the endpoint
@@ -321,7 +402,8 @@ export default function Create() {
         const intentRes = await api.projectFundingIntent(idOrSlug, token);
         if (intentRes?.ok && intentRes.data?.comment_marker) {
           message = {
-            address: intentRes.data.target_wallet || fundingInstructions.address,
+            address:
+              intentRes.data.target_wallet || fundingInstructions.address,
             amount: String(intentRes.data.expected_nano ?? amount),
             payload: buildCommentPayload(intentRes.data.comment_marker),
           };
@@ -365,22 +447,61 @@ export default function Create() {
 
   return (
     <main data-screen-label="03 Propose Project">
-      <section className="container">
-        <div style={{ paddingTop: 18, fontSize: 11.5, color: "var(--fg-muted)", display: "flex", alignItems: "center", gap: 6 }}>
-          <button onClick={() => navigate("/")} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0 }}>
+      <section className="container" style={{ paddingBottom: 48 }}>
+        <div
+          style={{
+            paddingTop: 18,
+            fontSize: 11.5,
+            color: "var(--fg-muted)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <button
+            onClick={() => navigate("/")}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "inherit",
+              fontFamily: "inherit",
+              fontSize: "inherit",
+              padding: 0,
+            }}
+          >
             Pulse
           </button>
           <span>/</span>
-          <span style={{ color: "var(--fg)", fontWeight: 700 }}>Propose a project</span>
+          <span style={{ color: "var(--fg)", fontWeight: 700 }}>
+            Propose a project
+          </span>
         </div>
 
         <div style={{ paddingTop: 20, paddingBottom: 8 }}>
-          <h1 style={{ fontSize: 32, fontWeight: 800, margin: 0, fontFamily: "JetBrains Mono, monospace", letterSpacing: "-0.02em" }}>
+          <h1
+            style={{
+              fontSize: 32,
+              fontWeight: 800,
+              margin: 0,
+              fontFamily: "JetBrains Mono, monospace",
+              letterSpacing: "-0.02em",
+            }}
+          >
             Propose a project
           </h1>
-          <p style={{ fontSize: 14, color: "var(--fg-muted)", margin: "8px 0 0", maxWidth: "60ch", lineHeight: 1.5 }}>
-            Describe what you want built. The validator agent generates a project plan and a list of bounty
-            tasks (~30–90s). Review it, then publish to GitHub — agents start claiming tasks immediately.
+          <p
+            style={{
+              fontSize: 14,
+              color: "var(--fg-muted)",
+              margin: "8px 0 0",
+              maxWidth: "60ch",
+              lineHeight: 1.5,
+            }}
+          >
+            Describe what you want built. The validator agent generates a
+            project plan and a list of bounty tasks (~30–90s). Review it, then
+            publish to GitHub — agents start claiming tasks immediately.
           </p>
         </div>
 
@@ -390,32 +511,61 @@ export default function Create() {
           editing={showTokenEdit}
           onEdit={() => setShowTokenEdit(true)}
           onCancel={() => setShowTokenEdit(false)}
-          onSave={(v) => { setManualToken(v); setShowTokenEdit(false); }}
-          onSignIn={() => { window.location.href = githubLoginUrl(); }}
+          onSave={(v) => {
+            setManualToken(v);
+            setShowTokenEdit(false);
+          }}
+          onSignIn={() => {
+            window.location.href = githubLoginUrl();
+          }}
         />
 
         {phase === "idle" && (
           <>
-            <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div
+              style={{
+                marginTop: 18,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
               <ModeSwitcher
                 value={mode}
-                onChange={(m) => { setMode(m); setErrorMsg(""); setModerationReason(""); }}
+                onChange={(m) => {
+                  setMode(m);
+                  setErrorMsg("");
+                  setModerationReason("");
+                }}
                 options={[
-                  { value: "ai",     label: "AI plans for me",   icon: "zap" },
-                  { value: "manual", label: "I'll write it",     icon: "layers" },
+                  { value: "agent", label: "Agent", icon: "bot" },
+                  { value: "quick", label: "Quick", icon: "zap" },
+                  { value: "guided", label: "Guided", icon: "sparkles" },
+                  { value: "manual", label: "Manual", icon: "layers" },
                 ]}
               />
               <span style={{ fontSize: 11.5, color: "var(--fg-subtle)" }}>
-                {mode === "ai"
-                  ? "Describe the idea — the validator agent generates a README, plan, and tasks (~30–90s)."
-                  : "Author the plan + every task yourself. The platform only runs a content-moderation pass before accepting."}
+                {mode === "agent"
+                  ? "Paste a prompt to your AI agent. It runs the CLI: create → fund → publish."
+                  : mode === "quick"
+                    ? "Just describe the idea — the agent invents the name, token, plan and tasks (~30–90s)."
+                    : mode === "guided"
+                      ? "Describe the idea and optionally set the name, token, supply and deadline. Blanks are filled by the agent."
+                      : "Author the plan + every task yourself. The platform only moderates and assigns task weights."}
               </span>
             </div>
 
-            <RejectionBanner reason={moderationReason} onDismiss={() => setModerationReason("")} />
+            <RejectionBanner
+              reason={moderationReason}
+              onDismiss={() => setModerationReason("")}
+            />
 
-            {mode === "ai" ? (
+            {mode === "agent" ? (
+              <AgentCreatorCTA />
+            ) : mode !== "manual" ? (
               <Form
+                showHints={mode === "guided"}
                 form={form}
                 setField={setField}
                 ideaTooShort={ideaTooShort}
@@ -426,7 +576,9 @@ export default function Create() {
                 shakeKey={shakeKey}
                 tonConnected={!!tonAddress}
                 tonAddress={tonAddress}
-                tonWalletName={tonWallet?.device?.appName || tonWallet?.name || null}
+                tonWalletName={
+                  tonWallet?.device?.appName || tonWallet?.name || null
+                }
                 onConnectWallet={() => tonConnectUI.openModal()}
                 onDisconnectWallet={() => tonConnectUI.disconnect()}
               />
@@ -443,7 +595,9 @@ export default function Create() {
                 shakeKey={shakeKey}
                 tonConnected={!!tonAddress}
                 tonAddress={tonAddress}
-                tonWalletName={tonWallet?.device?.appName || tonWallet?.name || null}
+                tonWalletName={
+                  tonWallet?.device?.appName || tonWallet?.name || null
+                }
                 onConnectWallet={() => tonConnectUI.openModal()}
                 onDisconnectWallet={() => tonConnectUI.disconnect()}
               />
@@ -452,10 +606,7 @@ export default function Create() {
         )}
 
         {(phase === "submitting" || phase === "polling") && (
-          <ValidatingPanel
-            phase={phase}
-            project={project}
-          />
+          <ValidatingPanel phase={phase} project={project} />
         )}
 
         {phase === "ready" && project && (
@@ -470,7 +621,10 @@ export default function Create() {
         )}
 
         {phase === "live" && project && (
-          <LivePanel project={project} onView={() => navigate(`/projects/${project.slug || project.id}`)} />
+          <LivePanel
+            project={project}
+            onView={() => navigate(`/projects/${project.slug || project.id}`)}
+          />
         )}
 
         {(phase === "rejected" || phase === "failed") && (
@@ -483,9 +637,19 @@ export default function Create() {
 
 // ──────────────────────────── pieces ────────────────────────────
 
-function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) {
+function AuthRow({
+  token,
+  agent,
+  editing,
+  onEdit,
+  onCancel,
+  onSave,
+  onSignIn,
+}) {
   const [draft, setDraft] = useState(token);
-  useEffect(() => { setDraft(token); }, [token, editing]);
+  useEffect(() => {
+    setDraft(token);
+  }, [token, editing]);
 
   // Signed in: don't render an auth banner — the Nav already shows the user.
   // Signed out: surface the sign-in / paste-token entry points.
@@ -500,14 +664,25 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
           borderRadius: 8,
           background: "var(--accent-soft)",
           fontSize: 12,
-          display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
         }}
       >
         <Icon name="info" size={12} />
         <span style={{ fontWeight: 700 }}>Sign-in required.</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          <button type="button" className="btn btn-sm" onClick={onEdit}>Paste token</button>
-          <button type="button" className="btn btn-sm btn-accent" onClick={onSignIn}>Sign in with GitHub</button>
+          <button type="button" className="btn btn-sm" onClick={onEdit}>
+            Paste token
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-accent"
+            onClick={onSignIn}
+          >
+            Sign in with GitHub
+          </button>
         </div>
       </div>
     );
@@ -515,18 +690,40 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
 
   return (
     <form
-      onSubmit={(e) => { e.preventDefault(); onSave(draft.trim()); }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(draft.trim());
+      }}
       style={{
-        marginTop: 18, padding: 14, border: "1px solid var(--border-strong)",
-        borderRadius: 8, background: "var(--bg-soft)",
+        marginTop: 18,
+        padding: 14,
+        border: "1px solid var(--border-strong)",
+        borderRadius: 8,
+        background: "var(--bg-soft)",
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", color: "var(--fg-muted)", textTransform: "uppercase", marginBottom: 6 }}>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: "0.06em",
+          color: "var(--fg-muted)",
+          textTransform: "uppercase",
+          marginBottom: 6,
+        }}
+      >
         Authorization token
       </div>
-      <div style={{ fontSize: 11.5, color: "var(--fg-muted)", marginBottom: 10, lineHeight: 1.5 }}>
-        Paste your session JWT (from <code>/api/auth/github/callback</code>) or a long-lived <code>amk_…</code> API key.
-        Stored locally only.
+      <div
+        style={{
+          fontSize: 11.5,
+          color: "var(--fg-muted)",
+          marginBottom: 10,
+          lineHeight: 1.5,
+        }}
+      >
+        Paste your session JWT (from <code>/api/auth/github/callback</code>) or
+        a long-lived <code>amk_…</code> API key. Stored locally only.
       </div>
       <input
         type="password"
@@ -536,17 +733,29 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
         onChange={(e) => setDraft(e.target.value)}
         placeholder="amk_… or eyJhbGc…"
         style={{
-          width: "100%", padding: "10px 12px",
-          border: "1px solid var(--border)", borderRadius: 6,
-          fontFamily: "JetBrains Mono, monospace", fontSize: 12,
+          width: "100%",
+          padding: "10px 12px",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          fontFamily: "JetBrains Mono, monospace",
+          fontSize: 12,
           background: "var(--bg)",
         }}
       />
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button type="submit" className="btn btn-accent">Save</button>
-        <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="btn btn-accent">
+          Save
+        </button>
+        <button type="button" className="btn" onClick={onCancel}>
+          Cancel
+        </button>
         {token && (
-          <button type="button" className="btn" onClick={() => onSave("")} style={{ marginLeft: "auto", color: "var(--danger)" }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => onSave("")}
+            style={{ marginLeft: "auto", color: "var(--danger)" }}
+          >
             Forget token
           </button>
         )}
@@ -560,75 +769,133 @@ function AuthRow({ token, agent, editing, onEdit, onCancel, onSave, onSignIn }) 
 // (rarely touched — the validator agent picks all four if blank).
 // Pool / Deadline / Wallet stay always-visible because they're
 // commit-time decisions, not "defaults".
-function AiCustomizeDefaults({ form, setField }) {
-  const [open, setOpen] = useState(false);
+function AiCustomizeDefaults({ form, setField, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
   // Live summary on the collapsed header so users see the in-flight
   // values without expanding.
   const summary = (() => {
     const chips = [];
-    if (form.name?.trim()) chips.push(`name: ${form.name.slice(0, 24)}${form.name.length > 24 ? "…" : ""}`);
+    if (form.name?.trim())
+      chips.push(
+        `name: ${form.name.slice(0, 24)}${form.name.length > 24 ? "…" : ""}`,
+      );
     if (form.token_symbol?.trim()) chips.push(`$${form.token_symbol}`);
     const supply = Number(form.total_supply) || 0;
     if (supply > 0) {
-      const s = supply >= 1e9 ? `${(supply / 1e9).toFixed(0)}B`
-        : supply >= 1e6 ? `${(supply / 1e6).toFixed(0)}M`
-        : supply.toLocaleString();
+      const s =
+        supply >= 1e9
+          ? `${(supply / 1e9).toFixed(0)}B`
+          : supply >= 1e6
+            ? `${(supply / 1e6).toFixed(0)}M`
+            : supply.toLocaleString();
       chips.push(`${s} supply`);
     }
     if (form.task_notes?.trim()) chips.push("task hints set");
-    if (chips.length === 0) chips.push("validator picks name, symbol, supply, and task hints");
+    if (chips.length === 0)
+      chips.push("validator picks name, symbol, supply, and task hints");
     return chips.join(" · ");
   })();
 
   return (
-    <div style={{
-      marginTop: 18, padding: "10px 14px",
-      border: "1px solid var(--border)", borderRadius: 8,
-      background: "var(--bg-soft)",
-    }}>
+    <div
+      style={{
+        marginTop: 18,
+        padding: "10px 14px",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        background: "var(--bg-soft)",
+      }}
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         style={{
-          display: "flex", alignItems: "center", gap: 8, width: "100%",
-          background: "none", border: "none", padding: 0,
-          cursor: "pointer", color: "var(--fg)", textAlign: "left",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          width: "100%",
+          background: "none",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          color: "var(--fg)",
+          textAlign: "left",
         }}
       >
-        <span style={{
-          fontSize: 10.5, fontFamily: "JetBrains Mono, monospace",
-          fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
-          color: "var(--fg-muted)",
-        }}>
+        <span
+          style={{
+            fontSize: 10.5,
+            fontFamily: "JetBrains Mono, monospace",
+            fontWeight: 800,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--fg-muted)",
+          }}
+        >
           {open ? "▾" : "▸"} Customize defaults
         </span>
-        <span style={{
-          flex: 1, fontSize: 10.5, color: "var(--fg-muted)",
-          fontFamily: "JetBrains Mono, monospace",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
+        <span
+          style={{
+            flex: 1,
+            fontSize: 10.5,
+            color: "var(--fg-muted)",
+            fontFamily: "JetBrains Mono, monospace",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {summary}
         </span>
       </button>
       {open && (
-        <div className="agnt-fade-in" style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div
+          className="agnt-fade-in"
+          style={{
+            marginTop: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
           <div className="field-row">
             <div className="field">
               <label className="field-label">Project name</label>
-              <div className="field-hint">Defaults to LLM-generated if empty</div>
-              <input className="field-input" placeholder="TONscan Lite" value={form.name} onChange={(e) => setField("name", e.target.value)} />
+              <div className="field-hint">
+                Defaults to LLM-generated if empty
+              </div>
+              <input
+                className="field-input"
+                placeholder="TONscan Lite"
+                value={form.name}
+                onChange={(e) => setField("name", e.target.value)}
+              />
             </div>
             <div className="field">
               <label className="field-label">Token symbol</label>
               <div className="field-hint">3–5 chars, uppercase</div>
               <div className="field-suffix-wrap">
-                <span style={{ padding: "0 12px", fontSize: 12, color: "var(--fg-muted)", fontWeight: 800, borderRight: "1px solid var(--border)", display: "grid", placeItems: "center" }}>$</span>
+                <span
+                  style={{
+                    padding: "0 12px",
+                    fontSize: 12,
+                    color: "var(--fg-muted)",
+                    fontWeight: 800,
+                    borderRight: "1px solid var(--border)",
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                >
+                  $
+                </span>
                 <input
                   style={{ textTransform: "uppercase" }}
                   placeholder="TSCAN"
                   value={form.token_symbol}
-                  onChange={(e) => setField("token_symbol", e.target.value.toUpperCase())}
+                  onChange={(e) =>
+                    setField("token_symbol", e.target.value.toUpperCase())
+                  }
                   maxLength={5}
                 />
               </div>
@@ -636,29 +903,44 @@ function AiCustomizeDefaults({ form, setField }) {
           </div>
           <div className="field">
             <label className="field-label">Total supply</label>
-            <div className="field-hint">Whole tokens. Minted on chain with 9 decimals.</div>
+            <div className="field-hint">
+              Whole tokens. Minted on chain with 9 decimals.
+            </div>
             <input
               className="field-input"
               type="number"
               min={1000}
               step={1}
               value={form.total_supply}
-              onChange={(e) => setField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
+              onChange={(e) =>
+                setField(
+                  "total_supply",
+                  e.target.value === "" ? "" : Number(e.target.value),
+                )
+              }
             />
           </div>
           <div className="field">
             <label className="field-label">Task hints</label>
-            <div className="field-hint">Optional · steer the validator's task list (e.g. "prefer Preact", "no SaaS deps").</div>
+            <div className="field-hint">
+              Optional · steer the validator's task list (e.g. "prefer Preact",
+              "no SaaS deps").
+            </div>
             <textarea
               value={form.task_notes}
               onChange={(e) => setField("task_notes", e.target.value)}
               placeholder="e.g. Prefer Preact over React. Stick to TypeScript. Each task ≤ 8h."
               rows={3}
               style={{
-                width: "100%", padding: "10px 12px",
-                border: "1px solid var(--border)", borderRadius: 6,
-                fontSize: 13, lineHeight: 1.5, fontFamily: "inherit",
-                background: "var(--bg)", resize: "vertical",
+                width: "100%",
+                padding: "10px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                fontSize: 13,
+                lineHeight: 1.5,
+                fontFamily: "inherit",
+                background: "var(--bg)",
+                resize: "vertical",
               }}
             />
           </div>
@@ -669,31 +951,67 @@ function AiCustomizeDefaults({ form, setField }) {
 }
 
 function Form({
-  form, setField, ideaTooShort, ideaTooLong, walletMissing, onSubmit, errorMsg,
-  tonConnected, tonAddress, tonWalletName, onConnectWallet, onDisconnectWallet,
+  showHints = false,
+  form,
+  setField,
+  ideaTooShort,
+  ideaTooLong,
+  walletMissing,
+  onSubmit,
+  errorMsg,
+  tonConnected,
+  tonAddress,
+  tonWalletName,
+  onConnectWallet,
+  onDisconnectWallet,
 }) {
   return (
-    <form onSubmit={onSubmit} className="agnt-resp-form-grid" style={{ marginTop: 22, display: "grid", gridTemplateColumns: "1fr 320px", gap: 22 }}>
+    <form
+      onSubmit={onSubmit}
+      className="agnt-resp-form-grid"
+      style={{
+        marginTop: 22,
+        display: "grid",
+        gridTemplateColumns: "1fr 320px",
+        gap: 22,
+      }}
+    >
       <div className="create-form-card">
         <h2>What are you building?</h2>
         <p className="create-form-sub">
-          Describe the project in plain English. The validator agent reads this, drafts a plan, and breaks it into
-          bounty tasks. Be specific about what success looks like.
+          Describe the project in plain English. The validator agent reads this,
+          drafts a plan, and breaks it into bounty tasks. Be specific about what
+          success looks like.
         </p>
-        <div style={{
-          marginTop: 8, marginBottom: 14,
-          fontSize: 11.5, color: "var(--fg-muted)", lineHeight: 1.5,
-          padding: "8px 12px", borderRadius: 6, background: "var(--bg-soft)",
-          border: "1px solid var(--border)",
-        }}>
-          ⓘ The validator agent drafts the full plan + task list from your idea. <strong>You'll be able to review, edit, add or remove tasks</strong> before the project goes live.
+        <div
+          style={{
+            marginTop: 8,
+            marginBottom: 14,
+            fontSize: 11.5,
+            color: "var(--fg-muted)",
+            lineHeight: 1.5,
+            padding: "8px 12px",
+            borderRadius: 6,
+            background: "var(--bg-soft)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          ⓘ The validator agent drafts the full plan + task list from your idea.{" "}
+          <strong>You'll be able to review, edit, add or remove tasks</strong>{" "}
+          before the project goes live.
         </div>
 
         <div className="field">
           <label className="field-label">
             Project idea
-            <span style={{ float: "right", fontWeight: 500, color: ideaTooShort ? "var(--danger)" : "var(--fg-muted)" }}>
-              {form.raw_idea.length} / 20–10000 chars
+            <span
+              style={{
+                float: "right",
+                fontWeight: 500,
+                color: ideaTooShort ? "var(--danger)" : "var(--fg-muted)",
+              }}
+            >
+              {form.raw_idea.length} / 20–32768 chars
             </span>
           </label>
           <textarea
@@ -702,21 +1020,36 @@ function Form({
             placeholder="Build a 50KB blockchain explorer for TON. Just blocks, transactions, addresses, jettons. Loads in 200ms on 3G. p95 page load under 400ms. 100% feature parity with the top 5 user actions on tonscan.org."
             rows={9}
             style={{
-              width: "100%", padding: "12px 14px",
+              width: "100%",
+              padding: "12px 14px",
               border: `1px solid ${ideaTooShort && form.raw_idea.length > 0 ? "var(--danger)" : "var(--border)"}`,
-              borderRadius: 8, fontSize: 13, lineHeight: 1.55, fontFamily: "inherit",
-              background: "var(--bg)", resize: "vertical",
+              borderRadius: 8,
+              fontSize: 13,
+              lineHeight: 1.55,
+              fontFamily: "inherit",
+              background: "var(--bg)",
+              resize: "vertical",
             }}
           />
-          {ideaTooLong && <div className="field-hint" style={{ color: "var(--danger)" }}>Trim to 10,000 characters or fewer.</div>}
+          {ideaTooLong && (
+            <div className="field-hint" style={{ color: "var(--danger)" }}>
+              Trim to 32,768 characters or fewer.
+            </div>
+          )}
         </div>
 
-        <AiCustomizeDefaults form={form} setField={setField} />
+        {/* Guided mode surfaces the optional hints (name/token/supply/notes);
+            Quick mode hides them entirely and lets the LLM decide. */}
+        {showHints && (
+          <AiCustomizeDefaults form={form} setField={setField} defaultOpen />
+        )}
 
         <div className="field-row">
           <div className="field">
             <label className="field-label">Reward pool</label>
-            <div className="field-hint">TON the owner commits to distribute on merged PRs</div>
+            <div className="field-hint">
+              TON the owner commits to distribute on merged PRs
+            </div>
             <div className="field-suffix-wrap">
               <input
                 type="number"
@@ -727,20 +1060,31 @@ function Form({
               />
               <span className="suffix">TON</span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 6 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 6,
+                marginTop: 6,
+              }}
+            >
               {["0", "1", "5", "25"].map((v) => (
                 <button
                   key={v}
                   type="button"
                   onClick={() => setField("ton_reward_pool", v)}
                   style={{
-                    height: 30, padding: 0,
+                    height: 30,
+                    padding: 0,
                     border: `1px solid ${form.ton_reward_pool === v ? "var(--fg)" : "var(--border)"}`,
-                    background: form.ton_reward_pool === v ? "var(--fg)" : "var(--bg)",
-                    color:      form.ton_reward_pool === v ? "var(--bg)" : "var(--fg)",
+                    background:
+                      form.ton_reward_pool === v ? "var(--fg)" : "var(--bg)",
+                    color:
+                      form.ton_reward_pool === v ? "var(--bg)" : "var(--fg)",
                     borderRadius: 6,
                     fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 11, fontWeight: 700,
+                    fontSize: 11,
+                    fontWeight: 700,
                     cursor: "pointer",
                   }}
                 >
@@ -753,11 +1097,19 @@ function Form({
           <div className="field">
             <label className="field-label">Deadline</label>
             <div className="field-hint">Project window for agents to ship</div>
-            <div className="agnt-resp-preset-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 4 }}>
+            <div
+              className="agnt-resp-preset-4"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 6,
+                marginTop: 4,
+              }}
+            >
               {[
-                { v: "1",  label: "1 day" },
-                { v: "3",  label: "3 days" },
-                { v: "7",  label: "7 days" },
+                { v: "1", label: "1 day" },
+                { v: "3", label: "3 days" },
+                { v: "7", label: "7 days" },
                 { v: "14", label: "14 days" },
               ].map((opt) => (
                 <button
@@ -765,15 +1117,19 @@ function Form({
                   type="button"
                   onClick={() => setField("deadline", opt.v)}
                   style={{
-                    height: 36, padding: "0 8px",
+                    height: 36,
+                    padding: "0 8px",
                     border: `1px solid ${form.deadline === opt.v ? "var(--fg)" : "var(--border)"}`,
-                    background: form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
-                    color:      form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
+                    background:
+                      form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
+                    color: form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
                     borderRadius: 6,
                     fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 12, fontWeight: 700,
+                    fontSize: 12,
+                    fontWeight: 700,
                     cursor: "pointer",
-                    transition: "border-color 0.12s ease, background 0.12s ease",
+                    transition:
+                      "border-color 0.12s ease, background 0.12s ease",
                   }}
                 >
                   {opt.label}
@@ -786,63 +1142,92 @@ function Form({
         <div className="field" style={{ marginTop: 14 }}>
           <label className="field-label">
             Owner wallet
-            <span style={{ float: "right", fontWeight: 500, color: "var(--danger)" }}>required</span>
+            <span
+              style={{
+                float: "right",
+                fontWeight: 500,
+                color: "var(--danger)",
+              }}
+            >
+              required
+            </span>
           </label>
-            <div className="field-hint">
-              {tonConnected
-                ? "Reward-pool refunds and owner-share tokens go to this wallet."
-                : "Connect a TON wallet — its address is recorded as the project owner."}
-            </div>
-            {tonConnected ? (
-              <div
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "10px 12px", marginTop: 4,
-                  border: "1px solid var(--accent)", borderRadius: 6,
-                  background: "var(--accent-soft)",
-                }}
-              >
-                <span className="live-dot" />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--accent-fg)", textTransform: "uppercase" }}>
-                    {tonWalletName || "Wallet"} connected
-                  </div>
-                  <div
-                    title={tonAddress}
-                    style={{
-                      marginTop: 2,
-                      fontFamily: "JetBrains Mono, monospace",
-                      fontSize: 11.5, fontWeight: 700,
-                      color: "var(--fg)",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }}
-                  >
-                    {tonAddress}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={onDisconnectWallet}
-                  className="btn btn-sm"
+          <div className="field-hint">
+            {tonConnected
+              ? "Reward-pool refunds and owner-share tokens go to this wallet."
+              : "Connect a TON wallet — its address is recorded as the project owner."}
+          </div>
+          {tonConnected ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 12px",
+                marginTop: 4,
+                border: "1px solid var(--accent)",
+                borderRadius: 6,
+                background: "var(--accent-soft)",
+              }}
+            >
+              <span className="live-dot" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    letterSpacing: "0.06em",
+                    color: "var(--accent-fg)",
+                    textTransform: "uppercase",
+                  }}
                 >
-                  Disconnect
-                </button>
+                  {tonWalletName || "Wallet"} connected
+                </div>
+                <div
+                  title={tonAddress}
+                  style={{
+                    marginTop: 2,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    color: "var(--fg)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {tonAddress}
+                </div>
               </div>
-            ) : (
               <button
                 type="button"
-                onClick={onConnectWallet}
-                className="btn"
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  width: "100%", marginTop: 4, height: 38,
-                  background: "var(--bg)", borderColor: "var(--border-strong)",
-                  fontWeight: 700,
-                }}
+                onClick={onDisconnectWallet}
+                className="btn btn-sm"
               >
-                <Icon name="zap" size={12} /> Connect TON wallet
+                Disconnect
               </button>
-            )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onConnectWallet}
+              className="btn"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                width: "100%",
+                marginTop: 4,
+                height: 38,
+                background: "var(--bg)",
+                borderColor: "var(--border-strong)",
+                fontWeight: 700,
+              }}
+            >
+              <Icon name="zap" size={12} /> Connect TON wallet
+            </button>
+          )}
         </div>
 
         <AutoMergeToggle
@@ -851,19 +1236,41 @@ function Form({
         />
 
         {errorMsg && (
-          <div style={{ marginTop: 14, padding: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+          <div
+            style={{
+              marginTop: 14,
+              padding: 12,
+              border: "1px solid var(--danger)",
+              borderRadius: 6,
+              background: "var(--danger-soft)",
+              color: "var(--danger)",
+              fontSize: 12,
+            }}
+          >
             {errorMsg}
           </div>
         )}
 
-        <div className="create-cta-bar" style={{ display: "flex", justifyContent: "flex-end", marginTop: 18, padding: 0, border: "none" }}>
+        <div
+          className="create-cta-bar"
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            marginTop: 18,
+            padding: 0,
+            border: "none",
+          }}
+        >
           <button
             type="submit"
             className="btn-primary-big"
             style={{
               background: "var(--accent)",
               opacity: ideaTooShort || ideaTooLong || walletMissing ? 0.5 : 1,
-              cursor:  ideaTooShort || ideaTooLong || walletMissing ? "not-allowed" : "pointer",
+              cursor:
+                ideaTooShort || ideaTooLong || walletMissing
+                  ? "not-allowed"
+                  : "pointer",
             }}
             disabled={ideaTooShort || ideaTooLong || walletMissing}
           >
@@ -877,13 +1284,27 @@ function Form({
           <div className="create-preview-head">
             <Icon name="info" size={11} /> What happens next
           </div>
-          <div className="create-preview-body" style={{ fontSize: 12, color: "var(--fg-muted)", lineHeight: 1.55 }}>
+          <div
+            className="create-preview-body"
+            style={{ fontSize: 12, color: "var(--fg-muted)", lineHeight: 1.55 }}
+          >
             <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
               <li>You submit the idea.</li>
-              <li>The validator agent generates a README, milestones, and a list of tasks (~30–90s).</li>
-              <li>You review the plan and pay the reward pool via TonConnect.</li>
-              <li>The deposit watcher confirms on-chain (~10–60s) and the project <strong>auto-publishes to GitHub</strong>.</li>
-              <li>Agents pick up tasks. Each merged PR is reviewed by the platform agent and earns a slice of the pool.</li>
+              <li>
+                The validator agent generates a README, milestones, and a list
+                of tasks (~30–90s).
+              </li>
+              <li>
+                You review the plan and pay the reward pool via TonConnect.
+              </li>
+              <li>
+                The deposit watcher confirms on-chain (~10–60s) and the project{" "}
+                <strong>auto-publishes to GitHub</strong>.
+              </li>
+              <li>
+                Agents pick up tasks. Each merged PR is reviewed by the platform
+                agent and earns a slice of the pool.
+              </li>
             </ol>
           </div>
         </div>
@@ -898,10 +1319,20 @@ function Form({
 // docs (collapsible) → tasks → pool/deadline/wallet → submit. Same
 // inline-style aesthetic as Form for visual continuity.
 function ManualForm({
-  manual, setManualField, setManualTasks,
-  form, setField,
-  walletMissing, onSubmit, errorMsg, shakeKey,
-  tonConnected, tonAddress, tonWalletName, onConnectWallet, onDisconnectWallet,
+  manual,
+  setManualField,
+  setManualTasks,
+  form,
+  setField,
+  walletMissing,
+  onSubmit,
+  errorMsg,
+  shakeKey,
+  tonConnected,
+  tonAddress,
+  tonWalletName,
+  onConnectWallet,
+  onDisconnectWallet,
 }) {
   // "Customize defaults" lumps tokenomics + long-form pitch + plan/readme
   // into a single collapsible. Default-collapsed because almost every
@@ -909,17 +1340,25 @@ function ManualForm({
   // only · no plan/readme). Opening it surfaces every advanced field
   // without losing them.
   const [customizeOpen, setCustomizeOpen] = useState(false);
-  const canSubmit = !walletMissing && manual.name.trim() && manual.token_symbol.trim() && manual.tasks.length > 0;
+  const canSubmit =
+    !walletMissing &&
+    manual.name.trim() &&
+    manual.token_symbol.trim() &&
+    manual.tasks.length > 0;
 
   // Summary chips on the collapsed customize header — owners see the
   // effective defaults at a glance without expanding.
   const customSummary = (() => {
     const supply = Number(manual.total_supply) || 0;
-    const supplyShort = supply >= 1e9 ? `${(supply / 1e9).toFixed(0)}B`
-      : supply >= 1e6 ? `${(supply / 1e6).toFixed(0)}M`
-      : supply.toLocaleString();
+    const supplyShort =
+      supply >= 1e9
+        ? `${(supply / 1e9).toFixed(0)}B`
+        : supply >= 1e6
+          ? `${(supply / 1e6).toFixed(0)}M`
+          : supply.toLocaleString();
     const sharePct = (Number(manual.owner_share_bps) || 0) / 100;
-    const hasAbout = manual.about_of_project?.trim() || manual.goal_of_project?.trim();
+    const hasAbout =
+      manual.about_of_project?.trim() || manual.goal_of_project?.trim();
     const hasDocs = manual.plan_md?.trim() || manual.readme_md?.trim();
     const chips = [`${supplyShort} supply`, `${sharePct}% owner share`];
     if (hasAbout) chips.push("about + goal set");
@@ -930,13 +1369,29 @@ function ManualForm({
   return (
     <form
       onSubmit={onSubmit}
-      style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr", gap: 22 }}
+      style={{
+        marginTop: 18,
+        display: "grid",
+        gridTemplateColumns: "1fr",
+        gap: 22,
+      }}
     >
       <div className="create-form-card">
-        <SectionHeader first hint="Public-facing project name and token ticker.">
+        <SectionHeader
+          first
+          hint="Public-facing project name and token ticker."
+        >
           Identity
         </SectionHeader>
-        <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12, marginTop: 10 }}>
+        <div
+          className="agnt-resp-2col"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 200px",
+            gap: 12,
+            marginTop: 10,
+          }}
+        >
           <Field label="Project name" hint="Max 200 chars">
             <input
               style={inputStyle}
@@ -948,23 +1403,38 @@ function ManualForm({
           </Field>
           <Field label="Token symbol" hint="3–10 chars, A–Z 0–9">
             <input
-              style={{ ...monoInputStyle, textTransform: "uppercase", textAlign: "center", fontWeight: 800 }}
+              style={{
+                ...monoInputStyle,
+                textTransform: "uppercase",
+                textAlign: "center",
+                fontWeight: 800,
+              }}
               value={manual.token_symbol}
               maxLength={10}
               placeholder="HBTN"
-              onChange={(e) => setManualField("token_symbol", e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+              onChange={(e) =>
+                setManualField(
+                  "token_symbol",
+                  e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""),
+                )
+              }
             />
           </Field>
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <Field label="Short description" hint="One sentence — shows on the project card and the homepage Pulse.">
+          <Field
+            label="Short description"
+            hint="One sentence — shows on the project card and the homepage Pulse."
+          >
             <input
               style={inputStyle}
               maxLength={240}
               value={manual.short_description}
               placeholder="A fun click-counter game"
-              onChange={(e) => setManualField("short_description", e.target.value)}
+              onChange={(e) =>
+                setManualField("short_description", e.target.value)
+              }
             />
           </Field>
         </div>
@@ -972,42 +1442,81 @@ function ManualForm({
         {/* "Customize defaults" — collapsed by default. Default values
             (1B supply, 0% share, blank about/goal/plan/readme) work for
             most owners; advanced fields stay reachable with one click. */}
-        <div style={{
-          marginTop: 18, padding: "10px 14px",
-          border: "1px solid var(--border)", borderRadius: 8,
-          background: "var(--bg-soft)",
-        }}>
+        <div
+          style={{
+            marginTop: 18,
+            padding: "10px 14px",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            background: "var(--bg-soft)",
+          }}
+        >
           <button
             type="button"
             onClick={() => setCustomizeOpen((v) => !v)}
             aria-expanded={customizeOpen}
             style={{
-              display: "flex", alignItems: "center", gap: 8, width: "100%",
-              background: "none", border: "none", padding: 0,
-              cursor: "pointer", color: "var(--fg)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              color: "var(--fg)",
               textAlign: "left",
             }}
           >
-            <span style={{
-              fontSize: 10.5, fontFamily: "JetBrains Mono, monospace",
-              fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
-              color: "var(--fg-muted)",
-            }}>
+            <span
+              style={{
+                fontSize: 10.5,
+                fontFamily: "JetBrains Mono, monospace",
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--fg-muted)",
+              }}
+            >
               {customizeOpen ? "▾" : "▸"} Customize defaults
             </span>
-            <span style={{
-              flex: 1, fontSize: 10.5, color: "var(--fg-muted)",
-              fontFamily: "JetBrains Mono, monospace",
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            }}>
+            <span
+              style={{
+                flex: 1,
+                fontSize: 10.5,
+                color: "var(--fg-muted)",
+                fontFamily: "JetBrains Mono, monospace",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {customSummary}
             </span>
           </button>
           {customizeOpen && (
-            <div className="agnt-fade-in" style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+            <div
+              className="agnt-fade-in"
+              style={{
+                marginTop: 14,
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
               {/* Tokenomics */}
-              <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12 }}>
-                <Field label="Total supply" hint="Whole tokens · 1M…1T · 9 decimals on chain">
+              <div
+                className="agnt-resp-2col"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 200px",
+                  gap: 12,
+                }}
+              >
+                <Field
+                  label="Total supply"
+                  hint="Whole tokens · 1M…1T · 9 decimals on chain"
+                >
                   <input
                     style={monoInputStyle}
                     type="number"
@@ -1015,61 +1524,127 @@ function ManualForm({
                     max={1_000_000_000_000}
                     step={1}
                     value={manual.total_supply}
-                    onChange={(e) => setManualField("total_supply", e.target.value === "" ? "" : Number(e.target.value))}
+                    onChange={(e) =>
+                      setManualField(
+                        "total_supply",
+                        e.target.value === "" ? "" : Number(e.target.value),
+                      )
+                    }
                   />
                 </Field>
-                <Field label="Owner share" hint="0–10% of the mint kept by the owner.">
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Field
+                  label="Owner share"
+                  hint="0–10% of the mint kept by the owner."
+                >
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
                     <input
-                      style={{ ...monoInputStyle, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
+                      style={{
+                        ...monoInputStyle,
+                        fontVariantNumeric: "tabular-nums",
+                        textAlign: "right",
+                      }}
                       type="number"
                       min={0}
                       max={10}
                       step={0.5}
                       value={(Number(manual.owner_share_bps) || 0) / 100}
                       onChange={(e) => {
-                        const pct = Math.max(0, Math.min(10, parseFloat(e.target.value) || 0));
-                        setManualField("owner_share_bps", Math.round(pct * 100));
+                        const pct = Math.max(
+                          0,
+                          Math.min(10, parseFloat(e.target.value) || 0),
+                        );
+                        setManualField(
+                          "owner_share_bps",
+                          Math.round(pct * 100),
+                        );
                       }}
                     />
-                    <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--fg-muted)", fontWeight: 700 }}>%</span>
+                    <span
+                      style={{
+                        fontFamily: "JetBrains Mono, monospace",
+                        fontSize: 12,
+                        color: "var(--fg-muted)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      %
+                    </span>
                   </div>
                 </Field>
               </div>
 
               {/* Long-form pitch */}
-              <Field label="About" hint="Optional — longer description for the project page.">
+              <Field
+                label="About"
+                hint="Optional — longer description for the project page."
+              >
                 <textarea
-                  style={{ ...inputStyle, fontSize: 13, lineHeight: 1.55, resize: "vertical" }}
+                  style={{
+                    ...inputStyle,
+                    fontSize: 13,
+                    lineHeight: 1.55,
+                    resize: "vertical",
+                  }}
                   rows={3}
                   value={manual.about_of_project}
                   placeholder="Click the button. Win. Stop clicking."
-                  onChange={(e) => setManualField("about_of_project", e.target.value)}
+                  onChange={(e) =>
+                    setManualField("about_of_project", e.target.value)
+                  }
                 />
               </Field>
               <Field label="Goal" hint="Optional — what success looks like.">
                 <textarea
-                  style={{ ...inputStyle, fontSize: 13, lineHeight: 1.55, resize: "vertical" }}
+                  style={{
+                    ...inputStyle,
+                    fontSize: 13,
+                    lineHeight: 1.55,
+                    resize: "vertical",
+                  }}
                   rows={2}
                   value={manual.goal_of_project}
                   placeholder="Top of the addiction leaderboards by week 4."
-                  onChange={(e) => setManualField("goal_of_project", e.target.value)}
+                  onChange={(e) =>
+                    setManualField("goal_of_project", e.target.value)
+                  }
                 />
               </Field>
 
               {/* Plan & docs */}
-              <Field label="plan.md" hint="Optional · roadmap / phase plan for agents.">
+              <Field
+                label="plan.md"
+                hint="Optional · roadmap / phase plan for agents."
+              >
                 <textarea
-                  style={{ ...inputStyle, fontFamily: "JetBrains Mono, monospace", fontSize: 12, lineHeight: 1.55, resize: "vertical" }}
+                  style={{
+                    ...inputStyle,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 12,
+                    lineHeight: 1.55,
+                    resize: "vertical",
+                  }}
                   rows={5}
                   value={manual.plan_md}
-                  placeholder={"## Phase 1: button works\n- Render at /\n- Increments counter\n…"}
+                  placeholder={
+                    "## Phase 1: button works\n- Render at /\n- Increments counter\n…"
+                  }
                   onChange={(e) => setManualField("plan_md", e.target.value)}
                 />
               </Field>
-              <Field label="README.md" hint="Optional · written verbatim to the GitHub repo on publish.">
+              <Field
+                label="README.md"
+                hint="Optional · written verbatim to the GitHub repo on publish."
+              >
                 <textarea
-                  style={{ ...inputStyle, fontFamily: "JetBrains Mono, monospace", fontSize: 12, lineHeight: 1.55, resize: "vertical" }}
+                  style={{
+                    ...inputStyle,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 12,
+                    lineHeight: 1.55,
+                    resize: "vertical",
+                  }}
                   rows={5}
                   value={manual.readme_md}
                   placeholder={"# Happy Button\n\nA fun click-counter game…"}
@@ -1095,8 +1670,19 @@ function ManualForm({
         <SectionHeader hint="Pool funds via TonConnect after the plan is accepted.">
           Reward pool & wallet
         </SectionHeader>
-        <div className="agnt-resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
-          <Field label="Reward pool (TON)" hint="Funded after approval; can be 0.">
+        <div
+          className="agnt-resp-2col"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
+            marginTop: 10,
+          }}
+        >
+          <Field
+            label="Reward pool (TON)"
+            hint="Funded after approval; can be 0."
+          >
             <div style={{ position: "relative" }}>
               <input
                 style={monoInputStyle}
@@ -1106,17 +1692,34 @@ function ManualForm({
                 value={form.ton_reward_pool}
                 onChange={(e) => setField("ton_reward_pool", e.target.value)}
               />
-              <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+              <span
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  fontSize: 11,
+                  color: "var(--fg-muted)",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontWeight: 700,
+                }}
+              >
                 TON
               </span>
             </div>
           </Field>
           <Field label="Deadline" hint="Window for agents to ship.">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 6,
+              }}
+            >
               {[
-                { v: "1",  label: "1d" },
-                { v: "3",  label: "3d" },
-                { v: "7",  label: "7d" },
+                { v: "1", label: "1d" },
+                { v: "3", label: "3d" },
+                { v: "7", label: "7d" },
                 { v: "14", label: "14d" },
               ].map((opt) => (
                 <button
@@ -1124,13 +1727,16 @@ function ManualForm({
                   type="button"
                   onClick={() => setField("deadline", opt.v)}
                   style={{
-                    height: 36, padding: 0,
+                    height: 36,
+                    padding: 0,
                     border: `1px solid ${form.deadline === opt.v ? "var(--fg)" : "var(--border)"}`,
-                    background: form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
-                    color:      form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
+                    background:
+                      form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
+                    color: form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
                     borderRadius: 6,
                     fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 11, fontWeight: 800,
+                    fontSize: 11,
+                    fontWeight: 800,
                     cursor: "pointer",
                     transition: "all 0.12s ease",
                   }}
@@ -1144,35 +1750,78 @@ function ManualForm({
         <div style={{ marginTop: 10 }}>
           <Field
             label="Owner wallet"
-            hint={tonConnected ? "Reward-pool refunds and owner-share tokens go here." : "Connect a TON wallet — its address is recorded as the owner."}
+            hint={
+              tonConnected
+                ? "Reward-pool refunds and owner-share tokens go here."
+                : "Connect a TON wallet — its address is recorded as the owner."
+            }
             error={walletMissing ? "Wallet connection required." : undefined}
           >
             {tonConnected ? (
               <div
                 style={{
-                  display: "flex", alignItems: "center", gap: 10,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
                   padding: "10px 12px",
-                  border: "1px solid var(--accent)", borderRadius: 6,
+                  border: "1px solid var(--accent)",
+                  borderRadius: 6,
                   background: "var(--accent-soft)",
                 }}
               >
                 <span className="live-dot" />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--accent-fg)", textTransform: "uppercase" }}>
+                  <div
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                      letterSpacing: "0.06em",
+                      color: "var(--accent-fg)",
+                      textTransform: "uppercase",
+                    }}
+                  >
                     {tonWalletName || "Wallet"} connected
                   </div>
-                  <div title={tonAddress} style={{ marginTop: 2, fontFamily: "JetBrains Mono, monospace", fontSize: 11.5, fontWeight: 700, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div
+                    title={tonAddress}
+                    style={{
+                      marginTop: 2,
+                      fontFamily: "JetBrains Mono, monospace",
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      color: "var(--fg)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
                     {tonAddress}
                   </div>
                 </div>
-                <button type="button" onClick={onDisconnectWallet} className="btn btn-sm">Disconnect</button>
+                <button
+                  type="button"
+                  onClick={onDisconnectWallet}
+                  className="btn btn-sm"
+                >
+                  Disconnect
+                </button>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={onConnectWallet}
                 className="btn"
-                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", height: 38, background: "var(--bg)", borderColor: "var(--border-strong)", fontWeight: 700 }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  width: "100%",
+                  height: 38,
+                  background: "var(--bg)",
+                  borderColor: "var(--border-strong)",
+                  fontWeight: 700,
+                }}
               >
                 <Icon name="zap" size={12} /> Connect TON wallet
               </button>
@@ -1186,20 +1835,35 @@ function ManualForm({
         />
 
         {errorMsg && (
-          <div className="agnt-fade-in" style={{ marginTop: 14, padding: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+          <div
+            className="agnt-fade-in"
+            style={{
+              marginTop: 14,
+              padding: 12,
+              border: "1px solid var(--danger)",
+              borderRadius: 6,
+              background: "var(--danger-soft)",
+              color: "var(--danger)",
+              fontSize: 12,
+            }}
+          >
             {errorMsg}
           </div>
         )}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+        <div
+          style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}
+        >
           <button
             key={shakeKey}
             type="submit"
-            className={shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"}
+            className={
+              shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"
+            }
             style={{
               background: "var(--accent)",
               opacity: canSubmit ? 1 : 0.5,
-              cursor:  canSubmit ? "pointer" : "not-allowed",
+              cursor: canSubmit ? "pointer" : "not-allowed",
             }}
             disabled={!canSubmit}
           >
@@ -1217,25 +1881,52 @@ function ManualForm({
 // owner approval. Shared between AI and Manual project forms.
 function AutoMergeToggle({ enabled, onChange }) {
   return (
-    <div className="agnt-resp-auto-toggle" style={{
-      marginTop: 18,
-      padding: "12px 14px",
-      border: "1px solid var(--border)",
-      borderRadius: 8,
-      background: "var(--bg-soft)",
-      display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
-    }}>
+    <div
+      className="agnt-resp-auto-toggle"
+      style={{
+        marginTop: 18,
+        padding: "12px 14px",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        background: "var(--bg-soft)",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        flexWrap: "wrap",
+      }}
+    >
       <div style={{ flex: 1, minWidth: 220 }}>
-        <div style={{
-          fontSize: 10.5, fontWeight: 800, color: "var(--fg-muted)",
-          textTransform: "uppercase", letterSpacing: "0.06em",
-        }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 800,
+            color: "var(--fg-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+          }}
+        >
           Auto review
         </div>
-        <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, maxWidth: "60ch" }}>
-          {enabled
-            ? <>The platform reviewer agent auto-merges the first PR that passes all checks. Faster shipping, no owner ping required.</>
-            : <>Every PR waits for your manual review and approval. Slower, but you sign off on every merge.</>}
+        <div
+          style={{
+            marginTop: 4,
+            fontSize: 12.5,
+            color: "var(--fg)",
+            lineHeight: 1.5,
+            maxWidth: "60ch",
+          }}
+        >
+          {enabled ? (
+            <>
+              The platform reviewer agent auto-merges the first PR that passes
+              all checks. Faster shipping, no owner ping required.
+            </>
+          ) : (
+            <>
+              Every PR waits for your manual review and approval. Slower, but
+              you sign off on every merge.
+            </>
+          )}
         </div>
       </div>
       <PillSwitch enabled={enabled} onChange={onChange} />
@@ -1245,13 +1936,20 @@ function AutoMergeToggle({ enabled, onChange }) {
 
 // PillSwitch — iOS-style segmented binary control. Tabular-mono labels
 // (ON / OFF) keep widths stable when the user flips it.
-function PillSwitch({ enabled, onChange, onLabel = "ON", offLabel = "OFF", disabled = false }) {
+function PillSwitch({
+  enabled,
+  onChange,
+  onLabel = "ON",
+  offLabel = "OFF",
+  disabled = false,
+}) {
   return (
     <div
       role="switch"
       aria-checked={enabled}
       style={{
-        display: "inline-flex", gap: 2,
+        display: "inline-flex",
+        gap: 2,
         padding: 3,
         border: "1px solid var(--border)",
         borderRadius: 999,
@@ -1261,7 +1959,7 @@ function PillSwitch({ enabled, onChange, onLabel = "ON", offLabel = "OFF", disab
     >
       {[
         { v: false, label: offLabel },
-        { v: true,  label: onLabel  },
+        { v: true, label: onLabel },
       ].map((opt) => {
         const active = opt.v === enabled;
         return (
@@ -1272,11 +1970,18 @@ function PillSwitch({ enabled, onChange, onLabel = "ON", offLabel = "OFF", disab
             onClick={() => !disabled && onChange(opt.v)}
             style={{
               padding: "5px 12px",
-              border: "none", borderRadius: 999,
-              background: active ? (opt.v ? "var(--accent)" : "var(--fg)") : "transparent",
+              border: "none",
+              borderRadius: 999,
+              background: active
+                ? opt.v
+                  ? "var(--accent)"
+                  : "var(--fg)"
+                : "transparent",
               color: active ? "var(--bg)" : "var(--fg-muted)",
               fontFamily: "JetBrains Mono, monospace",
-              fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
+              fontSize: 10.5,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
               cursor: disabled ? "not-allowed" : "pointer",
               transition: "background 0.18s ease, color 0.18s ease",
             }}
@@ -1291,20 +1996,46 @@ function PillSwitch({ enabled, onChange, onLabel = "ON", offLabel = "OFF", disab
 
 function ValidatingPanel({ phase, project }) {
   return (
-    <div style={{ marginTop: 22, padding: 28, border: "1px solid var(--border)", borderRadius: 10, background: "var(--bg-soft)" }}>
+    <div
+      style={{
+        marginTop: 22,
+        padding: 28,
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        background: "var(--bg-soft)",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span className="live-dot" />
         <h2 style={{ margin: 0, fontSize: 18 }}>
           {phase === "submitting" ? "Submitting…" : "Validating in background"}
         </h2>
       </div>
-      <p style={{ fontSize: 13, color: "var(--fg-muted)", marginTop: 10, lineHeight: 1.55 }}>
-        The validator agent is generating a project plan, README, and a list of bounty tasks. This usually
-        takes 30–90 seconds.
+      <p
+        style={{
+          fontSize: 13,
+          color: "var(--fg-muted)",
+          marginTop: 10,
+          lineHeight: 1.55,
+        }}
+      >
+        The validator agent is generating a project plan, README, and a list of
+        bounty tasks. This usually takes 30–90 seconds.
       </p>
       {project && (
-        <div style={{ marginTop: 14, fontFamily: "JetBrains Mono, monospace", fontSize: 11.5, color: "var(--fg-muted)" }}>
-          project_id <span style={{ color: "var(--fg)" }}>{project.id}</span> · status <span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>{project.status}</span>
+        <div
+          style={{
+            marginTop: 14,
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 11.5,
+            color: "var(--fg-muted)",
+          }}
+        >
+          project_id <span style={{ color: "var(--fg)" }}>{project.id}</span> ·
+          status{" "}
+          <span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>
+            {project.status}
+          </span>
         </div>
       )}
     </div>
@@ -1312,89 +2043,205 @@ function ValidatingPanel({ phase, project }) {
 }
 
 function ReviewPanel({
-  project, errorMsg,
-  fundingInstructions, fundingTxHash, fundingErr, onFundPool,
+  project,
+  errorMsg,
+  fundingInstructions,
+  fundingTxHash,
+  fundingErr,
+  onFundPool,
 }) {
   const poolNano = Number(project.ton_reward_pool_nano) || 0;
   const needsFunding = poolNano > 0 && !project.ton_pool_funded_at;
   const funded = !!project.ton_pool_funded_at || !!fundingTxHash;
-  const poolTon = (poolNano / 1e9).toLocaleString(undefined, { maximumFractionDigits: 3 });
-  const canFundFromUI = needsFunding && !!fundingInstructions?.address && !funded;
+  const poolTon = (poolNano / 1e9).toLocaleString(undefined, {
+    maximumFractionDigits: 3,
+  });
+  const canFundFromUI =
+    needsFunding && !!fundingInstructions?.address && !funded;
 
   return (
     <div style={{ marginTop: 22 }}>
-      <div style={{ padding: 24, border: "1px solid var(--accent)", borderRadius: 10, background: "var(--accent-soft)" }}>
+      <div
+        style={{
+          padding: 24,
+          border: "1px solid var(--accent)",
+          borderRadius: 10,
+          background: "var(--accent-soft)",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Icon name="check" size={14} />
-          <h2 style={{ margin: 0, fontSize: 18, fontFamily: "JetBrains Mono, monospace" }}>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 18,
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          >
             {funded ? "Pool funded — publishing now" : "Plan accepted"}
           </h2>
         </div>
-        <p style={{ fontSize: 13, color: "var(--fg-muted)", marginTop: 8, lineHeight: 1.5 }}>
+        <p
+          style={{
+            fontSize: 13,
+            color: "var(--fg-muted)",
+            marginTop: 8,
+            lineHeight: 1.5,
+          }}
+        >
           {funded
             ? "The deposit confirmed on-chain. The platform is creating the GitHub repo, writing the README and opening one issue per task. This page will flip to the live view in a moment."
             : "The validator approved the plan. Once you fund the reward pool, the project auto-publishes to GitHub — the platform creates the repo, writes the README and opens one issue per task."}
         </p>
       </div>
 
-      <div style={{ marginTop: 14, border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+      <div
+        style={{
+          marginTop: 14,
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          overflow: "hidden",
+        }}
+      >
         {[
-          ["Name",          project.name],
-          ["Slug",          project.slug],
-          ["Token symbol",  `$${project.token_symbol || "—"}`],
-          ["Total supply",  (project.token_total_supply ?? 0).toLocaleString()],
-          ["Decimals",      project.token_decimals ?? "—"],
-          ["Owner share",   project.owner_share_bps != null ? `${project.owner_share_bps / 100}%` : "—"],
-          ["Status",        project.status],
-          ["Project ID",    project.id],
-          ["Deadline",      project.deadline || "—"],
+          ["Name", project.name],
+          ["Slug", project.slug],
+          ["Token symbol", `$${project.token_symbol || "—"}`],
+          ["Total supply", (project.token_total_supply ?? 0).toLocaleString()],
+          ["Decimals", project.token_decimals ?? "—"],
+          [
+            "Owner share",
+            project.owner_share_bps != null
+              ? `${project.owner_share_bps / 100}%`
+              : "—",
+          ],
+          ["Status", project.status],
+          ["Project ID", project.id],
+          ["Deadline", project.deadline || "—"],
         ].map(([k, v], i, arr) => (
-          <div key={k} className="agnt-resp-kv-row" style={{
-            display: "grid", gridTemplateColumns: "180px 1fr",
-            padding: "10px 16px", fontSize: 12,
-            borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
-          }}>
-            <span style={{ color: "var(--fg-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 10.5 }}>{k}</span>
-            <span style={{ fontFamily: typeof v === "string" && v.length > 16 ? "JetBrains Mono, monospace" : "inherit", fontWeight: 700 }}>{String(v)}</span>
+          <div
+            key={k}
+            className="agnt-resp-kv-row"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "180px 1fr",
+              padding: "10px 16px",
+              fontSize: 12,
+              borderBottom:
+                i < arr.length - 1 ? "1px solid var(--border)" : "none",
+            }}
+          >
+            <span
+              style={{
+                color: "var(--fg-muted)",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                fontSize: 10.5,
+              }}
+            >
+              {k}
+            </span>
+            <span
+              style={{
+                fontFamily:
+                  typeof v === "string" && v.length > 16
+                    ? "JetBrains Mono, monospace"
+                    : "inherit",
+                fontWeight: 700,
+              }}
+            >
+              {String(v)}
+            </span>
           </div>
         ))}
       </div>
 
       {needsFunding && (
-        <div style={{
-          marginTop: 14, padding: 16,
-          border: `1px solid ${funded ? "var(--accent)" : canFundFromUI ? "var(--border-strong)" : "var(--danger)"}`,
-          borderRadius: 10,
-          background: funded ? "var(--accent-soft)" : canFundFromUI ? "var(--bg-soft)" : "var(--danger-soft)",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div
+          style={{
+            marginTop: 14,
+            padding: 16,
+            border: `1px solid ${funded ? "var(--accent)" : canFundFromUI ? "var(--border-strong)" : "var(--danger)"}`,
+            borderRadius: 10,
+            background: funded
+              ? "var(--accent-soft)"
+              : canFundFromUI
+                ? "var(--bg-soft)"
+                : "var(--danger-soft)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 8,
+            }}
+          >
             <Icon name="zap" size={14} />
-            <h3 style={{ margin: 0, fontSize: 14, fontFamily: "JetBrains Mono, monospace" }}>
+            <h3
+              style={{
+                margin: 0,
+                fontSize: 14,
+                fontFamily: "JetBrains Mono, monospace",
+              }}
+            >
               {funded ? "Pool funded" : "Fund the reward pool"}
             </h3>
           </div>
           {funded ? (
             <div style={{ fontSize: 12, color: "var(--fg)" }}>
-              {poolTon} TON committed. The project auto-publishes to GitHub as soon as the deposit watcher confirms — you'll land on the project page in a moment.
+              {poolTon} TON committed. The project auto-publishes to GitHub as
+              soon as the deposit watcher confirms — you'll land on the project
+              page in a moment.
               {fundingTxHash && fundingTxHash !== "submitted" && (
-                <div style={{ marginTop: 6, fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, color: "var(--fg-muted)", wordBreak: "break-all" }}>
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 10.5,
+                    color: "var(--fg-muted)",
+                    wordBreak: "break-all",
+                  }}
+                >
                   tx: {fundingTxHash}
                 </div>
               )}
             </div>
           ) : canFundFromUI ? (
             <>
-              <div style={{ fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, marginBottom: 12 }}>
-                Send <strong>{poolTon} TON</strong> from your wallet. The project publishes to GitHub automatically the moment the deposit confirms on-chain — no extra click needed.
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--fg)",
+                  lineHeight: 1.5,
+                  marginBottom: 12,
+                }}
+              >
+                Send <strong>{poolTon} TON</strong> from your wallet. The
+                project publishes to GitHub automatically the moment the deposit
+                confirms on-chain — no extra click needed.
               </div>
-              <div style={{
-                fontFamily: "JetBrains Mono, monospace", fontSize: 10.5,
-                color: "var(--fg-muted)", marginBottom: 12, wordBreak: "break-all",
-              }}>
-                to: <span style={{ color: "var(--fg)" }}>{fundingInstructions.address}</span>
+              <div
+                style={{
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 10.5,
+                  color: "var(--fg-muted)",
+                  marginBottom: 12,
+                  wordBreak: "break-all",
+                }}
+              >
+                to:{" "}
+                <span style={{ color: "var(--fg)" }}>
+                  {fundingInstructions.address}
+                </span>
                 {fundingInstructions.comment && (
                   <div style={{ marginTop: 2 }}>
-                    comment: <span style={{ color: "var(--fg)" }}>{fundingInstructions.comment}</span>
+                    comment:{" "}
+                    <span style={{ color: "var(--fg)" }}>
+                      {fundingInstructions.comment}
+                    </span>
                   </div>
                 )}
               </div>
@@ -1407,29 +2254,64 @@ function ReviewPanel({
                 <Icon name="zap" size={12} /> Pay {poolTon} TON
               </button>
               {fundingErr && (
-                <div style={{ marginTop: 10, padding: 10, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: 10,
+                    border: "1px solid var(--danger)",
+                    borderRadius: 6,
+                    background: "var(--danger-soft)",
+                    color: "var(--danger)",
+                    fontSize: 12,
+                  }}
+                >
                   {fundingErr}
                 </div>
               )}
               {fundingTxHash === "submitted" && (
-                <div style={{ marginTop: 10, fontSize: 12, color: "var(--fg-muted)" }}>
-                  Transaction submitted to your wallet. Waiting for on-chain confirmation…
+                <div
+                  style={{
+                    marginTop: 10,
+                    fontSize: 12,
+                    color: "var(--fg-muted)",
+                  }}
+                >
+                  Transaction submitted to your wallet. Waiting for on-chain
+                  confirmation…
                 </div>
               )}
             </>
           ) : (
-            <div style={{ fontSize: 12.5, color: "var(--danger)", lineHeight: 1.5 }}>
-              {poolTon} TON committed but no funding destination is configured for this
-              deployment (set <code>VITE_TON_PLATFORM_WALLET</code> to match the API's
-              <code> PLATFORM_TON_WALLET_ADDRESS</code>), or the API hasn't returned funding
-              instructions yet. Refresh and resubmit, or contact an admin to fund manually.
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--danger)",
+                lineHeight: 1.5,
+              }}
+            >
+              {poolTon} TON committed but no funding destination is configured
+              for this deployment (set <code>VITE_TON_PLATFORM_WALLET</code> to
+              match the API's
+              <code> PLATFORM_TON_WALLET_ADDRESS</code>), or the API hasn't
+              returned funding instructions yet. Refresh and resubmit, or
+              contact an admin to fund manually.
             </div>
           )}
         </div>
       )}
 
       {errorMsg && (
-        <div style={{ marginTop: 14, padding: 12, border: "1px solid var(--danger)", borderRadius: 6, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12 }}>
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid var(--danger)",
+            borderRadius: 6,
+            background: "var(--danger-soft)",
+            color: "var(--danger)",
+            fontSize: 12,
+          }}
+        >
           {errorMsg}
         </div>
       )}
@@ -1439,29 +2321,70 @@ function ReviewPanel({
 
 function LivePanel({ project, onView }) {
   return (
-    <div style={{ marginTop: 22, padding: 28, border: "1px solid var(--accent)", borderRadius: 10, background: "var(--accent-soft)" }}>
+    <div
+      style={{
+        marginTop: 22,
+        padding: 28,
+        border: "1px solid var(--accent)",
+        borderRadius: 10,
+        background: "var(--accent-soft)",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Icon name="rocket" size={16} />
         <h2 style={{ margin: 0, fontSize: 20 }}>{project.name} is live</h2>
       </div>
       <p style={{ marginTop: 8, fontSize: 13, color: "var(--fg-muted)" }}>
-        The repo is created and tasks are open. Agents are now able to claim and ship bounties.
+        The repo is created and tasks are open. Agents are now able to claim and
+        ship bounties.
       </p>
       {project.github_repo_url && (
-        <div style={{ marginTop: 10, fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>
-          <a href={project.github_repo_url} target="_blank" rel="noreferrer">{project.github_repo_url}</a>
+        <div
+          style={{
+            marginTop: 10,
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 12,
+          }}
+        >
+          <a href={project.github_repo_url} target="_blank" rel="noreferrer">
+            {project.github_repo_url}
+          </a>
         </div>
       )}
       {project.live_url && (
-        <div style={{ marginTop: 6, fontFamily: "JetBrains Mono, monospace", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <div
+          style={{
+            marginTop: 6,
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 12,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
           <Icon name="external" size={12} />
-          <a href={project.live_url} target="_blank" rel="noreferrer">{project.live_url}</a>
+          <a href={project.live_url} target="_blank" rel="noreferrer">
+            {project.live_url}
+          </a>
         </div>
       )}
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-        <button type="button" className="btn-primary-big" onClick={onView}>View project page</button>
+        <button type="button" className="btn-primary-big" onClick={onView}>
+          View project page
+        </button>
         {project.live_url && (
-          <a href={project.live_url} target="_blank" rel="noreferrer" className="btn-primary-big" style={{ background: "var(--bg)", color: "var(--fg)", border: "1px solid var(--border-strong)", textDecoration: "none" }}>
+          <a
+            href={project.live_url}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-primary-big"
+            style={{
+              background: "var(--bg)",
+              color: "var(--fg)",
+              border: "1px solid var(--border-strong)",
+              textDecoration: "none",
+            }}
+          >
             <Icon name="external" size={12} /> Open live site
           </a>
         )}
@@ -1473,13 +2396,165 @@ function LivePanel({ project, onView }) {
 function ErrorPanel({ phase, message, onReset }) {
   const title = phase === "rejected" ? "Idea rejected" : "Generation failed";
   return (
-    <div style={{ marginTop: 22, padding: 24, border: "1px solid var(--danger)", borderRadius: 10, background: "var(--danger-soft)" }}>
+    <div
+      style={{
+        marginTop: 22,
+        padding: 24,
+        border: "1px solid var(--danger)",
+        borderRadius: 10,
+        background: "var(--danger-soft)",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <Icon name="x" size={14} />
         <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
       </div>
-      <p style={{ marginTop: 8, fontSize: 13, color: "var(--fg)" }}>{message}</p>
-      <button type="button" className="btn" onClick={onReset} style={{ marginTop: 12 }}>Try again</button>
+      <p style={{ marginTop: 8, fontSize: 13, color: "var(--fg)" }}>
+        {message}
+      </p>
+      <button
+        type="button"
+        className="btn"
+        onClick={onReset}
+        style={{ marginTop: 12 }}
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+function AgentCreatorCTA() {
+  const [idea, setIdea] = useState("");
+
+  const examples = [
+    "Build a Telegram mini-app for splitting restaurant bills in TON",
+    "A Discord bot that rewards server members with tokens for contributions",
+    "CLI tool that generates TON wallet vanity addresses",
+  ];
+
+  const promptText = [
+    `Create a bounty project on agnt-gm.ai.`,
+    `Use agnt project create with AI brief mode — the platform generates name, token, and task plan from the description. After creation, fund the TON pool via TonConnect and publish.`,
+    ``,
+    `Your project idea: ${idea.trim() || "[Your project idea goes here]"}`,
+  ].join("\n");
+
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div
+        style={{
+          padding: 24,
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          background: "var(--bg)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Icon name="bot" size={16} />
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 18,
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          >
+            Create with an AI agent
+          </h2>
+        </div>
+        <p
+          style={{
+            fontSize: 13,
+            color: "var(--fg-muted)",
+            lineHeight: 1.55,
+            marginTop: 4,
+            marginBottom: 16,
+          }}
+        >
+          Instead of filling out the form, paste a prompt to your agent. It runs
+          the CLI commands: create → fund → publish.
+        </p>
+
+        <div style={{ marginBottom: 16 }}>
+          <CopyableBlock
+            text={`npx skills add agntdev/agnt-cli --all`}
+            label="1. Install skill"
+            id="create-install"
+          />
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <CopyableBlock
+            text={promptText}
+            label="2. Create project"
+            copyBtnLabel="Copy prompt"
+            id="create-prompt"
+          />
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            fontSize: 11,
+            fontWeight: 800,
+            color: "var(--fg-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            marginBottom: 8,
+          }}
+        >
+          Example ideas
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {examples.map((ex, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setIdea(ex)}
+              style={{
+                display: "block",
+                textAlign: "left",
+                padding: "8px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                background: "var(--bg)",
+                color: "var(--fg)",
+                fontSize: 12.5,
+                lineHeight: 1.45,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                transition: "border-color 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--border)";
+              }}
+            >
+              • {ex}
+            </button>
+          ))}
+        </div>
+
+        <p
+          style={{
+            marginTop: 16,
+            fontSize: 12,
+            color: "var(--fg-muted)",
+            lineHeight: 1.5,
+          }}
+        >
+          Prefer the form? Switch to Quick, Guided, or Manual mode.
+        </p>
+      </div>
     </div>
   );
 }

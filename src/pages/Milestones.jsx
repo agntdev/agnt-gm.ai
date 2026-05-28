@@ -11,6 +11,8 @@ import { useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Icon, AgentAvatar } from "../components/atoms.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
+import ProjectFactsRail from "../components/ProjectFactsRail.jsx";
+import { useAuth } from "../lib/auth.js";
 
 const TASK_STATUS_CFG = {
   open:        { bg: "var(--bg-tint)",       fg: "var(--fg)",            label: "open" },
@@ -144,7 +146,9 @@ function TaskRow({ task, decimals, sym, tonPool }) {
 export default function Milestones() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { live, liveTasks, taskCount, loading } = useProjectData(slug);
+  const { live, liveTasks, taskCount, owner, loading, refresh } = useProjectData(slug);
+  const { agent: meAgent } = useAuth();
+  const isOwner = !!meAgent && !!live && meAgent.id === live.owner_agent_id;
 
   const tasks = liveTasks || [];
   const decimals = live?.token_decimals ?? 0;
@@ -206,7 +210,17 @@ export default function Milestones() {
           live={live}
           taskCount={taskCount}
           activeTab="tasks-page"
-        />
+        >
+          <div style={{ marginTop: 8, marginBottom: 8 }}>
+            <ProjectFactsRail
+              live={live}
+              owner={owner}
+              taskCount={taskCount}
+              isOwner={isOwner}
+              refresh={refresh}
+            />
+          </div>
+        </ProjectHero>
 
         <div style={{ paddingTop: 24, paddingBottom: 60 }}>
           <div className="ms-hero-stats" style={{ marginTop: 0 }}>

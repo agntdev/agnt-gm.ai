@@ -5,9 +5,14 @@
 // than throwing — callers fall back to fixture data when the live API has
 // nothing to return.
 
-// Always hit the real API host directly. CORS is configured server-side
-// for https://agnt-gm.ai. Override with VITE_API_BASE for staging/preview.
-const BASE = (import.meta.env?.VITE_API_BASE ?? "https://api.agnt-gm.ai/api").replace(/\/$/, "");
+// Always hit the real API host directly in production. In dev, use relative
+// paths so the Vite proxy handles them — no CORS, same origin as the SPA.
+const BASE = import.meta.env.PROD
+  ? (import.meta.env?.VITE_API_BASE ?? "https://api.agnt-gm.ai/api").replace(
+      /\/$/,
+      "",
+    )
+  : "/api";
 
 // Platform TON wallet — destination for reward-pool funding. Must match the
 // API server's PLATFORM_TON_WALLET_ADDRESS so the deposit watcher
@@ -16,9 +21,11 @@ const BASE = (import.meta.env?.VITE_API_BASE ?? "https://api.agnt-gm.ai/api").re
 //
 // Default is the production address — public info, safe to ship in the
 // bundle. Override via VITE_TON_PLATFORM_WALLET for staging / testnet.
-const DEFAULT_PLATFORM_TON_WALLET = "UQCqnetXpRfQq3BJ_cml5LsR9juPgANd7QdUCWNJLs7v27J5";
-export const PLATFORM_TON_WALLET =
-  (import.meta.env?.VITE_TON_PLATFORM_WALLET ?? DEFAULT_PLATFORM_TON_WALLET).trim();
+const DEFAULT_PLATFORM_TON_WALLET =
+  "UQCqnetXpRfQq3BJ_cml5LsR9juPgANd7QdUCWNJLs7v27J5";
+export const PLATFORM_TON_WALLET = (
+  import.meta.env?.VITE_TON_PLATFORM_WALLET ?? DEFAULT_PLATFORM_TON_WALLET
+).trim();
 
 async function get(path, { auth, signal } = {}) {
   try {
@@ -44,7 +51,11 @@ async function getVerbose(path, { auth, signal } = {}) {
       signal,
     });
     let data = null;
-    try { data = await res.json(); } catch { /* empty body */ }
+    try {
+      data = await res.json();
+    } catch {
+      /* empty body */
+    }
     return { ok: res.ok, status: res.status, data };
   } catch (err) {
     return { ok: false, status: 0, data: null, networkError: String(err) };
@@ -57,9 +68,8 @@ async function send(method, path, body, { auth, signal, raw } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (auth) headers.Authorization = `Bearer ${auth}`;
   try {
-    const reqBody = body == null
-      ? undefined
-      : raw ? body : JSON.stringify(body);
+    const reqBody =
+      body == null ? undefined : raw ? body : JSON.stringify(body);
     const res = await fetch(`${BASE}${path}`, {
       method,
       headers,
@@ -67,7 +77,11 @@ async function send(method, path, body, { auth, signal, raw } = {}) {
       signal,
     });
     let data = null;
-    try { data = await res.json(); } catch { /* empty body */ }
+    try {
+      data = await res.json();
+    } catch {
+      /* empty body */
+    }
     return { ok: res.ok, status: res.status, data };
   } catch (err) {
     return { ok: false, status: 0, data: null, networkError: String(err) };
@@ -87,7 +101,8 @@ export const api = {
     return get(`/builder/projects?${qs}`);
   },
 
-  getProject: (idOrSlug) => get(`/builder/projects/${encodeURIComponent(idOrSlug)}`),
+  getProject: (idOrSlug) =>
+    get(`/builder/projects/${encodeURIComponent(idOrSlug)}`),
 
   listProjectTasks: (idOrSlug, { status, full } = {}) => {
     const qs = new URLSearchParams();
@@ -98,23 +113,36 @@ export const api = {
     // the param is accepted-but-ignored, the EditTasksPanel falls back
     // to per-task getTask() to fill the missing fields.
     if (full) qs.set("full", "true");
-    return get(`/builder/projects/${encodeURIComponent(idOrSlug)}/tasks${qs.toString() ? "?" + qs : ""}`);
+    return get(
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks${qs.toString() ? "?" + qs : ""}`,
+    );
   },
 
-  getTask: (idOrSlug, taskSlug) => get(`/builder/projects/${encodeURIComponent(idOrSlug)}/tasks/${encodeURIComponent(taskSlug)}`),
+  getTask: (idOrSlug, taskSlug) =>
+    get(
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks/${encodeURIComponent(taskSlug)}`,
+    ),
 
-  projectLeaderboard: (idOrSlug) => get(`/builder/projects/${encodeURIComponent(idOrSlug)}/leaderboard`),
+  projectLeaderboard: (idOrSlug) =>
+    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/leaderboard`),
 
   leaderboard: ({ range = "all", limit = 50, offset = 0 } = {}) => {
-    const qs = new URLSearchParams({ range, limit: String(limit), offset: String(offset) });
+    const qs = new URLSearchParams({
+      range,
+      limit: String(limit),
+      offset: String(offset),
+    });
     return get(`/builder/leaderboard?${qs}`);
   },
 
-  agent: (idOrUsername) => get(`/builder/agents/${encodeURIComponent(idOrUsername)}`),
+  agent: (idOrUsername) =>
+    get(`/builder/agents/${encodeURIComponent(idOrUsername)}`),
   me: (token) => get("/builder/agents/me", { auth: token }),
 
-  agentBalance: (id) => get(`/builder/agents/${encodeURIComponent(id)}/balance`),
-  agentTransactions: (id) => get(`/builder/agents/${encodeURIComponent(id)}/transactions`),
+  agentBalance: (id) =>
+    get(`/builder/agents/${encodeURIComponent(id)}/balance`),
+  agentTransactions: (id) =>
+    get(`/builder/agents/${encodeURIComponent(id)}/transactions`),
 
   // Payouts visibility — public endpoints landed on 2026-05-13.
   // schedule:                  GET /builder/payouts/schedule
@@ -125,7 +153,9 @@ export const api = {
   // platform stats:            GET /builder/stats/payouts?weeks=12
   payoutsSchedule: () => get("/builder/payouts/schedule"),
   agentPayoutsSummary: (id, { weeks = 12 } = {}) =>
-    get(`/builder/agents/${encodeURIComponent(id)}/payouts/summary?weeks=${weeks}`),
+    get(
+      `/builder/agents/${encodeURIComponent(id)}/payouts/summary?weeks=${weeks}`,
+    ),
   agentPayouts: (id, { status, limit = 50, offset = 0 } = {}) => {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
@@ -145,10 +175,14 @@ export const api = {
     if (status) qs.set("status", status);
     qs.set("limit", String(limit));
     qs.set("offset", String(offset));
-    return get(`/builder/projects/${encodeURIComponent(idOrSlug)}/payouts?${qs}`);
+    return get(
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/payouts?${qs}`,
+    );
   },
   projectPayoutsSummary: (idOrSlug, { weeks = 12 } = {}) =>
-    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/payouts/summary?weeks=${weeks}`),
+    get(
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/payouts/summary?weeks=${weeks}`,
+    ),
   statsPayouts: ({ weeks = 12 } = {}) =>
     get(`/builder/stats/payouts?weeks=${weeks}`),
 
@@ -161,7 +195,12 @@ export const api = {
   projectStage: (idOrSlug, n) =>
     get(`/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}`),
   createProjectStage: (idOrSlug, body, token) =>
-    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/stages`, body, { auth: token }),
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/stages`,
+      body,
+      { auth: token },
+    ),
   // Owner mints (or reuses) a comment-marker payment intent so the pool
   // deposit matches on the marker rather than (sender == owner) + amount.
   // Returns { ok, status, data } where data is an OwnerPaymentResponse
@@ -169,9 +208,19 @@ export const api = {
   //   POST /projects/:id/funding-intent           → project pool
   //   POST /projects/:id/stages/:n/funding-intent → stage n
   projectFundingIntent: (idOrSlug, token) =>
-    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/funding-intent`, null, { auth: token }),
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/funding-intent`,
+      null,
+      { auth: token },
+    ),
   stageFundingIntent: (idOrSlug, n, token) =>
-    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}/funding-intent`, null, { auth: token }),
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}/funding-intent`,
+      null,
+      { auth: token },
+    ),
 
   // Owner closes a stage early (before its deadline). Empty body.
   //   200 → { ...stage, status: "closed", closed_at }
@@ -180,31 +229,53 @@ export const api = {
   // Does NOT finish the project, refund budget, or lock supply — the
   // project stays live and a new stage can be started afterwards.
   closeProjectStage: (idOrSlug, n, token) =>
-    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}/close`, null, { auth: token }),
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${n}/close`,
+      null,
+      { auth: token },
+    ),
 
   // Mutations — require a Bearer token (session JWT or amk_… API key).
   // Body shape mirrors `internal_handler.createProjectRequest`:
   //   { raw_idea (req, 20–10000 chars), name?, deadline? (RFC3339),
   //     token_symbol?, total_supply?, task_notes? }
   // Returns { ok, status, data } so callers can distinguish 401/429/503.
-  createProject: (body, token) => send("POST", "/builder/projects", body, { auth: token }),
+  createProject: (body, token) =>
+    send("POST", "/builder/projects", body, { auth: token }),
   // Accept a pre-serialized JSON body string. Used by Create.jsx so we can inject
   // a BigInt total_supply (smallest units, can exceed Number.MAX_SAFE_INTEGER)
   // as a raw integer that survives JSON.stringify.
-  createProjectRaw: (bodyJson, token) => send("POST", "/builder/projects", bodyJson, { auth: token, raw: true }),
+  createProjectRaw: (bodyJson, token) =>
+    send("POST", "/builder/projects", bodyJson, { auth: token, raw: true }),
   publishProject: (idOrSlug, token) =>
-    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/publish`, null, { auth: token }),
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/publish`,
+      null,
+      { auth: token },
+    ),
 
   // Owner toggles the PR auto-merge policy. Owner-only on the API.
   // Body: { enabled: bool }. Response: { ok, project_id, auto_merge_enabled }.
   setAutoMergePolicy: (idOrSlug, enabled, token) =>
-    send("PATCH", `/builder/projects/${encodeURIComponent(idOrSlug)}/auto-merge`, { enabled }, { auth: token }),
+    send(
+      "PATCH",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/auto-merge`,
+      { enabled },
+      { auth: token },
+    ),
 
   // Owner renounces jetton admin (one-way). Empty body.
   // Response: { ok, project_id, locked_at, tx_hash?, note? }.
   // Idempotent on already-locked projects.
   lockJettonAdmin: (idOrSlug, token) =>
-    send("POST", `/builder/projects/${encodeURIComponent(idOrSlug)}/lock-jetton-admin`, {}, { auth: token }),
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/lock-jetton-admin`,
+      {},
+      { auth: token },
+    ),
 
   // ─────────── PUT /projects/:id/tasks ───────────
   // Owner replaces the entire task list of a `ready_to_publish`
@@ -224,12 +295,13 @@ export const api = {
   //         409 { error, current_status }
   //         429 rate limit
   //         502 LLM upstream
-  updateProjectTasks: (idOrSlug, body, token) => send(
-    "PUT",
-    `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks`,
-    body,
-    { auth: token },
-  ),
+  updateProjectTasks: (idOrSlug, body, token) =>
+    send(
+      "PUT",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks`,
+      body,
+      { auth: token },
+    ),
 
   // Owner adds new tasks to an active stage. Returns a 202 with an
   // owner-payment intent the owner must fulfil with a TonConnect
@@ -254,7 +326,9 @@ export const api = {
   // (and so the periodic poll doesn't trigger a CORS preflight on
   // every tick).
   getOwnerPayment: (id, token) =>
-    getVerbose(`/builder/owner-payments/${encodeURIComponent(id)}`, { auth: token }),
+    getVerbose(`/builder/owner-payments/${encodeURIComponent(id)}`, {
+      auth: token,
+    }),
 
   // ─────────────────── /preview-tasks ───────────────────
   // Owner-asked AI-first flow: LLM drafts tasks from a brief WITHOUT
@@ -272,12 +346,13 @@ export const api = {
    * Body: { brief, approx_count?, delta_ton_nano }.
    * Response: { tasks: [{slug, title, body_md, difficulty, weight_within_new, tags?}], note, cached_at? }.
    */
-  previewAddTasks: (idOrSlug, stageNumber, body, token) => send(
-    "POST",
-    `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${stageNumber}/preview-tasks`,
-    body,
-    { auth: token },
-  ),
+  previewAddTasks: (idOrSlug, stageNumber, body, token) =>
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/${stageNumber}/preview-tasks`,
+      body,
+      { auth: token },
+    ),
 
   /**
    * POST /api/builder/projects/:id/stages/preview-tasks
@@ -285,12 +360,13 @@ export const api = {
    * Body: { brief, approx_count?, stage_ton_nano }.
    * Response: { tasks: [{slug, title, body_md, difficulty, weight, tags?}], note, next_stage_number, cached_at? }.
    */
-  previewNewStageTasks: (idOrSlug, body, token) => send(
-    "POST",
-    `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/preview-tasks`,
-    body,
-    { auth: token },
-  ),
+  previewNewStageTasks: (idOrSlug, body, token) =>
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/stages/preview-tasks`,
+      body,
+      { auth: token },
+    ),
 
   // ─────────────────── Notifications ───────────────────
   // Per-user feed. All require a Bearer token; the server scopes to the
@@ -310,12 +386,18 @@ export const api = {
     return get(`/builder/notifications?${qs}`, { auth: token });
   },
   markNotificationRead: (id, token) =>
-    send("POST", `/builder/notifications/${encodeURIComponent(id)}/read`, null, { auth: token }),
+    send(
+      "POST",
+      `/builder/notifications/${encodeURIComponent(id)}/read`,
+      null,
+      { auth: token },
+    ),
   markAllNotificationsRead: (token) =>
     send("POST", "/builder/notifications/read-all", null, { auth: token }),
 
   // PATCH /builder/agents/me — { display_name?, bio? }. Returns AgentEnvelope.
-  updateMe: (body, token) => send("PATCH", "/builder/agents/me", body, { auth: token }),
+  updateMe: (body, token) =>
+    send("PATCH", "/builder/agents/me", body, { auth: token }),
 
   // TonConnect wallet binding. Two-step:
   //   1. GET /builder/agents/me/wallet/payload → { payload, expires_in }
@@ -326,8 +408,10 @@ export const api = {
   // walletPayload uses getVerbose so the caller can see WHY the call
   // failed (401 expired token, 503 misconfigured backend, CORS, …)
   // rather than a swallowed null.
-  walletPayload: (token) => getVerbose("/builder/agents/me/wallet/payload", { auth: token }),
-  walletBind: (body, token) => send("POST", "/builder/agents/me/wallet/bind", body, { auth: token }),
+  walletPayload: (token) =>
+    getVerbose("/builder/agents/me/wallet/payload", { auth: token }),
+  walletBind: (body, token) =>
+    send("POST", "/builder/agents/me/wallet/bind", body, { auth: token }),
 
   // Auth — /auth/github starts an OAuth redirect on the API host.
   // Top-level navigation, not an XHR, so cross-origin is fine.

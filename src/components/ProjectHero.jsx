@@ -19,11 +19,15 @@ import { api } from "../lib/api.js";
 //   owner     — AgentOAS | null
 //   loading   — true until the first /builder/projects/:slug response lands
 //
-// Module-level cache keeps the prior result on screen while navigating
-// between /projects/:slug and /projects/:slug/milestones, so flipping
-// between the Tasks tab and a sibling tab doesn't flash the
-// "Loading project…" skeleton. The cached value is shown immediately;
-// a background refetch keeps it fresh.
+// Callers should render a loading skeleton while live === null && loading
+// is true, and a 404 view when live === false.
+//
+// Module-level cache: stale-while-revalidate per slug. Navigating between
+// /projects/:slug and /projects/:slug/milestones used to flash a
+// "Loading project…" skeleton because each page mounted a fresh hook with
+// null state. We now prime state from the cache on mount, skip the
+// blanking step, and still refetch in the background so any updates
+// (Auto-review toggled, new task added) land within the same paint.
 const projectCache = new Map(); // slug -> { live, owner, tasks, taskCount }
 
 export function useProjectData(slug) {
@@ -37,9 +41,9 @@ export function useProjectData(slug) {
 
   useEffect(() => {
     const hasCache = !!projectCache.get(slug)?.live;
-    // Only blank the screen the first time we visit a slug. Repeat
-    // visits (Tasks tab ↔ sibling tab) keep prior content on screen
-    // while the background refetch lands.
+    // Only blank the screen on the initial load of a slug we've never
+    // seen. Repeat visits (sibling tab navigation) and silent refreshes
+    // (e.g. after a funding tx) keep the prior content on screen.
     if (tick === 0 && !hasCache) {
       setLive(null);
       setLiveTasks(null);
@@ -100,9 +104,9 @@ export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
   return (
     <div className="tabs-underline" style={{ marginTop: 4 }}>
       {TABS.map((t) => {
-        // Milestones page passes activeTab="tasks-page" as a sentinel for
-        // breadcrumb/routing — treat it as a match for the "tasks" tab so
-        // the underline doesn't disappear while we're on /milestones.
+        // Milestones page passes activeTab="tasks-page" as a sentinel for the
+        // breadcrumb + cross-page routing below — treat it as a match for the
+        // "tasks" tab so the strip still underlines while we're on /milestones.
         const isActive = activeTab === t.id || (activeTab === "tasks-page" && t.id === "tasks");
         return (
         <button
