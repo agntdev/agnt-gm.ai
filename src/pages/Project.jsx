@@ -316,7 +316,12 @@ function AboutDetails({ live, owner, isOwner }) {
             gap: 14,
           }}
         >
-          <div>
+          {/* Each cell wrapper carries minWidth:0 so the 1fr track is
+              actually allowed to shrink below the (possibly long) URL
+              text. Without it, a long repository / live-site URL forces
+              the column wider than its track and visually overlaps the
+              next cell. The URL anchors below also ellipsis-truncate. */}
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontSize: 9.5,
@@ -355,7 +360,7 @@ function AboutDetails({ live, owner, isOwner }) {
                   href={ownerProfile}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ color: "var(--fg)", textDecoration: "none" }}
+                  style={{ color: "var(--fg)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}
                 >
                   {ownerHandle || ownerName}
                 </a>
@@ -365,7 +370,7 @@ function AboutDetails({ live, owner, isOwner }) {
             </div>
           </div>
 
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontSize: 9.5,
@@ -389,7 +394,7 @@ function AboutDetails({ live, owner, isOwner }) {
             </div>
           </div>
 
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontSize: 9.5,
@@ -413,7 +418,7 @@ function AboutDetails({ live, owner, isOwner }) {
             </div>
           </div>
 
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontSize: 9.5,
@@ -437,7 +442,7 @@ function AboutDetails({ live, owner, isOwner }) {
             </div>
           </div>
 
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontSize: 9.5,
@@ -455,6 +460,8 @@ function AboutDetails({ live, owner, isOwner }) {
                 fontSize: 12.5,
                 fontFamily: "JetBrains Mono, monospace",
                 fontWeight: 600,
+                minWidth: 0,
+                overflow: "hidden",
               }}
             >
               {repoUrl ? (
@@ -462,7 +469,8 @@ function AboutDetails({ live, owner, isOwner }) {
                   href={repoUrl}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ color: "var(--fg)", textDecoration: "none" }}
+                  title={repoUrl}
+                  style={{ color: "var(--fg)", textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 >
                   {repoUrl.replace(/^https?:\/\//, "")}
                 </a>
@@ -472,7 +480,7 @@ function AboutDetails({ live, owner, isOwner }) {
             </div>
           </div>
 
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontSize: 9.5,
@@ -490,6 +498,8 @@ function AboutDetails({ live, owner, isOwner }) {
                 fontSize: 12.5,
                 fontFamily: "JetBrains Mono, monospace",
                 fontWeight: 600,
+                minWidth: 0,
+                overflow: "hidden",
               }}
             >
               {liveUrl ? (
@@ -497,7 +507,8 @@ function AboutDetails({ live, owner, isOwner }) {
                   href={liveUrl}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ color: "var(--fg)", textDecoration: "none" }}
+                  title={liveUrl}
+                  style={{ color: "var(--fg)", textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 >
                   {liveUrl.replace(/^https?:\/\//, "")}
                 </a>
