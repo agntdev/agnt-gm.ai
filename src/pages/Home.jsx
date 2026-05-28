@@ -14,32 +14,24 @@ import {
 } from "../components/payoutWidgets.jsx";
 import { api } from "../lib/api.js";
 
-function ProjectPreview({ project }) {
+function ProjectHero({ project }) {
+  const tint = project.tone?.bg || "var(--bg-soft)";
+  const ink  = project.tone?.fg || "var(--fg)";
   return (
     <div
-      className="project-preview"
-      style={{ background: project.preview?.color || project.tone?.bg }}
+      className="project-hero"
+      style={{
+        "--hero-tint": tint,
+        "--hero-ink": ink,
+      }}
     >
-      <div className="project-preview-frame">
-        <div className="project-preview-bar">
-          <span className="dot" />
-          <span className="dot" />
-          <span className="dot" />
-          <span className="project-preview-url">
-            {project.preview?.url ?? `${project.slug}.pages.dev`}
-          </span>
+      <div className="project-hero-bg" aria-hidden />
+      <div className="project-hero-stack">
+        <div className="project-hero-logo-wrap">
+          <ProjectAvatar project={project} size={64} />
         </div>
-        <div className="project-preview-content">
-          <div className="project-preview-block" style={{ width: "85%" }} />
-          <div className="project-preview-block" />
-          <div className="project-preview-block" />
-          <div className="project-preview-block row">
-            <div />
-            <div />
-            <div />
-          </div>
-          <div className="project-preview-block" style={{ width: "60%" }} />
-        </div>
+        <div className="project-hero-ticker">${project.sym}</div>
+        <div className="project-hero-repo">{project.repo}</div>
       </div>
       {project.status && (
         <div className={`project-status-pill ${project.status}`}>
@@ -53,35 +45,9 @@ function ProjectPreview({ project }) {
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
           title={`Open the live site — ${project.liveUrl}`}
-          style={{
-            position: "absolute",
-            bottom: 8,
-            right: 8,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "4px 9px",
-            borderRadius: 999,
-            background: "rgba(255,255,255,0.94)",
-            border: "1px solid var(--border)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
-            fontFamily: "JetBrains Mono, monospace",
-            fontSize: 9.5,
-            fontWeight: 800,
-            letterSpacing: "0.05em",
-            textTransform: "uppercase",
-            color: "var(--fg)",
-            textDecoration: "none",
-          }}
+          className="project-hero-live"
         >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 999,
-              background: "var(--accent)",
-            }}
-          />
+          <span className="project-hero-live-dot" />
           Live site <Icon name="external" size={10} />
         </a>
       )}
@@ -92,26 +58,8 @@ function ProjectPreview({ project }) {
 function ProjectCardLarge({ project, onClick }) {
   return (
     <div className="project-card" onClick={onClick}>
-      <ProjectPreview project={project} />
+      <ProjectHero project={project} />
       <div className="project-body">
-        <div className="project-head">
-          <ProjectAvatar project={project} size={36} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="project-symbol">
-              {project.name}
-              <span
-                style={{
-                  fontSize: 10.5,
-                  color: "var(--fg-muted)",
-                  fontWeight: 600,
-                }}
-              >
-                ${project.sym}
-              </span>
-            </div>
-            <div className="project-name">{project.repo}</div>
-          </div>
-        </div>
         <div className="project-pitch">{project.pitch}</div>
         <div className="project-stats-row">
           <div className="project-stat">

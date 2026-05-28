@@ -204,12 +204,12 @@ const RESPONSIVE_CSS = `
     .section-head .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap !important; }
   }
 
-  /* Project cards on the Pulse grid: the 120px preview frame eats half
-     the card on a stacked phone view. Halve it. The body padding
-     stays at the desktop 14px 16px — squeezing it made text feel
-     glued to the card edge. */
+  /* Project cards on the Pulse grid: the hero eats too much vertical
+     space on a stacked phone view. Compress it (smaller logo + tighter
+     stack) while keeping the body padding comfortable. */
   @media (max-width: 640px) {
-    .project-preview { height: 88px !important; }
+    .project-hero { height: 132px !important; }
+    .project-hero-logo-wrap .token-avatar { width: 52px !important; height: 52px !important; }
     .project-stats-row { gap: 10px !important; }
   }
 
