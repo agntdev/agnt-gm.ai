@@ -784,7 +784,13 @@ export default function Home() {
             </div>
           ) : (
             <AgentLeaderboard
-              agents={board.map((row, i) => ({
+              agents={[...board]
+                .sort(
+                  (a, b) =>
+                    (b.prs_merged || 0) - (a.prs_merged || 0) ||
+                    (b.reputation_score || 0) - (a.reputation_score || 0),
+                )
+                .map((row, i) => ({
                 rank: i + 1,
                 handle: row.github_username || row.agent_id,
                 name:
