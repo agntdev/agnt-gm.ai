@@ -1208,41 +1208,42 @@ h1 .punch { color: var(--accent-fg); }
 }
 .project-hero {
   position: relative;
-  height: 168px;
+  height: 124px;
   overflow: hidden;
   background: var(--hero-tint, var(--bg-soft));
   border-bottom: 1px solid var(--border);
   isolation: isolate;
 }
 /* Layered gradients: soft radial bloom behind the logo + a faint linear
-   wash to give depth. Per-card hue comes through via --hero-tint. */
+   wash to give depth. Per-card hue comes through via --hero-tint. The
+   bloom centers slightly left now that the layout is horizontal. */
 .project-hero-bg {
   position: absolute; inset: 0;
   background:
-    radial-gradient(120% 80% at 50% 38%, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0) 60%),
-    radial-gradient(60% 50% at 50% 110%, color-mix(in oklch, var(--hero-ink, #000) 22%, transparent) 0%, transparent 70%),
+    radial-gradient(110% 80% at 22% 38%, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0) 65%),
+    radial-gradient(60% 50% at 100% 110%, color-mix(in oklch, var(--hero-ink, #000) 22%, transparent) 0%, transparent 70%),
     linear-gradient(180deg, rgba(255,255,255,0.25), rgba(0,0,0,0.04));
   pointer-events: none;
 }
-/* Subtle dot grid for texture, masked to fade toward center. */
+/* Subtle dot grid for texture, masked to fade toward the logo. */
 .project-hero::before {
   content: "";
   position: absolute; inset: 0;
   background-image: radial-gradient(rgba(0,0,0,0.10) 1px, transparent 1px);
   background-size: 14px 14px;
-  opacity: 0.35;
-  -webkit-mask-image: radial-gradient(60% 60% at 50% 45%, transparent 0%, black 80%);
-          mask-image: radial-gradient(60% 60% at 50% 45%, transparent 0%, black 80%);
+  opacity: 0.32;
+  -webkit-mask-image: radial-gradient(60% 60% at 22% 45%, transparent 0%, black 80%);
+          mask-image: radial-gradient(60% 60% at 22% 45%, transparent 0%, black 80%);
   pointer-events: none;
 }
 .project-hero-stack {
   position: relative; z-index: 1;
   height: 100%;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 7px;
-  padding: 14px 16px;
-  text-align: center;
+  display: flex; flex-direction: row;
+  align-items: center; justify-content: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  text-align: left;
 }
 .project-hero-logo-wrap {
   border-radius: 14px;
@@ -1253,24 +1254,45 @@ h1 .punch { color: var(--accent-fg); }
     0 6px 18px -6px rgba(0,0,0,0.20),
     0 2px 4px rgba(0,0,0,0.06);
   backdrop-filter: blur(6px);
+  flex-shrink: 0;
 }
 .project-hero-logo-wrap .token-avatar {
   border-radius: 11px;
   border-color: rgba(0,0,0,0.06);
 }
+.project-hero-text {
+  display: flex; flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.project-hero-name {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.project-hero-meta {
+  display: flex; align-items: center;
+  gap: 8px; min-width: 0;
+}
 .project-hero-ticker {
   font-family: "JetBrains Mono", monospace;
-  font-size: 14px; font-weight: 800;
+  font-size: 12px; font-weight: 800;
   letter-spacing: 0.02em;
   color: var(--hero-ink, var(--fg));
-  margin-top: 2px;
+  flex-shrink: 0;
 }
 .project-hero-repo {
   font-family: "JetBrains Mono", monospace;
   font-size: 10.5px; font-weight: 600;
   color: var(--fg-muted);
-  max-width: 88%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;
 }
 .project-hero-live {
   position: absolute; bottom: 9px; right: 9px;

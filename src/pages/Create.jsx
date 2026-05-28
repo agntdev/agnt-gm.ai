@@ -29,28 +29,17 @@ export default function Create() {
   const [showTokenEdit, setShowTokenEdit] = useState(false);
 
   const [form, setForm] = useState({
-    raw_idea: "",
-    name: "",
-    token_symbol: "",
-    total_supply: 1_000_000_000,
     deadline: "7", // number-of-days as a string; one of "1" | "3" | "7" | "14"
-    task_notes: "",
     ton_reward_pool: "5", // TON; converted to nano (×1e9) on submit
     auto_merge_enabled: true, // PATCH-able later via /projects/:id/auto-merge
   });
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Manual-mode plan. Populated only when `mode === "manual"`. Kept in
-  // parallel with the AI-mode `form` state so the user can switch back
-  // and forth without losing what they typed in either mode.
-  // Three creation modes (all POST /builder/projects; backend picks the
-  // path by which fields are present):
-  //   quick  → raw_idea only (LLM invents name/token/supply/tasks)
-  //   guided → raw_idea + optional hints (name/symbol/supply/deadline/notes)
-  //   manual → full manual_plan (owner authors everything; LLM only enriches
-  //            task title/weight/difficulty and moderates)
-  // quick + guided share the same AI form; guided just surfaces the hints.
-  const [mode, setMode] = useState("quick");
+  // Two creation modes:
+  //   agent  → owner pastes a CLI prompt; their agent runs create/fund/publish.
+  //   manual → full manual_plan via the form (owner authors everything; LLM
+  //            only enriches task title/weight/difficulty and moderates).
+  const [mode, setMode] = useState("agent");
   const [manual, setManual] = useState(() => ({
     name: "",
     token_symbol: "",
@@ -108,45 +97,7 @@ export default function Create() {
     [],
   );
 
-  const ideaTooShort = form.raw_idea.trim().length < 20;
-  const ideaTooLong = form.raw_idea.length > 32_768;
   const walletMissing = !tonAddress;
-
-  async function pollUntilTerminal(idOrSlug) {
-    const start = Date.now();
-    while (Date.now() - start < POLL_MAX_MS) {
-      const res = await api.getProject(idOrSlug);
-      if (res?.project) {
-        setProject(res.project);
-        const s = res.project.status;
-        if (s === "ready_to_publish") {
-          setPhase("ready");
-          return;
-        }
-        if (s === "rejected") {
-          setPhase("rejected");
-          setErrorMsg(res.project.rejection_reason || "Rejected by validator.");
-          return;
-        }
-        if (s === "failed") {
-          setPhase("failed");
-          setErrorMsg(res.project.rejection_reason || "Generation failed.");
-          return;
-        }
-        if (s === "live") {
-          setPhase("live");
-          return;
-        }
-      }
-      await new Promise((r) => {
-        pollAbort.current = setTimeout(r, POLL_INTERVAL_MS);
-      });
-    }
-    setPhase("failed");
-    setErrorMsg(
-      `Timed out after ${Math.round(POLL_MAX_MS / 60000)} min — backend may still be working. Refresh project page later.`,
-    );
-  }
 
   // After the user submits a funding tx via TonConnect, the API's deposit
   // watcher takes 10–60s to spot the transfer and flip ton_pool_funded_at.
@@ -318,62 +269,7 @@ export default function Create() {
       setShowTokenEdit(true);
       return;
     }
-    if (mode === "manual") return onSubmitManual();
-
-    if (ideaTooShort || ideaTooLong) return;
-
-    setPhase("submitting");
-    setErrorMsg("");
-
-    const body = {
-      raw_idea: form.raw_idea.trim(),
-      owner_wallet_address: tonAddress,
-    };
-    // Identity hints (name/token/supply/notes) only ship in Guided mode.
-    // Quick mode sends just the idea and lets the LLM invent everything.
-    if (mode === "guided") {
-      if (form.name.trim()) body.name = form.name.trim();
-      if (form.token_symbol.trim())
-        body.token_symbol = form.token_symbol.trim().toUpperCase();
-      if (form.task_notes.trim()) body.task_notes = form.task_notes.trim();
-    }
-    if (form.deadline) {
-      const days = parseInt(form.deadline, 10);
-      if (Number.isFinite(days) && days > 0) {
-        body.deadline = new Date(Date.now() + days * 86400000).toISOString();
-      }
-    }
-    // Reward pool: typed in TON, sent in nano (1 TON = 1e9 nano).
-    const tonAmount = parseFloat(form.ton_reward_pool);
-    if (Number.isFinite(tonAmount) && tonAmount > 0) {
-      body.ton_reward_pool_nano = Math.round(tonAmount * 1e9);
-    }
-    body.auto_merge_enabled = !!form.auto_merge_enabled;
-
-    // Total supply: user enters whole tokens; API stores smallest units
-    // (decimals=9). Compute with BigInt so 1B+ defaults don't overflow
-    // Number.MAX_SAFE_INTEGER, then splice into the JSON as a raw integer.
-    // Total supply hint — Guided only. Quick omits it so the LLM picks.
-    const supplyHuman = String(form.total_supply || "")
-      .trim()
-      .replace(/[,_\s]/g, "");
-    let bodyJson;
-    if (mode === "guided" && /^\d+$/.test(supplyHuman) && supplyHuman !== "0") {
-      const supplyNano = (BigInt(supplyHuman) * 1_000_000_000n).toString();
-      const PH = "__TS_PLACEHOLDER__";
-      bodyJson = JSON.stringify({ ...body, total_supply: PH }).replace(
-        `"${PH}"`,
-        supplyNano,
-      );
-    } else {
-      bodyJson = JSON.stringify(body);
-    }
-
-    const res = await api.createProjectRaw(bodyJson, token);
-    if (!handleApiResponse(res)) return;
-    applyCreatedProject(res);
-    setPhase("polling");
-    pollUntilTerminal(res.data?.project?.id || res.data?.project?.slug);
+    return onSubmitManual();
   }
 
   async function onFundPool() {
@@ -540,19 +436,13 @@ export default function Create() {
                 }}
                 options={[
                   { value: "agent", label: "Agent", icon: "bot" },
-                  { value: "quick", label: "Quick", icon: "zap" },
-                  { value: "guided", label: "Guided", icon: "sparkles" },
                   { value: "manual", label: "Manual", icon: "layers" },
                 ]}
               />
               <span style={{ fontSize: 11.5, color: "var(--fg-subtle)" }}>
                 {mode === "agent"
                   ? "Paste a prompt to your AI agent. It runs the CLI: create → fund → publish."
-                  : mode === "quick"
-                    ? "Just describe the idea — the agent invents the name, token, plan and tasks (~30–90s)."
-                    : mode === "guided"
-                      ? "Describe the idea and optionally set the name, token, supply and deadline. Blanks are filled by the agent."
-                      : "Author the plan + every task yourself. The platform only moderates and assigns task weights."}
+                  : "Author the plan + every task yourself. The platform only moderates and assigns task weights."}
               </span>
             </div>
 
@@ -563,25 +453,6 @@ export default function Create() {
 
             {mode === "agent" ? (
               <AgentCreatorCTA />
-            ) : mode !== "manual" ? (
-              <Form
-                showHints={mode === "guided"}
-                form={form}
-                setField={setField}
-                ideaTooShort={ideaTooShort}
-                ideaTooLong={ideaTooLong}
-                walletMissing={walletMissing}
-                onSubmit={onSubmit}
-                errorMsg={errorMsg}
-                shakeKey={shakeKey}
-                tonConnected={!!tonAddress}
-                tonAddress={tonAddress}
-                tonWalletName={
-                  tonWallet?.device?.appName || tonWallet?.name || null
-                }
-                onConnectWallet={() => tonConnectUI.openModal()}
-                onDisconnectWallet={() => tonConnectUI.disconnect()}
-              />
             ) : (
               <ManualForm
                 manual={manual}
@@ -605,7 +476,7 @@ export default function Create() {
           </>
         )}
 
-        {(phase === "submitting" || phase === "polling") && (
+        {phase === "submitting" && (
           <ValidatingPanel phase={phase} project={project} />
         )}
 
@@ -764,554 +635,6 @@ function AuthRow({
   );
 }
 
-// AiCustomizeDefaults — collapsed "Customize defaults" block for the
-// AI Form. Hides name / token_symbol / total_supply / task_notes
-// (rarely touched — the validator agent picks all four if blank).
-// Pool / Deadline / Wallet stay always-visible because they're
-// commit-time decisions, not "defaults".
-function AiCustomizeDefaults({ form, setField, defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen);
-  // Live summary on the collapsed header so users see the in-flight
-  // values without expanding.
-  const summary = (() => {
-    const chips = [];
-    if (form.name?.trim())
-      chips.push(
-        `name: ${form.name.slice(0, 24)}${form.name.length > 24 ? "…" : ""}`,
-      );
-    if (form.token_symbol?.trim()) chips.push(`$${form.token_symbol}`);
-    const supply = Number(form.total_supply) || 0;
-    if (supply > 0) {
-      const s =
-        supply >= 1e9
-          ? `${(supply / 1e9).toFixed(0)}B`
-          : supply >= 1e6
-            ? `${(supply / 1e6).toFixed(0)}M`
-            : supply.toLocaleString();
-      chips.push(`${s} supply`);
-    }
-    if (form.task_notes?.trim()) chips.push("task hints set");
-    if (chips.length === 0)
-      chips.push("validator picks name, symbol, supply, and task hints");
-    return chips.join(" · ");
-  })();
-
-  return (
-    <div
-      style={{
-        marginTop: 18,
-        padding: "10px 14px",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        background: "var(--bg-soft)",
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          width: "100%",
-          background: "none",
-          border: "none",
-          padding: 0,
-          cursor: "pointer",
-          color: "var(--fg)",
-          textAlign: "left",
-        }}
-      >
-        <span
-          style={{
-            fontSize: 10.5,
-            fontFamily: "JetBrains Mono, monospace",
-            fontWeight: 800,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--fg-muted)",
-          }}
-        >
-          {open ? "▾" : "▸"} Customize defaults
-        </span>
-        <span
-          style={{
-            flex: 1,
-            fontSize: 10.5,
-            color: "var(--fg-muted)",
-            fontFamily: "JetBrains Mono, monospace",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {summary}
-        </span>
-      </button>
-      {open && (
-        <div
-          className="agnt-fade-in"
-          style={{
-            marginTop: 12,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <div className="field-row">
-            <div className="field">
-              <label className="field-label">Project name</label>
-              <div className="field-hint">
-                Defaults to LLM-generated if empty
-              </div>
-              <input
-                className="field-input"
-                placeholder="TONscan Lite"
-                value={form.name}
-                onChange={(e) => setField("name", e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label className="field-label">Token symbol</label>
-              <div className="field-hint">3–5 chars, uppercase</div>
-              <div className="field-suffix-wrap">
-                <span
-                  style={{
-                    padding: "0 12px",
-                    fontSize: 12,
-                    color: "var(--fg-muted)",
-                    fontWeight: 800,
-                    borderRight: "1px solid var(--border)",
-                    display: "grid",
-                    placeItems: "center",
-                  }}
-                >
-                  $
-                </span>
-                <input
-                  style={{ textTransform: "uppercase" }}
-                  placeholder="TSCAN"
-                  value={form.token_symbol}
-                  onChange={(e) =>
-                    setField("token_symbol", e.target.value.toUpperCase())
-                  }
-                  maxLength={5}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="field">
-            <label className="field-label">Total supply</label>
-            <div className="field-hint">
-              Whole tokens. Minted on chain with 9 decimals.
-            </div>
-            <input
-              className="field-input"
-              type="number"
-              min={1000}
-              step={1}
-              value={form.total_supply}
-              onChange={(e) =>
-                setField(
-                  "total_supply",
-                  e.target.value === "" ? "" : Number(e.target.value),
-                )
-              }
-            />
-          </div>
-          <div className="field">
-            <label className="field-label">Task hints</label>
-            <div className="field-hint">
-              Optional · steer the validator's task list (e.g. "prefer Preact",
-              "no SaaS deps").
-            </div>
-            <textarea
-              value={form.task_notes}
-              onChange={(e) => setField("task_notes", e.target.value)}
-              placeholder="e.g. Prefer Preact over React. Stick to TypeScript. Each task ≤ 8h."
-              rows={3}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                fontSize: 13,
-                lineHeight: 1.5,
-                fontFamily: "inherit",
-                background: "var(--bg)",
-                resize: "vertical",
-              }}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Form({
-  showHints = false,
-  form,
-  setField,
-  ideaTooShort,
-  ideaTooLong,
-  walletMissing,
-  onSubmit,
-  errorMsg,
-  tonConnected,
-  tonAddress,
-  tonWalletName,
-  onConnectWallet,
-  onDisconnectWallet,
-}) {
-  return (
-    <form
-      onSubmit={onSubmit}
-      className="agnt-resp-form-grid"
-      style={{
-        marginTop: 22,
-        display: "grid",
-        gridTemplateColumns: "1fr 320px",
-        gap: 22,
-      }}
-    >
-      <div className="create-form-card">
-        <h2>What are you building?</h2>
-        <p className="create-form-sub">
-          Describe the project in plain English. The validator agent reads this,
-          drafts a plan, and breaks it into bounty tasks. Be specific about what
-          success looks like.
-        </p>
-        <div
-          style={{
-            marginTop: 8,
-            marginBottom: 14,
-            fontSize: 11.5,
-            color: "var(--fg-muted)",
-            lineHeight: 1.5,
-            padding: "8px 12px",
-            borderRadius: 6,
-            background: "var(--bg-soft)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          ⓘ The validator agent drafts the full plan + task list from your idea.{" "}
-          <strong>You'll be able to review, edit, add or remove tasks</strong>{" "}
-          before the project goes live.
-        </div>
-
-        <div className="field">
-          <label className="field-label">
-            Project idea
-            <span
-              style={{
-                float: "right",
-                fontWeight: 500,
-                color: ideaTooShort ? "var(--danger)" : "var(--fg-muted)",
-              }}
-            >
-              {form.raw_idea.length} / 20–32768 chars
-            </span>
-          </label>
-          <textarea
-            value={form.raw_idea}
-            onChange={(e) => setField("raw_idea", e.target.value)}
-            placeholder="Build a 50KB blockchain explorer for TON. Just blocks, transactions, addresses, jettons. Loads in 200ms on 3G. p95 page load under 400ms. 100% feature parity with the top 5 user actions on tonscan.org."
-            rows={9}
-            style={{
-              width: "100%",
-              padding: "12px 14px",
-              border: `1px solid ${ideaTooShort && form.raw_idea.length > 0 ? "var(--danger)" : "var(--border)"}`,
-              borderRadius: 8,
-              fontSize: 13,
-              lineHeight: 1.55,
-              fontFamily: "inherit",
-              background: "var(--bg)",
-              resize: "vertical",
-            }}
-          />
-          {ideaTooLong && (
-            <div className="field-hint" style={{ color: "var(--danger)" }}>
-              Trim to 32,768 characters or fewer.
-            </div>
-          )}
-        </div>
-
-        {/* Guided mode surfaces the optional hints (name/token/supply/notes);
-            Quick mode hides them entirely and lets the LLM decide. */}
-        {showHints && (
-          <AiCustomizeDefaults form={form} setField={setField} defaultOpen />
-        )}
-
-        <div className="field-row">
-          <div className="field">
-            <label className="field-label">Reward pool</label>
-            <div className="field-hint">
-              TON the owner commits to distribute on merged PRs
-            </div>
-            <div className="field-suffix-wrap">
-              <input
-                type="number"
-                min={0}
-                step={0.001}
-                value={form.ton_reward_pool}
-                onChange={(e) => setField("ton_reward_pool", e.target.value)}
-              />
-              <span className="suffix">TON</span>
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 6,
-                marginTop: 6,
-              }}
-            >
-              {["0", "1", "5", "25"].map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setField("ton_reward_pool", v)}
-                  style={{
-                    height: 30,
-                    padding: 0,
-                    border: `1px solid ${form.ton_reward_pool === v ? "var(--fg)" : "var(--border)"}`,
-                    background:
-                      form.ton_reward_pool === v ? "var(--fg)" : "var(--bg)",
-                    color:
-                      form.ton_reward_pool === v ? "var(--bg)" : "var(--fg)",
-                    borderRadius: 6,
-                    fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  {v === "0" ? "None" : `${v} TON`}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="field">
-            <label className="field-label">Deadline</label>
-            <div className="field-hint">Project window for agents to ship</div>
-            <div
-              className="agnt-resp-preset-4"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 6,
-                marginTop: 4,
-              }}
-            >
-              {[
-                { v: "1", label: "1 day" },
-                { v: "3", label: "3 days" },
-                { v: "7", label: "7 days" },
-                { v: "14", label: "14 days" },
-              ].map((opt) => (
-                <button
-                  key={opt.v}
-                  type="button"
-                  onClick={() => setField("deadline", opt.v)}
-                  style={{
-                    height: 36,
-                    padding: "0 8px",
-                    border: `1px solid ${form.deadline === opt.v ? "var(--fg)" : "var(--border)"}`,
-                    background:
-                      form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
-                    color: form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
-                    borderRadius: 6,
-                    fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    transition:
-                      "border-color 0.12s ease, background 0.12s ease",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="field" style={{ marginTop: 14 }}>
-          <label className="field-label">
-            Owner wallet
-            <span
-              style={{
-                float: "right",
-                fontWeight: 500,
-                color: "var(--danger)",
-              }}
-            >
-              required
-            </span>
-          </label>
-          <div className="field-hint">
-            {tonConnected
-              ? "Reward-pool refunds and owner-share tokens go to this wallet."
-              : "Connect a TON wallet — its address is recorded as the project owner."}
-          </div>
-          {tonConnected ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 12px",
-                marginTop: 4,
-                border: "1px solid var(--accent)",
-                borderRadius: 6,
-                background: "var(--accent-soft)",
-              }}
-            >
-              <span className="live-dot" />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    fontWeight: 800,
-                    letterSpacing: "0.06em",
-                    color: "var(--accent-fg)",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {tonWalletName || "Wallet"} connected
-                </div>
-                <div
-                  title={tonAddress}
-                  style={{
-                    marginTop: 2,
-                    fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    color: "var(--fg)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {tonAddress}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={onDisconnectWallet}
-                className="btn btn-sm"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={onConnectWallet}
-              className="btn"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                width: "100%",
-                marginTop: 4,
-                height: 38,
-                background: "var(--bg)",
-                borderColor: "var(--border-strong)",
-                fontWeight: 700,
-              }}
-            >
-              <Icon name="zap" size={12} /> Connect TON wallet
-            </button>
-          )}
-        </div>
-
-        <AutoMergeToggle
-          enabled={!!form.auto_merge_enabled}
-          onChange={(v) => setField("auto_merge_enabled", v)}
-        />
-
-        {errorMsg && (
-          <div
-            style={{
-              marginTop: 14,
-              padding: 12,
-              border: "1px solid var(--danger)",
-              borderRadius: 6,
-              background: "var(--danger-soft)",
-              color: "var(--danger)",
-              fontSize: 12,
-            }}
-          >
-            {errorMsg}
-          </div>
-        )}
-
-        <div
-          className="create-cta-bar"
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            marginTop: 18,
-            padding: 0,
-            border: "none",
-          }}
-        >
-          <button
-            type="submit"
-            className="btn-primary-big"
-            style={{
-              background: "var(--accent)",
-              opacity: ideaTooShort || ideaTooLong || walletMissing ? 0.5 : 1,
-              cursor:
-                ideaTooShort || ideaTooLong || walletMissing
-                  ? "not-allowed"
-                  : "pointer",
-            }}
-            disabled={ideaTooShort || ideaTooLong || walletMissing}
-          >
-            <Icon name="zap" size={12} /> Submit & validate
-          </button>
-        </div>
-      </div>
-
-      <aside className="create-preview-rail">
-        <div className="create-preview-card">
-          <div className="create-preview-head">
-            <Icon name="info" size={11} /> What happens next
-          </div>
-          <div
-            className="create-preview-body"
-            style={{ fontSize: 12, color: "var(--fg-muted)", lineHeight: 1.55 }}
-          >
-            <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
-              <li>You submit the idea.</li>
-              <li>
-                The validator agent generates a README, milestones, and a list
-                of tasks (~30–90s).
-              </li>
-              <li>
-                You review the plan and pay the reward pool via TonConnect.
-              </li>
-              <li>
-                The deposit watcher confirms on-chain (~10–60s) and the project{" "}
-                <strong>auto-publishes to GitHub</strong>.
-              </li>
-              <li>
-                Agents pick up tasks. Each merged PR is reviewed by the platform
-                agent and earns a slice of the pool.
-              </li>
-            </ol>
-          </div>
-        </div>
-      </aside>
-    </form>
-  );
-}
 
 // ─────────────────────────── ManualForm ───────────────────────────
 //
@@ -1379,9 +702,9 @@ function ManualForm({
       <div className="create-form-card">
         <SectionHeader
           first
-          hint="Public-facing project name and token ticker."
+          hint="What the project is called and the ticker for its token."
         >
-          Identity
+          Project identity
         </SectionHeader>
         <div
           className="agnt-resp-2col"
@@ -1392,7 +715,7 @@ function ManualForm({
             marginTop: 10,
           }}
         >
-          <Field label="Project name" hint="Max 200 chars">
+          <Field label="Project name" hint="Up to 200 characters.">
             <input
               style={inputStyle}
               value={manual.name}
@@ -1401,7 +724,7 @@ function ManualForm({
               onChange={(e) => setManualField("name", e.target.value)}
             />
           </Field>
-          <Field label="Token symbol" hint="3–10 chars, A–Z 0–9">
+          <Field label="Token ticker" hint="3–10 letters or digits.">
             <input
               style={{
                 ...monoInputStyle,
@@ -1424,8 +747,8 @@ function ManualForm({
 
         <div style={{ marginTop: 12 }}>
           <Field
-            label="Short description"
-            hint="One sentence — shows on the project card and the homepage Pulse."
+            label="Tagline"
+            hint="One sentence shown on the project card and the homepage Pulse."
           >
             <input
               style={inputStyle}
@@ -1478,7 +801,7 @@ function ManualForm({
                 color: "var(--fg-muted)",
               }}
             >
-              {customizeOpen ? "▾" : "▸"} Customize defaults
+              {customizeOpen ? "▾" : "▸"} Tokenomics, pitch & docs (optional)
             </span>
             <span
               style={{
@@ -1514,8 +837,8 @@ function ManualForm({
                 }}
               >
                 <Field
-                  label="Total supply"
-                  hint="Whole tokens · 1M…1T · 9 decimals on chain"
+                  label="Token supply"
+                  hint="How many tokens to mint (1M to 1T). 9 decimals on chain."
                 >
                   <input
                     style={monoInputStyle}
@@ -1534,7 +857,7 @@ function ManualForm({
                 </Field>
                 <Field
                   label="Owner share"
-                  hint="0–10% of the mint kept by the owner."
+                  hint="Slice of the mint you keep (0–10%)."
                 >
                   <div
                     style={{ display: "flex", alignItems: "center", gap: 8 }}
@@ -1577,8 +900,8 @@ function ManualForm({
 
               {/* Long-form pitch */}
               <Field
-                label="About"
-                hint="Optional — longer description for the project page."
+                label="About the project"
+                hint="Optional. A longer pitch shown on the project page."
               >
                 <textarea
                   style={{
@@ -1595,7 +918,10 @@ function ManualForm({
                   }
                 />
               </Field>
-              <Field label="Goal" hint="Optional — what success looks like.">
+              <Field
+                label="Success criteria"
+                hint="Optional. What 'done' looks like for this project."
+              >
                 <textarea
                   style={{
                     ...inputStyle,
@@ -1614,8 +940,8 @@ function ManualForm({
 
               {/* Plan & docs */}
               <Field
-                label="plan.md"
-                hint="Optional · roadmap / phase plan for agents."
+                label="Project plan"
+                hint="Optional. Markdown roadmap or phase plan agents will read (plan.md)."
               >
                 <textarea
                   style={{
@@ -1634,8 +960,8 @@ function ManualForm({
                 />
               </Field>
               <Field
-                label="README.md"
-                hint="Optional · written verbatim to the GitHub repo on publish."
+                label="GitHub README"
+                hint="Optional. Written as README.md in the published repo, verbatim."
               >
                 <textarea
                   style={{
@@ -1656,9 +982,9 @@ function ManualForm({
         </div>
 
         <SectionHeader
-          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} · AI sets titles & weights on submit`}
+          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} so far. The AI assigns titles and weights when you submit.`}
         >
-          Tasks
+          Bounty tasks
         </SectionHeader>
         <TasksEditor
           tasks={manual.tasks}
@@ -1667,8 +993,8 @@ function ManualForm({
           descriptionsOnly
         />
 
-        <SectionHeader hint="Pool funds via TonConnect after the plan is accepted.">
-          Reward pool & wallet
+        <SectionHeader hint="You fund the pool via TonConnect after the plan is accepted.">
+          Rewards, deadline & wallet
         </SectionHeader>
         <div
           className="agnt-resp-2col"
@@ -1680,8 +1006,8 @@ function ManualForm({
           }}
         >
           <Field
-            label="Reward pool (TON)"
-            hint="Funded after approval; can be 0."
+            label="Reward pool"
+            hint="TON paid out across merged PRs. Set 0 to skip."
           >
             <div style={{ position: "relative" }}>
               <input
@@ -1708,7 +1034,7 @@ function ManualForm({
               </span>
             </div>
           </Field>
-          <Field label="Deadline" hint="Window for agents to ship.">
+          <Field label="Deadline" hint="How long agents have to ship.">
             <div
               style={{
                 display: "grid",
@@ -1752,10 +1078,10 @@ function ManualForm({
             label="Owner wallet"
             hint={
               tonConnected
-                ? "Reward-pool refunds and owner-share tokens go here."
-                : "Connect a TON wallet — its address is recorded as the owner."
+                ? "Refunds from the pool and your owner-share tokens land here."
+                : "Connect a TON wallet — its address becomes the project owner."
             }
-            error={walletMissing ? "Wallet connection required." : undefined}
+            error={walletMissing ? "Connect a wallet to continue." : undefined}
           >
             {tonConnected ? (
               <div
@@ -2552,7 +1878,7 @@ function AgentCreatorCTA() {
             lineHeight: 1.5,
           }}
         >
-          Prefer the form? Switch to Quick, Guided, or Manual mode.
+          Prefer the form? Switch to Manual mode.
         </p>
       </div>
     </div>
