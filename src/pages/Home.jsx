@@ -28,10 +28,17 @@ function ProjectHero({ project }) {
       <div className="project-hero-bg" aria-hidden />
       <div className="project-hero-stack">
         <div className="project-hero-logo-wrap">
-          <ProjectAvatar project={project} size={64} />
+          <ProjectAvatar project={project} size={56} />
         </div>
-        <div className="project-hero-ticker">${project.sym}</div>
-        <div className="project-hero-repo">{project.repo}</div>
+        <div className="project-hero-text">
+          <div className="project-hero-name" title={project.name}>
+            {project.name}
+          </div>
+          <div className="project-hero-meta">
+            <span className="project-hero-ticker">${project.sym}</span>
+            <span className="project-hero-repo">{project.repo}</span>
+          </div>
+        </div>
       </div>
       {project.status && (
         <div className={`project-status-pill ${project.status}`}>
