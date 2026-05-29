@@ -4080,3 +4080,198 @@ h1 .punch { color: var(--accent-fg); }
 }
 .mcompose-input:focus { border-color: var(--fg); }
 .mcompose-input::placeholder { color: var(--fg-muted); }
+/* ============================================================
+   PROJECT PREVIEW IMAGE — production CSS
+   Append to src/styles.css. Uses existing tokens only:
+   --border --bg --bg-soft --bg-tint --fg --fg-muted --fg-subtle
+   --accent --accent-fg --accent-soft
+   ============================================================ */
+
+/* shared screenshot <img> ------------------------------------ */
+.pv-shot {
+  display: block; width: 100%; height: 100%;
+  object-fit: cover; object-position: top center;
+}
+
+/* freshness chip (preview_image_captured_at) ------------------ */
+.pv-fresh {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.02em;
+  color: rgba(255,255,255,0.94);
+  background: rgba(10,10,16,0.46);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  padding: 3px 8px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  white-space: nowrap;
+}
+.pv-fresh .d {
+  width: 5px; height: 5px; border-radius: 999px; background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52,211,153,0.25);
+}
+.pv-fresh.on-light {            /* on a light surface (no-preview fallback) */
+  color: var(--fg-muted); background: rgba(255,255,255,0.82);
+  border-color: var(--border);
+}
+
+/* glass status pill that survives a photographic background --- */
+.pv-pill {
+  position: absolute; top: 10px; right: 10px; z-index: 3;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.07em;
+  padding: 4px 8px; border-radius: 5px; text-transform: uppercase;
+  color: #fff; background: rgba(10,10,16,0.42);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.18);
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.pv-pill .dot { width: 6px; height: 6px; border-radius: 999px; background: #34d399; }
+.pv-pill.funding .dot { background: #fbbf24; }
+
+/* ============================================================
+   CARD — cover hero (replaces the tint .project-hero when a
+   preview_image_url is present). 162px tall to match the card.
+   ============================================================ */
+.hero-cover {
+  position: relative; height: 162px; overflow: hidden;
+  background: var(--bg-tint); border-bottom: 1px solid var(--border);
+}
+.hero-cover .pv-shot { position: absolute; inset: 0; }
+.hero-cover .scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg,
+    rgba(8,10,18,0) 16%, rgba(8,10,18,0.42) 50%,
+    rgba(8,10,18,0.86) 82%, rgba(8,10,18,0.95) 100%);
+}
+.hero-cover .hero-cover-top {
+  position: absolute; top: 10px; left: 10px; right: 10px; z-index: 3;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.hero-cover .hero-cover-foot {
+  position: absolute; left: 14px; right: 14px; bottom: 13px; z-index: 3;
+  display: flex; align-items: center; gap: 11px;
+}
+.hero-cover .glass-logo {
+  padding: 3px; border-radius: 12px; flex-shrink: 0;
+  background: rgba(255,255,255,0.9);
+  box-shadow: 0 8px 20px -8px rgba(0,0,0,0.55);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+/* the ProjectAvatar component sits inside .glass-logo; clip its corners */
+.hero-cover .glass-logo .token-avatar { border-radius: 9px; }
+.hero-cover .hero-cover-name {
+  color: #fff; font-size: 16px; font-weight: 800; letter-spacing: -0.01em;
+  line-height: 1.15; text-shadow: 0 1px 14px rgba(0,0,0,0.45);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hero-cover .hero-cover-meta { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.hero-cover .hero-cover-ticker {
+  font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 800;
+  color: #fff; letter-spacing: 0.02em;
+}
+.hero-cover .hero-cover-repo {
+  font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 600;
+  color: rgba(255,255,255,0.72);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ============================================================
+   PROJECT PAGE — cover banner (replaces .proj-title-row when a
+   preview_image_url is present). Lives at the top of the hero.
+   ============================================================ */
+.proj-cover {
+  position: relative; width: 100%; height: 268px; overflow: hidden;
+  border-radius: 14px; border: 1px solid var(--border);
+  background: var(--bg-tint); margin-top: 14px;
+}
+.proj-cover .pv-shot { position: absolute; inset: 0; object-position: top center; }
+/* light top vignette so the freshness chip / live-site link read on bright shots */
+.proj-cover .scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(8,10,18,0.16) 0%, transparent 24%, transparent 100%);
+}
+/* frosted plate: melts the busy lower half into a smooth dark base so the
+   identity is always legible regardless of the screenshot behind it */
+.proj-cover .cv-plate {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 50%; z-index: 2;
+  -webkit-backdrop-filter: blur(16px) saturate(1.1); backdrop-filter: blur(16px) saturate(1.1);
+  background: linear-gradient(180deg, transparent 0%, rgba(8,10,18,0.52) 52%, rgba(8,10,18,0.84) 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 38%);
+          mask-image: linear-gradient(180deg, transparent 0%, #000 38%);
+  pointer-events: none;
+}
+.proj-cover .cv-top {
+  position: absolute; top: 14px; left: 16px; right: 16px; z-index: 3;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+}
+.proj-cover .cv-id {
+  position: absolute; left: 22px; right: 22px; bottom: 20px; z-index: 3;
+  display: flex; align-items: flex-end; gap: 16px;
+}
+.proj-cover .glass-logo {
+  padding: 4px; border-radius: 17px; flex-shrink: 0;
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 12px 34px -10px rgba(0,0,0,0.6);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.proj-cover .glass-logo .token-avatar { border-radius: 13px; }
+.proj-cover .cv-h1 {
+  color: #fff; margin: 0; font-family: "JetBrains Mono", monospace;
+  font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1;
+  text-shadow: 0 2px 22px rgba(0,0,0,0.5);
+}
+.proj-cover .cv-row { display: flex; align-items: center; gap: 10px; margin-top: 11px; flex-wrap: wrap; }
+.proj-cover .cv-sym {
+  font-family: "JetBrains Mono", monospace; font-size: 14px; font-weight: 800; color: #fff;
+  background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.22);
+  padding: 3px 10px; border-radius: 6px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.proj-cover .cv-repo {
+  font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 600;
+  color: rgba(255,255,255,0.78); text-decoration: none;
+}
+.proj-cover .cv-repo:hover { color: #fff; }
+
+/* live-site link + supply-frozen / status chips on the banner */
+.cv-live, .cv-chip {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 800;
+  letter-spacing: 0.05em; text-transform: uppercase; color: #fff;
+  background: rgba(10,10,16,0.42); border: 1px solid rgba(255,255,255,0.2);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  padding: 6px 11px; border-radius: 999px; text-decoration: none;
+}
+.cv-chip { letter-spacing: 0.04em; }
+.cv-live .d { width: 6px; height: 6px; border-radius: 999px; background: #34d399; box-shadow: 0 0 0 3px rgba(52,211,153,0.3); }
+
+/* ---- no-screenshot fallback: solid tint hero, dark identity ---- */
+.proj-cover.no-shot {
+  background: var(--hero-tint, var(--bg-tint));
+  display: flex; align-items: flex-end;
+}
+.cv-h1.ink  { color: var(--fg); text-shadow: none; }
+.cv-sym.ink { color: var(--hero-ink, var(--accent-fg)); background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.08); }
+.cv-repo.ink { color: var(--fg-muted); }
+.cv-repo.ink:hover { color: var(--fg); }
+.cv-live.light, .cv-chip.light {
+  color: var(--fg); background: rgba(255,255,255,0.82);
+  border-color: var(--border); -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+
+/* ---- loading shimmer (optional, while the image decodes) ---- */
+.hero-skel, .proj-cover.is-loading {
+  position: relative; overflow: hidden; background: var(--bg-tint);
+}
+.hero-skel { height: 162px; border-bottom: 1px solid var(--border); }
+.hero-skel::after, .proj-cover.is-loading::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.7) 50%, transparent 80%);
+  transform: translateX(-100%); animation: pv-shimmer 1.4s infinite;
+}
+@keyframes pv-shimmer { to { transform: translateX(100%); } }
+
+/* ---- responsive: shorter banner on phones ---- */
+@media (max-width: 640px) {
+  .proj-cover { height: 200px; }
+  .proj-cover .cv-h1 { font-size: 26px; }
+  .proj-cover .glass-logo .token-avatar { width: 56px !important; height: 56px !important; }
+}

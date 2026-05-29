@@ -17,6 +17,42 @@ import { api } from "../lib/api.js";
 function ProjectHero({ project }) {
   const tint = project.tone?.bg || "var(--bg-soft)";
   const ink  = project.tone?.fg || "var(--fg)";
+
+  // Cover hero: when a preview screenshot is available, swap the tint
+  // identity block for a photographic banner with a dark scrim. Identity
+  // (logo + name + ticker + repo) sits on a frosted plate at the bottom
+  // so it stays legible regardless of what the screenshot looks like.
+  if (project.previewImageUrl) {
+    const fresh = timeAgo(project.previewCapturedAt);
+    return (
+      <div className="hero-cover">
+        <img className="pv-shot" src={project.previewImageUrl} alt="" loading="lazy" />
+        <div className="scrim" />
+        <div className="hero-cover-top">
+          {fresh
+            ? <span className="pv-fresh"><span className="d" />{fresh}</span>
+            : <span />}
+          {project.status && (
+            <span className={`pv-pill ${project.status}`}>
+              <span className="dot" />
+              {project.statusLabel || project.status.replace("-", " ")}
+            </span>
+          )}
+        </div>
+        <div className="hero-cover-foot">
+          <div className="glass-logo"><ProjectAvatar project={project} size={40} /></div>
+          <div style={{ minWidth: 0 }}>
+            <div className="hero-cover-name" title={project.name}>{project.name}</div>
+            <div className="hero-cover-meta">
+              <span className="hero-cover-ticker">${project.sym}</span>
+              <span className="hero-cover-repo">{project.repo}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="project-hero"
@@ -282,6 +318,10 @@ function apiProjectToCard(live, taskCounts) {
     // Live deployed site (GitHub Pages today). Drives the "live site"
     // link on the card; null until /publish enables Pages.
     liveUrl: live.live_url || null,
+    // Preview screenshot of the live site + when it was captured. Drives
+    // the cover-hero on the card; null falls back to the tint hero.
+    previewImageUrl: live.preview_image_url || null,
+    previewCapturedAt: live.preview_image_captured_at || null,
     preview: {
       url: live.live_url
         ? hostFromUrl(live.live_url)
@@ -333,6 +373,19 @@ function perTaskValue(p) {
 
 // Hostname of a URL for the browser-chrome address bar (strips scheme +
 // path). Falls back to the raw string if it isn't a parseable URL.
+// Compact relative time for the preview-image freshness chip
+// (e.g. "2h ago", "3d ago"). Returns null when the timestamp is missing
+// so callers can skip the chip without a ternary.
+function timeAgo(iso) {
+  if (!iso) return null;
+  const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
+  const units = [["d", 86400], ["h", 3600], ["m", 60]];
+  for (const [label, secs] of units) {
+    if (s >= secs) return `${Math.floor(s / secs)}${label} ago`;
+  }
+  return "just now";
+}
+
 function hostFromUrl(u) {
   try {
     return new URL(u).host;
