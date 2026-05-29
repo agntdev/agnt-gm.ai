@@ -22,7 +22,7 @@ function ProjectHero({ project }) {
   // identity block for a photographic banner with a dark scrim. Identity
   // (logo + name + ticker + repo) sits on a frosted plate at the bottom
   // so it stays legible regardless of what the screenshot looks like.
-  if (project.previewImageUrl) {
+  if (project.previewImageUrl && coverEligible(project.previewSource)) {
     const fresh = timeAgo(project.previewCapturedAt);
     return (
       <div className="hero-cover">
@@ -320,8 +320,13 @@ function apiProjectToCard(live, taskCounts) {
     liveUrl: live.live_url || null,
     // Preview screenshot of the live site + when it was captured. Drives
     // the cover-hero on the card; null falls back to the tint hero.
+    // `previewSource` gates the cover: only a real screenshot ("live") or
+    // the GitHub social card ("github_og") become a photographic cover —
+    // a "logo_fallback" would just be a square logo stretched into the
+    // banner, so it stays on the tint hero (which shows the logo properly).
     previewImageUrl: live.preview_image_url || null,
     previewCapturedAt: live.preview_image_captured_at || null,
+    previewSource: live.preview_image_source || null,
     preview: {
       url: live.live_url
         ? hostFromUrl(live.live_url)
@@ -384,6 +389,16 @@ function timeAgo(iso) {
     if (s >= secs) return `${Math.floor(s / secs)}${label} ago`;
   }
   return "just now";
+}
+
+// A preview image becomes a photographic cover only when it's a real
+// screenshot ("live") or the GitHub social card ("github_og"). A
+// "logo_fallback" (square logo) would look stretched as a banner, so it
+// falls back to the tint hero. null source = legacy row captured before
+// the column existed → allow (those are real screenshots).
+const COVER_SOURCES = new Set(["live", "github_og"]);
+function coverEligible(source) {
+  return source == null || COVER_SOURCES.has(source);
 }
 
 function hostFromUrl(u) {
