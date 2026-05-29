@@ -199,62 +199,13 @@ export default function ProjectHero({
         )}
       </div>
 
-      {hasCover && (
-        <ProjectCover live={live} avatarShape={avatarShape} />
-      )}
+      {/* Identity banner — always shown. Photographic when a real live
+          screenshot exists, otherwise the project's tint gradient. Keeps
+          every project page visually consistent. */}
+      <ProjectCover live={live} avatarShape={avatarShape} hasShot={hasCover} />
 
       <div className="proj-hero">
         <div>
-          {!hasCover && (
-            <div className="proj-title-row">
-              <ProjectAvatar project={avatarShape} size={64} />
-              <div style={{ flex: 1 }}>
-                <h1 className="proj-h1">{live.name}</h1>
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
-                  <span className="proj-sym">${live.token_symbol || "TBD"}</span>
-                  {live.github_repo_url ? (
-                    <a
-                      href={live.github_repo_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ fontSize: 12, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", textDecoration: "none" }}
-                    >
-                      {live.github_repo_url.replace(/^https?:\/\//, "")}
-                    </a>
-                  ) : (
-                    <span style={{ fontSize: 12, color: "var(--fg-subtle)", fontFamily: "JetBrains Mono, monospace" }}>
-                      repo not yet linked
-                    </span>
-                  )}
-                  {live.status && (
-                    <span style={{
-                      fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4,
-                      background: live.status === "live" ? "var(--accent-soft)" : live.status === "ready_to_publish" ? "oklch(0.96 0.05 80)" : "var(--bg-tint)",
-                      color:      live.status === "live" ? "var(--accent-fg)"   : live.status === "ready_to_publish" ? "#b45309"               : "var(--fg-muted)",
-                      fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.05em", textTransform: "uppercase",
-                    }}>
-                      {live.status.replace(/_/g, " ")}
-                    </span>
-                  )}
-                  {live.jetton_admin_locked_at && (
-                    <span
-                      title={`Admin renounced ${new Date(live.jetton_admin_locked_at).toLocaleString()} — total supply is immutable.`}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 4,
-                        fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4,
-                        background: "var(--bg-tint)",
-                        color: "var(--fg)",
-                        border: "1px solid var(--border-strong)",
-                        fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.05em", textTransform: "uppercase",
-                      }}
-                    >
-                      🔒 Supply frozen
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
           <p className="proj-pitch">{live.short_description}</p>
           {children && <div style={{ marginTop: 14 }}>{children}</div>}
         </div>
@@ -285,15 +236,71 @@ function timeAgo(iso) {
   return "just now";
 }
 
-// Cover banner at the top of the project hero. Renders only when a
-// preview screenshot exists; otherwise the page falls back to the
-// existing .proj-title-row (avatar + h1 + meta + badges).
-//
-// The screenshot fills the banner; identity (logo + name + ticker +
-// repo) rides on a frosted plate at the bottom for legibility. Freshness
-// chip + status / live-site / supply-frozen chips ride along the top.
-function ProjectCover({ live, avatarShape }) {
+// Cover banner at the top of the project hero — ALWAYS rendered so every
+// project page looks consistent.
+//   - hasShot (a real live screenshot): the screenshot fills the banner
+//     with a dark scrim + frosted plate; white identity rides the bottom.
+//   - otherwise: the same banner shape filled with the project's tint
+//     gradient (from avatarShape.tone) and dark "ink" identity — matching
+//     the tint hero on the Pulse card, so a project with no screenshot
+//     still gets a branded colored banner instead of a plain title row.
+// Either way: status / live-site / supply-frozen chips ride along the top.
+function ProjectCover({ live, avatarShape, hasShot }) {
   const repo = live.github_repo_url?.replace(/^https?:\/\//, "");
+  const tone = avatarShape?.tone || {};
+
+  const idBlock = (ink) => (
+    <div className="cv-id">
+      <div className="glass-logo">
+        <ProjectAvatar project={avatarShape} size={72} />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <h1 className={ink ? "cv-h1 ink" : "cv-h1"}>{live.name}</h1>
+        <div className="cv-row">
+          <span className={ink ? "cv-sym ink" : "cv-sym"}>${live.token_symbol || "TBD"}</span>
+          {repo
+            ? <a className={ink ? "cv-repo ink" : "cv-repo"} href={live.github_repo_url} target="_blank" rel="noreferrer">{repo}</a>
+            : <span className={ink ? "cv-repo ink" : "cv-repo"} style={{ opacity: 0.7 }}>repo not yet linked</span>}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Top-row chips. `light` = on a pale tint surface; otherwise glassy on
+  // the photo. status pill is shown only off-"live" (green LIVE implied).
+  const topChips = (light) => (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      {live.jetton_admin_locked_at && <span className={light ? "cv-chip light" : "cv-chip"}>🔒 Supply frozen</span>}
+      {live.status && live.status !== "live" && (
+        <span className={`pv-pill ${live.status}`} style={{ position: "static" }}>
+          <span className="dot" />{live.status.replace(/_/g, " ")}
+        </span>
+      )}
+      {live.live_url && (
+        <a className={light ? "cv-live light" : "cv-live"} href={live.live_url} target="_blank" rel="noreferrer">
+          <span className="d" />Live site <Icon name="external" size={10} />
+        </a>
+      )}
+    </div>
+  );
+
+  if (!hasShot) {
+    // Tint fallback banner — same size as the photo banner, project
+    // gradient + dark ink identity.
+    return (
+      <div
+        className="proj-cover no-shot"
+        style={{ marginTop: 14, "--hero-tint": tone.bg, "--hero-ink": tone.fg }}
+      >
+        <div className="cv-top">
+          <span />
+          {topChips(true)}
+        </div>
+        {idBlock(true)}
+      </div>
+    );
+  }
+
   const fresh = timeAgo(live.preview_image_captured_at);
   return (
     <div className="proj-cover" style={{ marginTop: 14 }}>
@@ -304,34 +311,9 @@ function ProjectCover({ live, avatarShape }) {
         {fresh
           ? <span className="pv-fresh"><span className="d" />{fresh}</span>
           : <span />}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {live.jetton_admin_locked_at && <span className="cv-chip">🔒 Supply frozen</span>}
-          {live.status && live.status !== "live" && (
-            <span className={`pv-pill ${live.status}`} style={{ position: "static" }}>
-              <span className="dot" />{live.status.replace(/_/g, " ")}
-            </span>
-          )}
-          {live.live_url && (
-            <a className="cv-live" href={live.live_url} target="_blank" rel="noreferrer">
-              <span className="d" />Live site <Icon name="external" size={10} />
-            </a>
-          )}
-        </div>
+        {topChips(false)}
       </div>
-      <div className="cv-id">
-        <div className="glass-logo">
-          <ProjectAvatar project={avatarShape} size={72} />
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <h1 className="cv-h1">{live.name}</h1>
-          <div className="cv-row">
-            <span className="cv-sym">${live.token_symbol || "TBD"}</span>
-            {repo
-              ? <a className="cv-repo" href={live.github_repo_url} target="_blank" rel="noreferrer">{repo}</a>
-              : <span className="cv-repo" style={{ opacity: 0.7 }}>repo not yet linked</span>}
-          </div>
-        </div>
-      </div>
+      {idBlock(false)}
     </div>
   );
 }
