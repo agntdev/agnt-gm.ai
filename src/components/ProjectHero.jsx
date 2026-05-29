@@ -337,11 +337,16 @@ function ProjectCover({ live, avatarShape }) {
 }
 
 function ClaimCard({ live, taskCount, onTabChange }) {
-  const tonPool = live?.ton_reward_pool_nano != null
-    ? Number(live.ton_reward_pool_nano) / 1e9
-    : 0;
+  // Reward pool = total across ALL stages (total_ton_reward_pool_nano),
+  // not just stage 1 (ton_reward_pool_nano). Fall back to the legacy
+  // project pool when the new field is absent (pre-backend-deploy).
+  const poolNano = live?.total_ton_reward_pool_nano ?? live?.ton_reward_pool_nano;
+  const tonPool = poolNano != null ? Number(poolNano) / 1e9 : 0;
   const tonPoolLabel = tonPool.toLocaleString(undefined, { maximumFractionDigits: 3 });
   const sym = live?.token_symbol || "TBD";
+  // Open tasks = actually-open count (server-computed); fall back to the
+  // total task count only when open_tasks isn't present.
+  const openTasks = live?.open_tasks ?? taskCount;
 
   return (
     <div className="claim-card">
@@ -358,7 +363,7 @@ function ClaimCard({ live, taskCount, onTabChange }) {
           </div>
           <div className="claim-pool">
             <div className="l">Open tasks</div>
-            <div className="v">{taskCount ?? "—"}</div>
+            <div className="v">{openTasks ?? "—"}</div>
             <div className="s">{live?.deadline ? "deadline set" : "no deadline"}</div>
           </div>
         </div>
