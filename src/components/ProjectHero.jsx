@@ -12,6 +12,15 @@ import { useNavigate } from "react-router-dom";
 import { Icon, ProjectAvatar } from "./atoms.jsx";
 import { api } from "../lib/api.js";
 
+// A preview image becomes a photographic cover only for a real screenshot
+// ("live") or the GitHub social card ("github_og"). "logo_fallback" (a
+// square logo) would look stretched as a banner → keep the title row.
+// null source = legacy capture before the column existed → allow.
+const COVER_SOURCES = new Set(["live", "github_og"]);
+function coverEligible(source) {
+  return source == null || COVER_SOURCES.has(source);
+}
+
 // Fetch routine shared by Project + Milestones. Returns:
 //   live      — raw ProjectOAS, null while loading, false on 404
 //   liveTasks — TaskListItemOAS[] | null
@@ -166,6 +175,9 @@ export default function ProjectHero({
     tone: avatarTone(slug),
     logoUrl: live.logo_url || null,
   };
+  // Show the photographic cover banner only for a real screenshot / OG
+  // card; otherwise keep the existing title row.
+  const hasCover = !!live.preview_image_url && coverEligible(live.preview_image_source);
 
   return (
     <>
@@ -187,13 +199,13 @@ export default function ProjectHero({
         )}
       </div>
 
-      {live.preview_image_url && (
+      {hasCover && (
         <ProjectCover live={live} avatarShape={avatarShape} />
       )}
 
       <div className="proj-hero">
         <div>
-          {!live.preview_image_url && (
+          {!hasCover && (
             <div className="proj-title-row">
               <ProjectAvatar project={avatarShape} size={64} />
               <div style={{ flex: 1 }}>
