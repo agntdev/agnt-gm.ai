@@ -1208,7 +1208,9 @@ h1 .punch { color: var(--accent-fg); }
 }
 .project-hero {
   position: relative;
-  height: 124px;
+  /* Matches .hero-cover (162px) so tint-fallback cards and screenshot-cover
+     cards are the same height and the grid rows line up. */
+  height: 162px;
   overflow: hidden;
   background: var(--hero-tint, var(--bg-soft));
   border-bottom: 1px solid var(--border);

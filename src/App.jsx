@@ -206,9 +206,11 @@ const RESPONSIVE_CSS = `
 
   /* Project cards on the Pulse grid: the hero eats too much vertical
      space on a stacked phone view. Compress it (smaller logo + tighter
-     stack) while keeping the body padding comfortable. */
+     stack) while keeping the body padding comfortable. Both the tint
+     hero and the screenshot cover get the SAME mobile height so cards
+     stay uniform regardless of which one renders. */
   @media (max-width: 640px) {
-    .project-hero { height: 132px !important; }
+    .project-hero, .hero-cover { height: 140px !important; }
     .project-hero-logo-wrap .token-avatar { width: 52px !important; height: 52px !important; }
     .project-stats-row { gap: 10px !important; }
   }
