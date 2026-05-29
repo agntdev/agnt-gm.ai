@@ -14,82 +14,95 @@ import {
 } from "../components/payoutWidgets.jsx";
 import { api } from "../lib/api.js";
 
-// Photographic cover hero — rendered ONLY when a real live screenshot
-// exists. When there's no screenshot the card shows no hero block at
-// all (the body carries a compact identity head instead), which reads
-// cleaner than a gradient placeholder.
 function ProjectHero({ project }) {
-  const fresh = timeAgo(project.previewCapturedAt);
-  return (
-    <div className="hero-cover">
-      <img className="pv-shot" src={project.previewImageUrl} alt="" loading="lazy" />
-      <div className="scrim" />
-      <div className="hero-cover-top">
-        {fresh
-          ? <span className="pv-fresh"><span className="d" />{fresh}</span>
-          : <span />}
-        {project.status && (
-          <span className={`pv-pill ${project.status}`}>
-            <span className="dot" />
-            {project.statusLabel || project.status.replace("-", " ")}
-          </span>
-        )}
-      </div>
-      <div className="hero-cover-foot">
-        <div className="glass-logo"><ProjectAvatar project={project} size={40} /></div>
-        <div style={{ minWidth: 0 }}>
-          <div className="hero-cover-name" title={project.name}>{project.name}</div>
-          <div className="hero-cover-meta">
-            <span className="hero-cover-ticker">${project.sym}</span>
-            <span className="hero-cover-repo">{project.repo}</span>
+  const tint = project.tone?.bg || "var(--bg-soft)";
+  const ink  = project.tone?.fg || "var(--fg)";
+
+  // Cover hero: when a preview screenshot is available, swap the tint
+  // identity block for a photographic banner with a dark scrim. Identity
+  // (logo + name + ticker + repo) sits on a frosted plate at the bottom
+  // so it stays legible regardless of what the screenshot looks like.
+  if (project.previewImageUrl && coverEligible(project.previewSource)) {
+    const fresh = timeAgo(project.previewCapturedAt);
+    return (
+      <div className="hero-cover">
+        <img className="pv-shot" src={project.previewImageUrl} alt="" loading="lazy" />
+        <div className="scrim" />
+        <div className="hero-cover-top">
+          {fresh
+            ? <span className="pv-fresh"><span className="d" />{fresh}</span>
+            : <span />}
+          {project.status && (
+            <span className={`pv-pill ${project.status}`}>
+              <span className="dot" />
+              {project.statusLabel || project.status.replace("-", " ")}
+            </span>
+          )}
+        </div>
+        <div className="hero-cover-foot">
+          <div className="glass-logo"><ProjectAvatar project={project} size={40} /></div>
+          <div style={{ minWidth: 0 }}>
+            <div className="hero-cover-name" title={project.name}>{project.name}</div>
+            <div className="hero-cover-meta">
+              <span className="hero-cover-ticker">${project.sym}</span>
+              <span className="hero-cover-repo">{project.repo}</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-// Compact identity head shown inside the card body when there's no
-// screenshot cover — logo + name + ticker + repo, with the status badge
-// on the right. Mirrors the old (pre-cover) card layout.
-function ProjectCardHead({ project }) {
   return (
-    <div className="project-head">
-      <ProjectAvatar project={project} size={36} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="project-symbol">
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.name}</span>
-          <span style={{ fontSize: 10.5, color: "var(--fg-muted)", fontWeight: 600 }}>${project.sym}</span>
+    <div
+      className="project-hero"
+      style={{
+        "--hero-tint": tint,
+        "--hero-ink": ink,
+      }}
+    >
+      <div className="project-hero-bg" aria-hidden />
+      <div className="project-hero-stack">
+        <div className="project-hero-logo-wrap">
+          <ProjectAvatar project={project} size={56} />
         </div>
-        <div className="project-name" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.repo}</div>
+        <div className="project-hero-text">
+          <div className="project-hero-name" title={project.name}>
+            {project.name}
+          </div>
+          <div className="project-hero-meta">
+            <span className="project-hero-ticker">${project.sym}</span>
+            <span className="project-hero-repo">{project.repo}</span>
+          </div>
+        </div>
       </div>
       {project.status && (
-        <span
-          style={{
-            alignSelf: "flex-start", flexShrink: 0,
-            fontSize: 9.5, fontWeight: 800, padding: "2px 7px", borderRadius: 4,
-            fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.05em",
-            textTransform: "uppercase", whiteSpace: "nowrap",
-            background: project.status === "shipping" ? "var(--accent-soft)"
-              : project.status === "hot" ? "oklch(0.96 0.05 80)" : "var(--bg-tint)",
-            color: project.status === "shipping" ? "var(--accent-fg)"
-              : project.status === "hot" ? "#b45309" : "var(--fg-muted)",
-          }}
-        >
+        <div className={`project-status-pill ${project.status}`}>
           {project.statusLabel || project.status.replace("-", " ")}
-        </span>
+        </div>
+      )}
+      {project.liveUrl && (
+        <a
+          href={project.liveUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          title={`Open the live site — ${project.liveUrl}`}
+          className="project-hero-live"
+        >
+          <span className="project-hero-live-dot" />
+          Live site <Icon name="external" size={10} />
+        </a>
       )}
     </div>
   );
 }
 
 function ProjectCardLarge({ project, onClick }) {
-  const hasCover = !!(project.previewImageUrl && coverEligible(project.previewSource));
   return (
     <div className="project-card" onClick={onClick}>
-      {hasCover && <ProjectHero project={project} />}
+      <ProjectHero project={project} />
       <div className="project-body">
-        {!hasCover && <ProjectCardHead project={project} />}
         <div className="project-pitch">{project.pitch}</div>
         <div className="project-stats-row">
           <div className="project-stat">
