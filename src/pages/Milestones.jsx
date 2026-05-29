@@ -34,17 +34,26 @@ function fmtReward(reward, decimals, sym) {
   return `${num.toLocaleString()} $${sym}`;
 }
 
-// Task's slice of the TON pool. Per-project task weights sum to 1, so
-// weight × pool is the per-task TON payout.
-function fmtTonShare(weight, tonPool) {
-  if (weight == null || tonPool == null) return null;
-  const w = Number(weight);
-  const p = Number(tonPool);
-  if (!Number.isFinite(w) || !Number.isFinite(p) || p <= 0) return null;
-  const share = w * p;
-  if (share <= 0) return null;
+// Format a TON amount (in TON, not nano) as "X TON".
+function fmtTonAmount(share) {
+  if (!Number.isFinite(share) || share <= 0) return null;
   const maxFrac = share >= 1 ? 2 : share >= 0.01 ? 3 : 4;
   return `${share.toLocaleString(undefined, { maximumFractionDigits: maxFrac })} TON`;
+}
+
+// Per-task TON reward. Prefer the server-computed `ton_reward_nano`
+// (weight × the task's OWN stage pool — correct for multi-stage
+// projects). Fall back to weight × project-pool only for older payloads
+// that don't carry the field; that over-counts on later stages, which is
+// exactly the bug the server field fixes.
+function fmtTonReward(task, projectTonPool) {
+  if (task?.ton_reward_nano != null) {
+    return fmtTonAmount(Number(task.ton_reward_nano) / 1e9);
+  }
+  const w = Number(task?.weight);
+  const p = Number(projectTonPool);
+  if (!Number.isFinite(w) || !Number.isFinite(p) || p <= 0) return null;
+  return fmtTonAmount(w * p);
 }
 
 function TaskRow({ task, decimals, sym, tonPool }) {
@@ -125,7 +134,7 @@ function TaskRow({ task, decimals, sym, tonPool }) {
       <div className="ms-task-reward">
         <span className="est">{fmtReward(task.reward_amount, decimals, sym)}</span>
         {(() => {
-          const ton = fmtTonShare(task.weight, tonPool);
+          const ton = fmtTonReward(task, tonPool);
           return ton ? (
             <span
               className="est"
