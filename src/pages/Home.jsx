@@ -32,36 +32,35 @@ function ProjectHero({ project }) {
           {fresh
             ? <span className="pv-fresh"><span className="d" />{fresh}</span>
             : <span />}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {project.status && (
-              <span className={`pv-pill ${project.status}`}>
-                <span className="dot" />
-                {project.statusLabel || project.status.replace("-", " ")}
-              </span>
-            )}
-            {project.liveUrl && (
-              <a
-                className="cv-live"
-                href={project.liveUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                title={`Open the live site — ${project.liveUrl}`}
-              >
-                <span className="d" />Live site <Icon name="external" size={10} />
-              </a>
-            )}
-          </div>
+          {project.status && (
+            <span className={`pv-pill ${project.status}`}>
+              <span className="dot" />
+              {project.statusLabel || project.status.replace("-", " ")}
+            </span>
+          )}
         </div>
         <div className="hero-cover-foot">
           <div className="glass-logo"><ProjectAvatar project={project} size={40} /></div>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div className="hero-cover-name" title={project.name}>{project.name}</div>
             <div className="hero-cover-meta">
               <span className="hero-cover-ticker">${project.sym}</span>
               <span className="hero-cover-repo">{project.repo}</span>
             </div>
           </div>
+          {project.liveUrl && (
+            <a
+              className="cv-live"
+              style={{ marginLeft: "auto", flexShrink: 0 }}
+              href={project.liveUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title={`Open the live site — ${project.liveUrl}`}
+            >
+              <span className="d" />Live <Icon name="external" size={10} />
+            </a>
+          )}
         </div>
       </div>
     );
