@@ -50,15 +50,15 @@ function ProjectHero({ project }) {
           </div>
           {project.liveUrl && (
             <a
-              className="cv-live"
-              style={{ marginLeft: "auto", flexShrink: 0 }}
+              className="project-hero-live"
+              style={{ position: "static", marginLeft: "auto", flexShrink: 0 }}
               href={project.liveUrl}
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
               title={`Open the live site — ${project.liveUrl}`}
             >
-              <span className="d" />Live <Icon name="external" size={10} />
+              <span className="project-hero-live-dot" />Live site <Icon name="external" size={10} />
             </a>
           )}
         </div>
