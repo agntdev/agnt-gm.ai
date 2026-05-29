@@ -4176,6 +4176,20 @@ h1 .punch { color: var(--accent-fg); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* No-screenshot card hero: same .hero-cover layout, but the photo + scrim
+   are swapped for the project's tint gradient and the identity flips to
+   dark "ink" text (white-on-photo wouldn't read on a pale tint). The
+   white .project-hero-live chip + glassy .pv-pill status already read on
+   the light surface. */
+.hero-cover.no-shot {
+  background:
+    radial-gradient(120% 92% at 18% 26%, rgba(255,255,255,0.72), transparent 60%),
+    var(--hero-tint, var(--bg-tint));
+}
+.hero-cover.no-shot .hero-cover-name   { color: var(--fg); text-shadow: none; }
+.hero-cover.no-shot .hero-cover-ticker { color: var(--hero-ink, var(--accent-fg)); }
+.hero-cover.no-shot .hero-cover-repo   { color: var(--fg-muted); }
+
 /* ============================================================
    PROJECT PAGE — cover banner (replaces .proj-title-row when a
    preview_image_url is present). Lives at the top of the hero.

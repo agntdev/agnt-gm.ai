@@ -14,99 +14,56 @@ import {
 } from "../components/payoutWidgets.jsx";
 import { api } from "../lib/api.js";
 
+// Unified card hero — IDENTICAL layout for every project: status pill
+// top-right, identity (logo + name + ticker + repo) in the bottom bar,
+// Live-site chip bottom-right. The ONLY difference is the background:
+// a real screenshot (source==='live') vs the project's tint gradient
+// (.no-shot) when there's no screenshot.
 function ProjectHero({ project }) {
-  const tint = project.tone?.bg || "var(--bg-soft)";
-  const ink  = project.tone?.fg || "var(--fg)";
-
-  // Cover hero: when a preview screenshot is available, swap the tint
-  // identity block for a photographic banner with a dark scrim. Identity
-  // (logo + name + ticker + repo) sits on a frosted plate at the bottom
-  // so it stays legible regardless of what the screenshot looks like.
-  if (project.previewImageUrl && coverEligible(project.previewSource)) {
-    const fresh = timeAgo(project.previewCapturedAt);
-    return (
-      <div className="hero-cover">
-        <img className="pv-shot" src={project.previewImageUrl} alt="" loading="lazy" />
-        <div className="scrim" />
-        <div className="hero-cover-top">
-          {fresh
-            ? <span className="pv-fresh"><span className="d" />{fresh}</span>
-            : <span />}
-          {project.status && (
-            <span className={`pv-pill ${project.status}`}>
-              <span className="dot" />
-              {project.statusLabel || project.status.replace("-", " ")}
-            </span>
-          )}
-        </div>
-        <div className="hero-cover-foot">
-          <div className="glass-logo"><ProjectAvatar project={project} size={40} /></div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="hero-cover-name" title={project.name}>{project.name}</div>
-            <div className="hero-cover-meta">
-              <span className="hero-cover-ticker">${project.sym}</span>
-              <span className="hero-cover-repo">{project.repo}</span>
-            </div>
-          </div>
-          {project.liveUrl && (
-            <a
-              className="project-hero-live"
-              style={{ position: "static", marginLeft: "auto", flexShrink: 0 }}
-              href={project.liveUrl}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              title={`Open the live site — ${project.liveUrl}`}
-            >
-              <span className="project-hero-live-dot" />Live site <Icon name="external" size={10} />
-            </a>
-          )}
-        </div>
-      </div>
-    );
-  }
-
+  const hasShot = !!(project.previewImageUrl && coverEligible(project.previewSource));
+  const tone = project.tone || {};
+  const fresh = hasShot ? timeAgo(project.previewCapturedAt) : null;
   return (
     <div
-      className="project-hero"
-      style={{
-        "--hero-tint": tint,
-        "--hero-ink": ink,
-      }}
+      className={`hero-cover${hasShot ? "" : " no-shot"}`}
+      style={hasShot ? undefined : { "--hero-tint": tone.bg, "--hero-ink": tone.fg }}
     >
-      <div className="project-hero-bg" aria-hidden />
-      <div className="project-hero-stack">
-        <div className="project-hero-logo-wrap">
-          <ProjectAvatar project={project} size={56} />
-        </div>
-        <div className="project-hero-text">
-          <div className="project-hero-name" title={project.name}>
-            {project.name}
-          </div>
-          <div className="project-hero-meta">
-            <span className="project-hero-ticker">${project.sym}</span>
-            <span className="project-hero-repo">{project.repo}</span>
-          </div>
-        </div>
+      {hasShot && <img className="pv-shot" src={project.previewImageUrl} alt="" loading="lazy" />}
+      {hasShot && <div className="scrim" />}
+      <div className="hero-cover-top">
+        {fresh
+          ? <span className="pv-fresh"><span className="d" />{fresh}</span>
+          : <span />}
+        {project.status && (
+          <span className={`pv-pill ${project.status}`}>
+            <span className="dot" />
+            {project.statusLabel || project.status.replace("-", " ")}
+          </span>
+        )}
       </div>
-      {project.status && (
-        <div className={`project-status-pill ${project.status}`}>
-          {project.statusLabel || project.status.replace("-", " ")}
+      <div className="hero-cover-foot">
+        <div className="glass-logo"><ProjectAvatar project={project} size={40} /></div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="hero-cover-name" title={project.name}>{project.name}</div>
+          <div className="hero-cover-meta">
+            <span className="hero-cover-ticker">${project.sym}</span>
+            <span className="hero-cover-repo">{project.repo}</span>
+          </div>
         </div>
-      )}
-      {project.liveUrl && (
-        <a
-          href={project.liveUrl}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          title={`Open the live site — ${project.liveUrl}`}
-          className="project-hero-live"
-        >
-          <span className="project-hero-live-dot" />
-          Live site <Icon name="external" size={10} />
-        </a>
-      )}
+        {project.liveUrl && (
+          <a
+            className="project-hero-live"
+            style={{ position: "static", marginLeft: "auto", flexShrink: 0 }}
+            href={project.liveUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title={`Open the live site — ${project.liveUrl}`}
+          >
+            <span className="project-hero-live-dot" />Live site <Icon name="external" size={10} />
+          </a>
+        )}
+      </div>
     </div>
   );
 }
