@@ -12,13 +12,13 @@ import { useNavigate } from "react-router-dom";
 import { Icon, ProjectAvatar } from "./atoms.jsx";
 import { api } from "../lib/api.js";
 
-// A preview image becomes a photographic cover only for a real screenshot
-// ("live") or the GitHub social card ("github_og"). "logo_fallback" (a
-// square logo) would look stretched as a banner → keep the title row.
-// null source = legacy capture before the column existed → allow.
-const COVER_SOURCES = new Set(["live", "github_og"]);
+// A preview image becomes a photographic cover ONLY for a real screenshot
+// of the live site (source === "live"). The GitHub social card
+// ("github_og"), the square logo ("logo_fallback"), or no capture (null)
+// all fall back to the branded title-row hero, which reads cleaner than a
+// generic "owner/repo" OG card.
 function coverEligible(source) {
-  return source == null || COVER_SOURCES.has(source);
+  return source === "live";
 }
 
 // Fetch routine shared by Project + Milestones. Returns:

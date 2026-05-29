@@ -391,14 +391,14 @@ function timeAgo(iso) {
   return "just now";
 }
 
-// A preview image becomes a photographic cover only when it's a real
-// screenshot ("live") or the GitHub social card ("github_og"). A
-// "logo_fallback" (square logo) would look stretched as a banner, so it
-// falls back to the tint hero. null source = legacy row captured before
-// the column existed → allow (those are real screenshots).
-const COVER_SOURCES = new Set(["live", "github_og"]);
+// A preview image becomes a photographic cover ONLY for a real screenshot
+// of the live site (source === "live"). Everything else — the GitHub
+// social card ("github_og", a generic "owner/repo" graphic), the square
+// logo ("logo_fallback"), or no capture yet (null) — falls back to the
+// branded tint hero (logo + name on a colored gradient, like the
+// DevRemoteJobs card), which reads far cleaner than a generic OG card.
 function coverEligible(source) {
-  return source == null || COVER_SOURCES.has(source);
+  return source === "live";
 }
 
 function hostFromUrl(u) {
