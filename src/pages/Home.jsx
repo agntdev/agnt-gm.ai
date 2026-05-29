@@ -32,12 +32,26 @@ function ProjectHero({ project }) {
           {fresh
             ? <span className="pv-fresh"><span className="d" />{fresh}</span>
             : <span />}
-          {project.status && (
-            <span className={`pv-pill ${project.status}`}>
-              <span className="dot" />
-              {project.statusLabel || project.status.replace("-", " ")}
-            </span>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {project.status && (
+              <span className={`pv-pill ${project.status}`}>
+                <span className="dot" />
+                {project.statusLabel || project.status.replace("-", " ")}
+              </span>
+            )}
+            {project.liveUrl && (
+              <a
+                className="cv-live"
+                href={project.liveUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title={`Open the live site — ${project.liveUrl}`}
+              >
+                <span className="d" />Live site <Icon name="external" size={10} />
+              </a>
+            )}
+          </div>
         </div>
         <div className="hero-cover-foot">
           <div className="glass-logo"><ProjectAvatar project={project} size={40} /></div>
