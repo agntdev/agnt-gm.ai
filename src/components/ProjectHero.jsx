@@ -8,7 +8,7 @@
 // each page renders the strip with its own tab highlighted.
 
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Icon, ProjectAvatar } from "./atoms.jsx";
 import { api } from "../lib/api.js";
 
@@ -71,17 +71,26 @@ export function useProjectData(slug) {
       }
       setLive(liveProject);
       setLoading(false);
-      projectCache.set(slug, { ...(projectCache.get(slug) || {}), live: liveProject });
+      projectCache.set(slug, {
+        ...(projectCache.get(slug) || {}),
+        live: liveProject,
+      });
       if (typeof res?.task_count === "number") {
         setTaskCount(res.task_count);
-        projectCache.set(slug, { ...projectCache.get(slug), taskCount: res.task_count });
+        projectCache.set(slug, {
+          ...projectCache.get(slug),
+          taskCount: res.task_count,
+        });
       }
       if (liveProject.owner_agent_id) {
         api.agent(liveProject.owner_agent_id).then((a) => {
           if (cancelled) return;
           const ownerObj = a?.agent || null;
           setOwner(ownerObj);
-          projectCache.set(slug, { ...projectCache.get(slug), owner: ownerObj });
+          projectCache.set(slug, {
+            ...projectCache.get(slug),
+            owner: ownerObj,
+          });
         });
       }
     });
@@ -96,16 +105,25 @@ export function useProjectData(slug) {
         taskCount: projectCache.get(slug)?.taskCount ?? tasks.length,
       });
     });
-    return () => { cancelled = true; };
+    return () => {
+      wcancelled = true;
+    };
   }, [slug, tick]);
 
-  return { live, liveTasks, taskCount, owner, loading, refresh: () => setTick((n) => n + 1) };
+  return {
+    live,
+    liveTasks,
+    taskCount,
+    owner,
+    loading,
+    refresh: () => setTick((n) => n + 1),
+  };
 }
 
 const TABS = [
-  { id: "about",        label: "Details",          icon: "info" },
-  { id: "tasks",        label: "Tasks",            icon: "layers" },
-  { id: "contribute",   label: "How to contribute", icon: "zap" },
+  { id: "about", label: "Details", icon: "info" },
+  { id: "tasks", label: "Tasks", icon: "layers" },
+  { id: "contribute", label: "How to contribute", icon: "zap" },
 ];
 
 export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
@@ -116,31 +134,39 @@ export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
         // Milestones page passes activeTab="tasks-page" as a sentinel for the
         // breadcrumb + cross-page routing below — treat it as a match for the
         // "tasks" tab so the strip still underlines while we're on /milestones.
-        const isActive = activeTab === t.id || (activeTab === "tasks-page" && t.id === "tasks");
+        const isActive =
+          activeTab === t.id ||
+          (activeTab === "tasks-page" && t.id === "tasks");
         return (
-        <button
-          key={t.id}
-          type="button"
-          className={`tab-underline ${isActive ? "active" : ""}`}
-          onClick={() => {
-            // The Tasks tab is its own page; the rest stay in-page on /projects/:slug.
-            if (t.id === "tasks") {
-              navigate(`/projects/${project.slug}/milestones`);
-            } else if (activeTab === "tasks-page") {
-              // Coming from Milestones — bounce back to the project root and select the tab there.
-              navigate(`/projects/${project.slug}`, { state: { tab: t.id } });
-              onTabChange?.(t.id);
-            } else {
-              onTabChange?.(t.id);
-            }
-          }}
-        >
-          <Icon name={t.icon} size={11} />
-          {" "}{t.label}
-          <span style={{ fontSize: 10, color: "var(--fg-muted)", marginLeft: 6, fontWeight: 600 }}>
-            {t.id === "tasks" && (taskCount ?? 0)}
-          </span>
-        </button>
+          <button
+            key={t.id}
+            type="button"
+            className={`tab-underline ${isActive ? "active" : ""}`}
+            onClick={() => {
+              // The Tasks tab is its own page; the rest stay in-page on /projects/:slug.
+              if (t.id === "tasks") {
+                navigate(`/projects/${project.slug}/milestones`);
+              } else if (activeTab === "tasks-page") {
+                // Coming from Milestones — bounce back to the project root and select the tab there.
+                navigate(`/projects/${project.slug}`, { state: { tab: t.id } });
+                onTabChange?.(t.id);
+              } else {
+                onTabChange?.(t.id);
+              }
+            }}
+          >
+            <Icon name={t.icon} size={11} /> {t.label}
+            <span
+              style={{
+                fontSize: 10,
+                color: "var(--fg-muted)",
+                marginLeft: 6,
+                fontWeight: 600,
+              }}
+            >
+              {t.id === "tasks" && (taskCount ?? 0)}
+            </span>
+          </button>
         );
       })}
     </div>
@@ -166,7 +192,6 @@ export default function ProjectHero({
   onTabChange,
   children,
 }) {
-  const navigate = useNavigate();
   if (!live) return null;
 
   const slug = live.slug;
@@ -181,21 +206,48 @@ export default function ProjectHero({
 
   return (
     <>
-      <div style={{ paddingTop: 18, fontSize: 11.5, color: "var(--fg-muted)", display: "flex", alignItems: "center", gap: 6 }}>
-        <button onClick={() => navigate("/")} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0 }}>
+      <div
+        style={{
+          paddingTop: 18,
+          fontSize: 11.5,
+          color: "var(--fg-muted)",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <Link
+          to="/"
+          style={{
+            textDecoration: "none",
+            color: "inherit",
+            fontFamily: "inherit",
+            fontSize: "inherit",
+          }}
+        >
           Pulse
-        </button>
+        </Link>
         <span>/</span>
         {activeTab === "tasks-page" ? (
           <>
-            <button onClick={() => navigate(`/projects/${slug}`)} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0 }}>
+            <Link
+              to={`/projects/${slug}`}
+              style={{
+                textDecoration: "none",
+                color: "inherit",
+                fontFamily: "inherit",
+                fontSize: "inherit",
+              }}
+            >
               {live.name}
-            </button>
+            </Link>
             <span>/</span>
             <span style={{ color: "var(--fg)", fontWeight: 700 }}>tasks</span>
           </>
         ) : (
-          <span style={{ color: "var(--fg)", fontWeight: 700 }}>{live.name}</span>
+          <span style={{ color: "var(--fg)", fontWeight: 700 }}>
+            {live.name}
+          </span>
         )}
       </div>
 
@@ -251,7 +303,6 @@ export default function ProjectHero({
                       🔒 Supply frozen
                     </span>
                   )}
-                </div>
               </div>
             </div>
           )}
@@ -259,7 +310,11 @@ export default function ProjectHero({
           {children && <div style={{ marginTop: 14 }}>{children}</div>}
         </div>
 
-        <ClaimCard live={live} taskCount={taskCount} onTabChange={onTabChange} />
+        <ClaimCard
+          live={live}
+          taskCount={taskCount}
+          onTabChange={onTabChange}
+        />
       </div>
 
       <ProjectTabs
@@ -358,7 +413,9 @@ function ClaimCard({ live, taskCount, onTabChange }) {
         <div className="claim-pool-row">
           <div className="claim-pool">
             <div className="l">Reward pool</div>
-            <div className="v" style={{ color: "var(--accent-fg)" }}>{tonPoolLabel} TON</div>
+            <div className="v" style={{ color: "var(--accent-fg)" }}>
+              {tonPoolLabel} TON
+            </div>
             <div className="s">${sym}</div>
           </div>
           <div className="claim-pool">
@@ -368,7 +425,10 @@ function ClaimCard({ live, taskCount, onTabChange }) {
           </div>
         </div>
       </div>
-      <div className="claim-section" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div
+        className="claim-section"
+        style={{ display: "flex", flexDirection: "column", gap: 8 }}
+      >
         <button
           type="button"
           className="btn btn-accent"

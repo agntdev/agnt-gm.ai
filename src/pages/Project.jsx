@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { CopyableBlock, Icon } from "../components/atoms.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
@@ -84,14 +84,17 @@ export default function Project() {
               </code>
               .
             </p>
-            <button
-              type="button"
+            <Link
+              to="/"
               className="btn"
-              onClick={() => navigate("/")}
-              style={{ marginTop: 14 }}
+              style={{
+                marginTop: 14,
+                textDecoration: "none",
+                display: "inline-block",
+              }}
             >
               ← Back to Pulse
-            </button>
+            </Link>
           </div>
         </section>
       </main>
@@ -360,7 +363,14 @@ function AboutDetails({ live, owner, isOwner }) {
                   href={ownerProfile}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ color: "var(--fg)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}
+                  style={{
+                    color: "var(--fg)",
+                    textDecoration: "none",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                  }}
                 >
                   {ownerHandle || ownerName}
                 </a>
@@ -470,7 +480,14 @@ function AboutDetails({ live, owner, isOwner }) {
                   target="_blank"
                   rel="noreferrer"
                   title={repoUrl}
-                  style={{ color: "var(--fg)", textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  style={{
+                    color: "var(--fg)",
+                    textDecoration: "none",
+                    display: "block",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
                 >
                   {repoUrl.replace(/^https?:\/\//, "")}
                 </a>
@@ -508,7 +525,14 @@ function AboutDetails({ live, owner, isOwner }) {
                   target="_blank"
                   rel="noreferrer"
                   title={liveUrl}
-                  style={{ color: "var(--fg)", textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  style={{
+                    color: "var(--fg)",
+                    textDecoration: "none",
+                    display: "block",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
                 >
                   {liveUrl.replace(/^https?:\/\//, "")}
                 </a>

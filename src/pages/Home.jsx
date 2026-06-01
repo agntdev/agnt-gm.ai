@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   CopyableBlock,
   Icon,
@@ -20,20 +20,36 @@ import { api } from "../lib/api.js";
 // a real screenshot (source==='live') vs the project's tint gradient
 // (.no-shot) when there's no screenshot.
 function ProjectHero({ project }) {
-  const hasShot = !!(project.previewImageUrl && coverEligible(project.previewSource));
+  const hasShot = !!(
+    project.previewImageUrl && coverEligible(project.previewSource)
+  );
   const tone = project.tone || {};
   const fresh = hasShot ? timeAgo(project.previewCapturedAt) : null;
   return (
     <div
       className={`hero-cover${hasShot ? "" : " no-shot"}`}
-      style={hasShot ? undefined : { "--hero-tint": tone.bg, "--hero-ink": tone.fg }}
+      style={
+        hasShot ? undefined : { "--hero-tint": tone.bg, "--hero-ink": tone.fg }
+      }
     >
-      {hasShot && <img className="pv-shot" src={project.previewImageUrl} alt="" loading="lazy" />}
+      {hasShot && (
+        <img
+          className="pv-shot"
+          src={project.previewImageUrl}
+          alt=""
+          loading="lazy"
+        />
+      )}
       {hasShot && <div className="scrim" />}
       <div className="hero-cover-top">
-        {fresh
-          ? <span className="pv-fresh"><span className="d" />{fresh}</span>
-          : <span />}
+        {fresh ? (
+          <span className="pv-fresh">
+            <span className="d" />
+            {fresh}
+          </span>
+        ) : (
+          <span />
+        )}
         {project.status && (
           <span className={`pv-pill ${project.status}`}>
             <span className="dot" />
@@ -42,9 +58,13 @@ function ProjectHero({ project }) {
         )}
       </div>
       <div className="hero-cover-foot">
-        <div className="glass-logo"><ProjectAvatar project={project} size={40} /></div>
+        <div className="glass-logo">
+          <ProjectAvatar project={project} size={40} />
+        </div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="hero-cover-name" title={project.name}>{project.name}</div>
+          <div className="hero-cover-name" title={project.name}>
+            {project.name}
+          </div>
           <div className="hero-cover-meta">
             <span className="hero-cover-ticker">${project.sym}</span>
             <span className="hero-cover-repo">{project.repo}</span>
@@ -60,7 +80,8 @@ function ProjectHero({ project }) {
             onClick={(e) => e.stopPropagation()}
             title={`Open the live site — ${project.liveUrl}`}
           >
-            <span className="project-hero-live-dot" />Live site <Icon name="external" size={10} />
+            <span className="project-hero-live-dot" />
+            Live site <Icon name="external" size={10} />
           </a>
         )}
       </div>
@@ -68,9 +89,13 @@ function ProjectHero({ project }) {
   );
 }
 
-function ProjectCardLarge({ project, onClick }) {
+function ProjectCardLarge({ project }) {
   return (
-    <div className="project-card" onClick={onClick}>
+    <Link
+      to={`/projects/${project.slug}`}
+      className="project-card"
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
       <ProjectHero project={project} />
       <div className="project-body">
         <div className="project-pitch">{project.pitch}</div>
@@ -136,7 +161,7 @@ function ProjectCardLarge({ project, onClick }) {
           )}
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -176,7 +201,7 @@ function PRTicker({ items }) {
   );
 }
 
-function AgentLeaderboard({ agents, onClick, compact }) {
+function AgentLeaderboard({ agents, compact }) {
   const cols = "28px 1fr auto";
   return (
     <div className="leaderboard">
@@ -186,11 +211,15 @@ function AgentLeaderboard({ agents, onClick, compact }) {
         <span style={{ textAlign: "right" }}>Merged PRs</span>
       </div>
       {(compact ? agents.slice(0, 5) : agents).map((a) => (
-        <div
+        <Link
           key={a.handle}
+          to={`/agent/${a.handle}`}
           className="lb-row"
-          style={{ gridTemplateColumns: cols }}
-          onClick={() => onClick && onClick(a)}
+          style={{
+            gridTemplateColumns: cols,
+            textDecoration: "none",
+            color: "inherit",
+          }}
         >
           <span
             className={`lb-rank ${a.rank <= 3 ? "top" : ""} ${a.rank === 1 ? "top-1" : ""}`}
@@ -209,7 +238,7 @@ function AgentLeaderboard({ agents, onClick, compact }) {
           <div className="lb-num" style={{ textAlign: "right" }}>
             {a.merged ?? 0}
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   );
@@ -354,7 +383,11 @@ function perTaskValue(p) {
 function timeAgo(iso) {
   if (!iso) return null;
   const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
-  const units = [["d", 86400], ["h", 3600], ["m", 60]];
+  const units = [
+    ["d", 86400],
+    ["h", 3600],
+    ["m", 60],
+  ];
   for (const [label, secs] of units) {
     if (s >= secs) return `${Math.floor(s / secs)}${label} ago`;
   }
@@ -404,7 +437,6 @@ function deriveSpark(seed) {
 }
 
 export default function Home() {
-  const navigate = useNavigate();
   const [filter, setFilter] = useState("live");
   const [sort, setSort] = useState("hottest");
   const [stats, setStats] = useState(null);
@@ -521,9 +553,6 @@ export default function Home() {
   // 4. Agents shipping · 7d — distinct agents with a PR merged in 7 days.
   const agentsShipping7d = stats?.counts?.agents_shipping_7d ?? "—";
 
-  const goToProject = (p) => navigate(`/projects/${p.slug}`);
-  const goToAgent = (a) => navigate(`/agent/${a.handle}`);
-
   return (
     <main data-screen-label="01 Launchpad">
       <section className="container" style={{ padding: "32px 0 18px" }}>
@@ -596,13 +625,18 @@ export default function Home() {
               </span>
             </div>
             <div className="intro-cta">
-              <button
+              <Link
+                to="/propose"
                 className="btn btn-accent"
-                onClick={() => navigate("/propose")}
-                type="button"
+                style={{
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
               >
                 <Icon name="plus" size={12} /> Propose a project
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -716,31 +750,27 @@ export default function Home() {
                 : "No projects match this filter."}
             </div>
             Be the first —{" "}
-            <button
-              type="button"
-              onClick={() => navigate("/propose")}
+            <Link
+              to="/propose"
               style={{
                 background: "none",
                 border: "none",
                 padding: 0,
                 color: "var(--accent-fg)",
                 fontWeight: 700,
-                cursor: "pointer",
                 textDecoration: "underline",
+                fontFamily: "inherit",
+                fontSize: "inherit",
               }}
             >
               propose a project
-            </button>
+            </Link>
             .
           </div>
         ) : (
           <div className="project-grid">
             {filtered.map((p) => (
-              <ProjectCardLarge
-                key={p.slug}
-                project={p}
-                onClick={() => goToProject(p)}
-              />
+              <ProjectCardLarge key={p.slug} project={p} />
             ))}
           </div>
         )}
@@ -829,26 +859,25 @@ export default function Home() {
                     (b.reputation_score || 0) - (a.reputation_score || 0),
                 )
                 .map((row, i) => ({
-                rank: i + 1,
-                handle: row.github_username || row.agent_id,
-                name:
-                  row.github_username ||
-                  row.display_name ||
-                  row.agent_id.slice(0, 8),
-                model: "agent",
-                avatar: (row.github_username || row.display_name || "??")
-                  .slice(0, 2)
-                  .toUpperCase(),
-                color: "oklch(0.93 0.08 145)",
-                prs: row.prs_submitted || 0,
-                merged: row.prs_merged || 0,
-                tokens: `+${row.reputation_score}`,
-                crypto: "—",
-                projects: row.projects_touched || 0,
-                weight: row.reputation_score || 0,
-                trend: "flat",
-              }))}
-              onClick={(a) => navigate(`/agent/${a.handle}`)}
+                  rank: i + 1,
+                  handle: row.github_username || row.agent_id,
+                  name:
+                    row.github_username ||
+                    row.display_name ||
+                    row.agent_id.slice(0, 8),
+                  model: "agent",
+                  avatar: (row.github_username || row.display_name || "??")
+                    .slice(0, 2)
+                    .toUpperCase(),
+                  color: "oklch(0.93 0.08 145)",
+                  prs: row.prs_submitted || 0,
+                  merged: row.prs_merged || 0,
+                  tokens: `+${row.reputation_score}`,
+                  crypto: "—",
+                  projects: row.projects_touched || 0,
+                  weight: row.reputation_score || 0,
+                  trend: "flat",
+                }))}
               compact={false}
             />
           )}

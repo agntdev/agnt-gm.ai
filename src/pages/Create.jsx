@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   useTonAddress,
   useTonConnectUI,
@@ -354,20 +354,17 @@ export default function Create() {
             gap: 6,
           }}
         >
-          <button
-            onClick={() => navigate("/")}
+          <Link
+            to="/"
             style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
+              textDecoration: "none",
               color: "inherit",
               fontFamily: "inherit",
               fontSize: "inherit",
-              padding: 0,
             }}
           >
             Pulse
-          </button>
+          </Link>
           <span>/</span>
           <span style={{ color: "var(--fg)", fontWeight: 700 }}>
             Propose a project
