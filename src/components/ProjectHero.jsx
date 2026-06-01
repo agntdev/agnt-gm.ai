@@ -202,7 +202,8 @@ export default function ProjectHero({
   };
   // Show the photographic cover banner only for a real screenshot / OG
   // card; otherwise keep the existing title row.
-  const hasCover = !!live.preview_image_url && coverEligible(live.preview_image_source);
+  const hasCover =
+    !!live.preview_image_url && coverEligible(live.preview_image_source);
 
   return (
     <>
@@ -251,9 +252,7 @@ export default function ProjectHero({
         )}
       </div>
 
-      {hasCover && (
-        <ProjectCover live={live} avatarShape={avatarShape} />
-      )}
+      {hasCover && <ProjectCover live={live} avatarShape={avatarShape} />}
 
       <div className="proj-hero">
         <div>
@@ -262,29 +261,67 @@ export default function ProjectHero({
               <ProjectAvatar project={avatarShape} size={64} />
               <div style={{ flex: 1 }}>
                 <h1 className="proj-h1">{live.name}</h1>
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
-                  <span className="proj-sym">${live.token_symbol || "TBD"}</span>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    marginTop: 4,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span className="proj-sym">
+                    ${live.token_symbol || "TBD"}
+                  </span>
                   {live.github_repo_url ? (
                     <a
                       href={live.github_repo_url}
                       target="_blank"
                       rel="noreferrer"
-                      style={{ fontSize: 12, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", textDecoration: "none" }}
+                      style={{
+                        fontSize: 12,
+                        color: "var(--fg-muted)",
+                        fontFamily: "JetBrains Mono, monospace",
+                        textDecoration: "none",
+                      }}
                     >
                       {live.github_repo_url.replace(/^https?:\/\//, "")}
                     </a>
                   ) : (
-                    <span style={{ fontSize: 12, color: "var(--fg-subtle)", fontFamily: "JetBrains Mono, monospace" }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "var(--fg-subtle)",
+                        fontFamily: "JetBrains Mono, monospace",
+                      }}
+                    >
                       repo not yet linked
                     </span>
                   )}
                   {live.status && (
-                    <span style={{
-                      fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4,
-                      background: live.status === "live" ? "var(--accent-soft)" : live.status === "ready_to_publish" ? "oklch(0.96 0.05 80)" : "var(--bg-tint)",
-                      color:      live.status === "live" ? "var(--accent-fg)"   : live.status === "ready_to_publish" ? "#b45309"               : "var(--fg-muted)",
-                      fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.05em", textTransform: "uppercase",
-                    }}>
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 800,
+                        padding: "3px 8px",
+                        borderRadius: 4,
+                        background:
+                          live.status === "live"
+                            ? "var(--accent-soft)"
+                            : live.status === "ready_to_publish"
+                              ? "oklch(0.96 0.05 80)"
+                              : "var(--bg-tint)",
+                        color:
+                          live.status === "live"
+                            ? "var(--accent-fg)"
+                            : live.status === "ready_to_publish"
+                              ? "#b45309"
+                              : "var(--fg-muted)",
+                        fontFamily: "JetBrains Mono, monospace",
+                        letterSpacing: "0.05em",
+                        textTransform: "uppercase",
+                      }}
+                    >
                       {live.status.replace(/_/g, " ")}
                     </span>
                   )}
@@ -292,17 +329,25 @@ export default function ProjectHero({
                     <span
                       title={`Admin renounced ${new Date(live.jetton_admin_locked_at).toLocaleString()} — total supply is immutable.`}
                       style={{
-                        display: "inline-flex", alignItems: "center", gap: 4,
-                        fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 10.5,
+                        fontWeight: 800,
+                        padding: "3px 8px",
+                        borderRadius: 4,
                         background: "var(--bg-tint)",
                         color: "var(--fg)",
                         border: "1px solid var(--border-strong)",
-                        fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.05em", textTransform: "uppercase",
+                        fontFamily: "JetBrains Mono, monospace",
+                        letterSpacing: "0.05em",
+                        textTransform: "uppercase",
                       }}
                     >
                       🔒 Supply frozen
                     </span>
                   )}
+                </div>
               </div>
             </div>
           )}
@@ -333,7 +378,11 @@ export default function ProjectHero({
 function timeAgo(iso) {
   if (!iso) return null;
   const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
-  const units = [["d", 86400], ["h", 3600], ["m", 60]];
+  const units = [
+    ["d", 86400],
+    ["h", 3600],
+    ["m", 60],
+  ];
   for (const [label, secs] of units) {
     if (s >= secs) return `${Math.floor(s / secs)}${label} ago`;
   }
@@ -356,19 +405,43 @@ function ProjectCover({ live, avatarShape }) {
       <div className="scrim" />
       <div className="cv-plate" />
       <div className="cv-top">
-        {fresh
-          ? <span className="pv-fresh"><span className="d" />{fresh}</span>
-          : <span />}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {live.jetton_admin_locked_at && <span className="cv-chip">🔒 Supply frozen</span>}
+        {fresh ? (
+          <span className="pv-fresh">
+            <span className="d" />
+            {fresh}
+          </span>
+        ) : (
+          <span />
+        )}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+          }}
+        >
+          {live.jetton_admin_locked_at && (
+            <span className="cv-chip">🔒 Supply frozen</span>
+          )}
           {live.status && live.status !== "live" && (
-            <span className={`pv-pill ${live.status}`} style={{ position: "static" }}>
-              <span className="dot" />{live.status.replace(/_/g, " ")}
+            <span
+              className={`pv-pill ${live.status}`}
+              style={{ position: "static" }}
+            >
+              <span className="dot" />
+              {live.status.replace(/_/g, " ")}
             </span>
           )}
           {live.live_url && (
-            <a className="cv-live" href={live.live_url} target="_blank" rel="noreferrer">
-              <span className="d" />Live site <Icon name="external" size={10} />
+            <a
+              className="cv-live"
+              href={live.live_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="d" />
+              Live site <Icon name="external" size={10} />
             </a>
           )}
         </div>
@@ -381,9 +454,20 @@ function ProjectCover({ live, avatarShape }) {
           <h1 className="cv-h1">{live.name}</h1>
           <div className="cv-row">
             <span className="cv-sym">${live.token_symbol || "TBD"}</span>
-            {repo
-              ? <a className="cv-repo" href={live.github_repo_url} target="_blank" rel="noreferrer">{repo}</a>
-              : <span className="cv-repo" style={{ opacity: 0.7 }}>repo not yet linked</span>}
+            {repo ? (
+              <a
+                className="cv-repo"
+                href={live.github_repo_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {repo}
+              </a>
+            ) : (
+              <span className="cv-repo" style={{ opacity: 0.7 }}>
+                repo not yet linked
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -395,9 +479,12 @@ function ClaimCard({ live, taskCount, onTabChange }) {
   // Reward pool = total across ALL stages (total_ton_reward_pool_nano),
   // not just stage 1 (ton_reward_pool_nano). Fall back to the legacy
   // project pool when the new field is absent (pre-backend-deploy).
-  const poolNano = live?.total_ton_reward_pool_nano ?? live?.ton_reward_pool_nano;
+  const poolNano =
+    live?.total_ton_reward_pool_nano ?? live?.ton_reward_pool_nano;
   const tonPool = poolNano != null ? Number(poolNano) / 1e9 : 0;
-  const tonPoolLabel = tonPool.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  const tonPoolLabel = tonPool.toLocaleString(undefined, {
+    maximumFractionDigits: 3,
+  });
   const sym = live?.token_symbol || "TBD";
   // Open tasks = actually-open count (server-computed); fall back to the
   // total task count only when open_tasks isn't present.
@@ -421,7 +508,9 @@ function ClaimCard({ live, taskCount, onTabChange }) {
           <div className="claim-pool">
             <div className="l">Open tasks</div>
             <div className="v">{openTasks ?? "—"}</div>
-            <div className="s">{live?.deadline ? "deadline set" : "no deadline"}</div>
+            <div className="s">
+              {live?.deadline ? "deadline set" : "no deadline"}
+            </div>
           </div>
         </div>
       </div>
