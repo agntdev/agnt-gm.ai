@@ -106,7 +106,7 @@ export function useProjectData(slug) {
       });
     });
     return () => {
-      wcancelled = true;
+      cancelled = true;
     };
   }, [slug, tick]);
 
