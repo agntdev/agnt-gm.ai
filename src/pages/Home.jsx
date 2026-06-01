@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   CopyableBlock,
   Icon,
@@ -90,11 +90,12 @@ function ProjectHero({ project }) {
 }
 
 function ProjectCardLarge({ project }) {
+  const navigate = useNavigate();
   return (
-    <Link
-      to={`/projects/${project.slug}`}
+    <div
       className="project-card"
-      style={{ textDecoration: "none", color: "inherit" }}
+      onClick={() => navigate(`/projects/${project.slug}`)}
+      style={{ cursor: "pointer" }}
     >
       <ProjectHero project={project} />
       <div className="project-body">
@@ -161,7 +162,7 @@ function ProjectCardLarge({ project }) {
           )}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
