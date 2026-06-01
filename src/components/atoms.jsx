@@ -1057,15 +1057,14 @@ export function PRRow({ pr, onClick }) {
   );
 }
 
-export function ProjectCard({ project, onClick }) {
-  const navigate = useNavigate();
+export function ProjectCard({ project }) {
   const positive = project.change >= 0;
   const color = positive ? "var(--accent)" : "var(--danger)";
-  const handleClick = onClick ?? (() => navigate(`/projects/${project.slug}`));
   return (
-    <div
+    <Link
+      to={`/projects/${project.slug}`}
       className={`token-card ${project.isNew ? "is-new" : ""}`}
-      onClick={handleClick}
+      style={{ textDecoration: "none", color: "inherit" }}
     >
       <div className="token-head">
         <ProjectAvatar project={project} />
@@ -1126,7 +1125,7 @@ export function ProjectCard({ project, onClick }) {
           </div>
         </div>
       )}
-    </div>
+    </Link>
   );
 }
 

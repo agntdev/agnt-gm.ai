@@ -8,7 +8,7 @@
 //                                    bound wallet, when viewing self)
 
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useTonConnectUI, useTonWallet } from "@tonconnect/ui-react";
 import { Icon } from "../components/atoms.jsx";
 import {
@@ -21,35 +21,60 @@ import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
 
 const STATUS_CFG = {
-  active:      { bg: "var(--accent-soft)",  fg: "var(--accent-fg)",   label: "active" },
-  wallet_only: { bg: "var(--bg-tint)",      fg: "var(--fg-muted)",    label: "wallet only" },
-  banned:      { bg: "var(--danger-soft)",  fg: "var(--danger)",      label: "banned" },
+  active: { bg: "var(--accent-soft)", fg: "var(--accent-fg)", label: "active" },
+  wallet_only: {
+    bg: "var(--bg-tint)",
+    fg: "var(--fg-muted)",
+    label: "wallet only",
+  },
+  banned: { bg: "var(--danger-soft)", fg: "var(--danger)", label: "banned" },
 };
 
 function fmtDate(iso) {
   if (!iso) return null;
   const d = new Date(iso);
   if (isNaN(d.getTime())) return null;
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function StatTile({ label, value, accent }) {
   return (
-    <div className="agnt-resp-stat-tile" style={{
-      flex: 1, minWidth: 120,
-      padding: "14px 18px",
-      border: "1px solid var(--border)",
-      background: "var(--bg-soft)",
-      borderRadius: 10,
-    }}>
-      <div style={{ fontSize: 9.5, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>
+    <div
+      className="agnt-resp-stat-tile"
+      style={{
+        flex: 1,
+        minWidth: 120,
+        padding: "14px 18px",
+        border: "1px solid var(--border)",
+        background: "var(--bg-soft)",
+        borderRadius: 10,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 9.5,
+          color: "var(--fg-muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          fontWeight: 700,
+        }}
+      >
         {label}
       </div>
-      <div style={{
-        fontSize: 22, fontWeight: 800, marginTop: 4,
-        fontFamily: "JetBrains Mono, monospace", fontVariantNumeric: "tabular-nums",
-        color: accent ? "var(--accent-fg)" : "var(--fg)",
-      }}>
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: 800,
+          marginTop: 4,
+          fontFamily: "JetBrains Mono, monospace",
+          fontVariantNumeric: "tabular-nums",
+          color: accent ? "var(--accent-fg)" : "var(--fg)",
+        }}
+      >
         {value}
       </div>
     </div>
@@ -58,7 +83,6 @@ function StatTile({ label, value, accent }) {
 
 export default function Agent() {
   const { handle } = useParams();
-  const navigate = useNavigate();
   const { token, agent: viewer, refresh: refreshAuth } = useAuth();
 
   const [agent, setAgent] = useState(null);
@@ -92,13 +116,22 @@ export default function Agent() {
         setPayoutSummary(s || null);
       });
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [handle]);
 
   if (agentLoading) {
     return (
       <main className="container" data-screen-label="Agent">
-        <div style={{ padding: "60px 0", color: "var(--fg-muted)", fontSize: 13, textAlign: "center" }}>
+        <div
+          style={{
+            padding: "60px 0",
+            color: "var(--fg-muted)",
+            fontSize: 13,
+            textAlign: "center",
+          }}
+        >
           Loading agent…
         </div>
       </main>
@@ -109,24 +142,45 @@ export default function Agent() {
     return (
       <main className="container" data-screen-label="Agent">
         <section className="container" style={{ paddingTop: 60 }}>
-          <div style={{
-            padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
-            background: "var(--bg-soft)", textAlign: "center",
-          }}>
+          <div
+            style={{
+              padding: 40,
+              border: "1px dashed var(--border-strong)",
+              borderRadius: 10,
+              background: "var(--bg-soft)",
+              textAlign: "center",
+            }}
+          >
             <h2 style={{ margin: 0, fontSize: 18 }}>Agent not found</h2>
             <p style={{ marginTop: 8, fontSize: 13, color: "var(--fg-muted)" }}>
-              No agent record for <code style={{ fontFamily: "JetBrains Mono, monospace" }}>{handle}</code>.
+              No agent record for{" "}
+              <code style={{ fontFamily: "JetBrains Mono, monospace" }}>
+                {handle}
+              </code>
+              .
             </p>
-            <button type="button" className="btn" onClick={() => navigate("/")} style={{ marginTop: 14 }}>
+            <Link
+              to="/"
+              className="btn"
+              style={{
+                marginTop: 14,
+                textDecoration: "none",
+                display: "inline-block",
+              }}
+            >
               ← Back to Pulse
-            </button>
+            </Link>
           </div>
         </section>
       </main>
     );
   }
 
-  const status = STATUS_CFG[agent.status] || { bg: "var(--bg-tint)", fg: "var(--fg-muted)", label: agent.status || "—" };
+  const status = STATUS_CFG[agent.status] || {
+    bg: "var(--bg-tint)",
+    fg: "var(--fg-muted)",
+    label: agent.status || "—",
+  };
   const isMe = !!viewer && viewer.id === agent.id;
 
   // Filter the global project list down to ones owned by this agent.
@@ -135,9 +189,10 @@ export default function Agent() {
   const ownedProjects = (() => {
     if (allProjects === null) return null;
     const myWallet = isMe ? viewer?.ton_wallet_address : null;
-    return allProjects.filter((p) =>
-      p.owner_agent_id === agent.id ||
-      (myWallet && p.owner_wallet_address === myWallet)
+    return allProjects.filter(
+      (p) =>
+        p.owner_agent_id === agent.id ||
+        (myWallet && p.owner_wallet_address === myWallet),
     );
   })();
   const projectsTouched = ownedProjects ? ownedProjects.length : null;
@@ -145,19 +200,47 @@ export default function Agent() {
   return (
     <main data-screen-label="Agent profile">
       <section className="container">
-        <div style={{ paddingTop: 18, fontSize: 11.5, color: "var(--fg-muted)", display: "flex", alignItems: "center", gap: 6 }}>
-          <button onClick={() => navigate("/")} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontFamily: "inherit", fontSize: "inherit", padding: 0 }}>
+        <div
+          style={{
+            paddingTop: 18,
+            fontSize: 11.5,
+            color: "var(--fg-muted)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <Link
+            to="/"
+            style={{
+              textDecoration: "none",
+              color: "inherit",
+              fontFamily: "inherit",
+              fontSize: "inherit",
+            }}
+          >
             Pulse
-          </button>
+          </Link>
           <span>/</span>
-          <span style={{ color: "var(--fg)", fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>
+          <span
+            style={{
+              color: "var(--fg)",
+              fontWeight: 700,
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          >
             {agent.github_username || agent.id.slice(0, 8)}
           </span>
         </div>
 
-        <div style={{
-          display: "flex", alignItems: "flex-start", gap: 22, padding: "24px 0 28px",
-        }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 22,
+            padding: "24px 0 28px",
+          }}
+        >
           <AgentAvatarLarge agent={agent} />
 
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -168,47 +251,111 @@ export default function Agent() {
                 rel="noreferrer"
                 style={{ textDecoration: "none", color: "inherit" }}
               >
-                <h1 style={{ margin: 0, fontSize: 28, fontFamily: "JetBrains Mono, monospace", letterSpacing: "-0.01em" }}>
+                <h1
+                  style={{
+                    margin: 0,
+                    fontSize: 28,
+                    fontFamily: "JetBrains Mono, monospace",
+                    letterSpacing: "-0.01em",
+                  }}
+                >
                   {agent.github_username}
                 </h1>
               </a>
             ) : (
-              <h1 style={{ margin: 0, fontSize: 28, fontFamily: "JetBrains Mono, monospace", letterSpacing: "-0.01em", color: "var(--fg-subtle)" }}>
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: 28,
+                  fontFamily: "JetBrains Mono, monospace",
+                  letterSpacing: "-0.01em",
+                  color: "var(--fg-subtle)",
+                }}
+              >
                 {agent.id.slice(0, 8)}
               </h1>
             )}
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-              <span style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "3px 8px", borderRadius: 999,
-                background: status.bg, color: status.fg,
-                fontFamily: "JetBrains Mono, monospace", fontSize: 10.5, fontWeight: 800,
-                textTransform: "uppercase", letterSpacing: "0.05em",
-              }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                marginTop: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "3px 8px",
+                  borderRadius: 999,
+                  background: status.bg,
+                  color: status.fg,
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
                 {agent.status === "active" && <span className="live-dot" />}
                 {status.label}
               </span>
-              <code style={{ fontSize: 10.5, color: "var(--fg-subtle)", fontFamily: "JetBrains Mono, monospace" }}>
+              <code
+                style={{
+                  fontSize: 10.5,
+                  color: "var(--fg-subtle)",
+                  fontFamily: "JetBrains Mono, monospace",
+                }}
+              >
                 {agent.id}
               </code>
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 11, color: "var(--fg-subtle)", display: "flex", gap: 14, flexWrap: "wrap" }}>
-              {agent.github_linked_at && <span>GitHub linked {fmtDate(agent.github_linked_at)}</span>}
-              {agent.created_at && <span>· Joined {fmtDate(agent.created_at)}</span>}
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 11,
+                color: "var(--fg-subtle)",
+                display: "flex",
+                gap: 14,
+                flexWrap: "wrap",
+              }}
+            >
+              {agent.github_linked_at && (
+                <span>GitHub linked {fmtDate(agent.github_linked_at)}</span>
+              )}
+              {agent.created_at && (
+                <span>· Joined {fmtDate(agent.created_at)}</span>
+              )}
             </div>
           </div>
         </div>
 
-        <div style={{ borderTop: "1px solid var(--border)", marginBottom: 24 }} />
+        <div
+          style={{ borderTop: "1px solid var(--border)", marginBottom: 24 }}
+        />
 
-        <div style={{ display: "flex", gap: 12, paddingBottom: 24, flexWrap: "wrap" }}>
-          <StatTile label="Reputation"     value={agent.reputation_score ?? 0} accent />
-          <StatTile label="PRs submitted"  value={agent.prs_submitted ?? 0} />
-          <StatTile label="PRs merged"     value={agent.prs_merged ?? 0} />
-          <StatTile label="PRs rejected"   value={agent.prs_rejected ?? 0} />
-          <StatTile label="Projects"       value={projectsTouched ?? "—"} />
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            paddingBottom: 24,
+            flexWrap: "wrap",
+          }}
+        >
+          <StatTile
+            label="Reputation"
+            value={agent.reputation_score ?? 0}
+            accent
+          />
+          <StatTile label="PRs submitted" value={agent.prs_submitted ?? 0} />
+          <StatTile label="PRs merged" value={agent.prs_merged ?? 0} />
+          <StatTile label="PRs rejected" value={agent.prs_rejected ?? 0} />
+          <StatTile label="Projects" value={projectsTouched ?? "—"} />
         </div>
 
         {isMe && (
@@ -223,17 +370,37 @@ export default function Agent() {
 
         <PayoutsPanel agentId={agent.id} isMe={isMe} />
 
-        <div style={{ marginTop: 4, padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800 }}>
+        <div
+          style={{
+            marginTop: 4,
+            padding: "12px 0",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 13,
+              fontWeight: 800,
+            }}
+          >
             <Icon name="layers" size={12} /> {isMe ? "My projects" : "Projects"}
-            <span style={{ fontSize: 10, color: "var(--fg-muted)", fontWeight: 600 }}>
+            <span
+              style={{
+                fontSize: 10,
+                color: "var(--fg-muted)",
+                fontWeight: 600,
+              }}
+            >
               {ownedProjects?.length ?? 0}
             </span>
           </div>
         </div>
 
         <div style={{ paddingTop: 22, paddingBottom: 60 }}>
-          <ProjectsList projects={ownedProjects} isMe={isMe} navigate={navigate} />
+          <ProjectsList projects={ownedProjects} isMe={isMe} />
         </div>
       </section>
     </main>
@@ -251,59 +418,112 @@ function AgentAvatarLarge({ agent }) {
       <img
         src={agent.github_avatar_url}
         alt=""
-        style={{ width: 88, height: 88, borderRadius: 12, objectFit: "cover", border: "1px solid var(--border)" }}
+        style={{
+          width: 88,
+          height: 88,
+          borderRadius: 12,
+          objectFit: "cover",
+          border: "1px solid var(--border)",
+        }}
       />
     );
   }
-  const initials = (agent.display_name || agent.github_username || "?").slice(0, 2).toUpperCase();
+  const initials = (agent.display_name || agent.github_username || "?")
+    .slice(0, 2)
+    .toUpperCase();
   return (
-    <div style={{
-      width: 88, height: 88, borderRadius: 12,
-      background: "var(--bg-tint)", display: "grid", placeItems: "center",
-      fontFamily: "JetBrains Mono, monospace", fontWeight: 800, fontSize: 28,
-    }}>
+    <div
+      style={{
+        width: 88,
+        height: 88,
+        borderRadius: 12,
+        background: "var(--bg-tint)",
+        display: "grid",
+        placeItems: "center",
+        fontFamily: "JetBrains Mono, monospace",
+        fontWeight: 800,
+        fontSize: 28,
+      }}
+    >
       {initials}
     </div>
   );
 }
 
-
 const PROJECT_STATUS_CFG = {
-  draft:            { bg: "var(--bg-tint)",     fg: "var(--fg-muted)",   label: "draft" },
-  validating:       { bg: "oklch(0.96 0.05 80)", fg: "#b45309",          label: "validating" },
-  ready_to_publish: { bg: "oklch(0.96 0.05 80)", fg: "#b45309",          label: "ready" },
-  live:             { bg: "var(--accent-soft)", fg: "var(--accent-fg)", label: "live" },
-  completed:        { bg: "var(--bg-tint)",     fg: "var(--fg-muted)",   label: "completed" },
-  rejected:         { bg: "var(--danger-soft)", fg: "var(--danger)",     label: "rejected" },
-  failed:           { bg: "var(--danger-soft)", fg: "var(--danger)",     label: "failed" },
+  draft: { bg: "var(--bg-tint)", fg: "var(--fg-muted)", label: "draft" },
+  validating: { bg: "oklch(0.96 0.05 80)", fg: "#b45309", label: "validating" },
+  ready_to_publish: {
+    bg: "oklch(0.96 0.05 80)",
+    fg: "#b45309",
+    label: "ready",
+  },
+  live: { bg: "var(--accent-soft)", fg: "var(--accent-fg)", label: "live" },
+  completed: {
+    bg: "var(--bg-tint)",
+    fg: "var(--fg-muted)",
+    label: "completed",
+  },
+  rejected: {
+    bg: "var(--danger-soft)",
+    fg: "var(--danger)",
+    label: "rejected",
+  },
+  failed: { bg: "var(--danger-soft)", fg: "var(--danger)", label: "failed" },
 };
 
-function ProjectsList({ projects, isMe, navigate }) {
+function ProjectsList({ projects, isMe }) {
   if (projects === null) {
-    return <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>Loading projects…</div>;
+    return (
+      <div
+        style={{
+          padding: 32,
+          textAlign: "center",
+          color: "var(--fg-muted)",
+          fontSize: 13,
+        }}
+      >
+        Loading projects…
+      </div>
+    );
   }
   if (projects.length === 0) {
     return (
-      <div style={{
-        padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
-        background: "var(--bg-soft)", textAlign: "center", color: "var(--fg-muted)", fontSize: 13,
-      }}>
+      <div
+        style={{
+          padding: 40,
+          border: "1px dashed var(--border-strong)",
+          borderRadius: 10,
+          background: "var(--bg-soft)",
+          textAlign: "center",
+          color: "var(--fg-muted)",
+          fontSize: 13,
+        }}
+      >
         <div style={{ fontWeight: 700, color: "var(--fg)", marginBottom: 6 }}>
-          {isMe ? "You haven't proposed any projects yet." : "No projects owned by this agent."}
+          {isMe
+            ? "You haven't proposed any projects yet."
+            : "No projects owned by this agent."}
         </div>
         {isMe && (
-          <button
-            type="button"
-            onClick={() => navigate("/propose")}
-            style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "var(--accent-fg)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+          <Link
+            to="/propose"
+            style={{
+              marginTop: 6,
+              textDecoration: "underline",
+              color: "var(--accent-fg)",
+              fontWeight: 700,
+              fontFamily: "inherit",
+              fontSize: "inherit",
+            }}
           >
             Propose a project →
-          </button>
+          </Link>
         )}
       </div>
     );
   }
-  return <ProjectsTable projects={projects} navigate={navigate} />;
+  return <ProjectsTable projects={projects} />;
 }
 
 // ─────────────────────── TonConnect wallet binding ───────────────────────
@@ -331,7 +551,8 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
   // only consume tonProof envelopes generated for the current bind attempt
   // (not stale ones from earlier sessions).
   const pendingPayload = useRef(null);
-  const boundAddress = agent.ton_wallet_address || viewer?.ton_wallet_address || null;
+  const boundAddress =
+    agent.ton_wallet_address || viewer?.ton_wallet_address || null;
   const linkedAt = agent.wallet_linked_at || viewer?.wallet_linked_at || null;
 
   async function startBind() {
@@ -361,7 +582,9 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
         } else if (res?.status === 503) {
           msg = "TON Connect is not configured on the server right now.";
         } else if (res?.status) {
-          msg = res?.data?.error || `Couldn't get a proof challenge (HTTP ${res.status}).`;
+          msg =
+            res?.data?.error ||
+            `Couldn't get a proof challenge (HTTP ${res.status}).`;
         } else {
           msg = "Couldn't get a proof challenge from the server. Try again.";
         }
@@ -439,27 +662,46 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
       } else if (res.status === 401) {
         setErrorMsg("Your session expired. Sign in again, then retry.");
       } else {
-        setErrorMsg(res.data?.error || res.data?.message || `Bind failed (HTTP ${res.status}).`);
+        setErrorMsg(
+          res.data?.error ||
+            res.data?.message ||
+            `Bind failed (HTTP ${res.status}).`,
+        );
       }
       setPhase("error");
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [wallet, phase, token, onBound]);
 
   // Already bound — render a status card with the address.
   if (boundAddress && phase !== "signing" && phase !== "binding") {
     return (
-      <div style={{
-        margin: "0 0 24px",
-        padding: "14px 16px",
-        border: "1px solid var(--accent)",
-        borderRadius: 10,
-        background: "var(--accent-soft)",
-        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-      }}>
+      <div
+        style={{
+          margin: "0 0 24px",
+          padding: "14px 16px",
+          border: "1px solid var(--accent)",
+          borderRadius: 10,
+          background: "var(--accent-soft)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <Icon name="zap" size={14} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "var(--accent-fg)", textTransform: "uppercase" }}>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              color: "var(--accent-fg)",
+              textTransform: "uppercase",
+            }}
+          >
             TON wallet bound
           </div>
           <a
@@ -468,15 +710,21 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
             rel="noreferrer"
             title={boundAddress}
             style={{
-              display: "inline-block", marginTop: 2,
-              fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 700,
-              color: "var(--fg)", textDecoration: "none",
+              display: "inline-block",
+              marginTop: 2,
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: 12,
+              fontWeight: 700,
+              color: "var(--fg)",
+              textDecoration: "none",
             }}
           >
             {shortAddr(boundAddress)}
           </a>
           {linkedAt && (
-            <span style={{ marginLeft: 10, fontSize: 11, color: "var(--fg-muted)" }}>
+            <span
+              style={{ marginLeft: 10, fontSize: 11, color: "var(--fg-muted)" }}
+            >
               linked {fmtDate(linkedAt)}
             </span>
           )}
@@ -504,58 +752,107 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
   // case so the user understands binding is unlocking real money, not a
   // future-only setup step.
   const pendingTonNano = Number(payoutSummary?.pending?.ton_nano) || 0;
-  const lifetimeCount  = Number(payoutSummary?.lifetime?.payout_count) || 0;
-  const pendingCount   = Number(payoutSummary?.pending?.payout_count) || 0;
-  const hasStuckMoney  = !boundAddress && (pendingTonNano > 0 || lifetimeCount > 0 || pendingCount > 0);
-  const stuckTon = (pendingTonNano / 1e9).toLocaleString(undefined, { maximumFractionDigits: 3 });
+  const lifetimeCount = Number(payoutSummary?.lifetime?.payout_count) || 0;
+  const pendingCount = Number(payoutSummary?.pending?.payout_count) || 0;
+  const hasStuckMoney =
+    !boundAddress &&
+    (pendingTonNano > 0 || lifetimeCount > 0 || pendingCount > 0);
+  const stuckTon = (pendingTonNano / 1e9).toLocaleString(undefined, {
+    maximumFractionDigits: 3,
+  });
 
   return (
-    <div style={{
-      margin: "0 0 24px",
-      padding: "16px 18px",
-      border: hasStuckMoney ? "1px solid oklch(0.75 0.12 80)" : "1px dashed var(--border-strong)",
-      borderRadius: 10,
-      background: hasStuckMoney ? "oklch(0.97 0.04 80)" : "var(--bg-soft)",
-    }}>
-      <div className="agnt-resp-wallet-row" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+    <div
+      style={{
+        margin: "0 0 24px",
+        padding: "16px 18px",
+        border: hasStuckMoney
+          ? "1px solid oklch(0.75 0.12 80)"
+          : "1px dashed var(--border-strong)",
+        borderRadius: 10,
+        background: hasStuckMoney ? "oklch(0.97 0.04 80)" : "var(--bg-soft)",
+      }}
+    >
+      <div
+        className="agnt-resp-wallet-row"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{
-            fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
-            color: hasStuckMoney ? "#b45309" : "var(--fg-muted)",
-            textTransform: "uppercase",
-          }}>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              color: hasStuckMoney ? "#b45309" : "var(--fg-muted)",
+              textTransform: "uppercase",
+            }}
+          >
             {hasStuckMoney
               ? "⚠ Earnings waiting — bind a wallet"
               : "Bind a TON wallet"}
           </div>
-          <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5, maxWidth: "60ch" }}>
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 12.5,
+              color: "var(--fg)",
+              lineHeight: 1.5,
+              maxWidth: "60ch",
+            }}
+          >
             {hasStuckMoney ? (
               <>
-                You have {pendingTonNano > 0 ? <strong>{stuckTon} TON</strong> : null}
-                {pendingTonNano > 0 && pendingCount + lifetimeCount > 0 ? " plus " : null}
-                {pendingCount + lifetimeCount > 0 ? <strong>{pendingCount + lifetimeCount} payout{(pendingCount + lifetimeCount) === 1 ? "" : "s"}</strong> : null} from solved tasks waiting for a wallet. Bind one and the platform will settle them on the next payout cycle (daily, 00:30 UTC).
+                You have{" "}
+                {pendingTonNano > 0 ? <strong>{stuckTon} TON</strong> : null}
+                {pendingTonNano > 0 && pendingCount + lifetimeCount > 0
+                  ? " plus "
+                  : null}
+                {pendingCount + lifetimeCount > 0 ? (
+                  <strong>
+                    {pendingCount + lifetimeCount} payout
+                    {pendingCount + lifetimeCount === 1 ? "" : "s"}
+                  </strong>
+                ) : null}{" "}
+                from solved tasks waiting for a wallet. Bind one and the
+                platform will settle them on the next payout cycle (daily, 00:30
+                UTC).
               </>
-            ) : "Connecting a wallet proves you own this address and lets the platform credit reward-pool payouts and owner-share tokens to it."}
+            ) : (
+              "Connecting a wallet proves you own this address and lets the platform credit reward-pool payouts and owner-share tokens to it."
+            )}
           </div>
         </div>
         <button
           type="button"
           className="btn btn-accent"
           onClick={startBind}
-          disabled={phase === "requesting" || phase === "signing" || phase === "binding"}
+          disabled={
+            phase === "requesting" || phase === "signing" || phase === "binding"
+          }
           style={{ minWidth: 180, justifyContent: "center" }}
         >
-          <Icon name="zap" size={12} /> {labelByPhase[phase] || "Connect TON wallet"}
+          <Icon name="zap" size={12} />{" "}
+          {labelByPhase[phase] || "Connect TON wallet"}
         </button>
       </div>
 
       {errorMsg && (
-        <div style={{
-          marginTop: 12, padding: 10,
-          border: "1px solid var(--danger)", borderRadius: 6,
-          background: "var(--danger-soft)", color: "var(--danger)",
-          fontSize: 12,
-        }}>
+        <div
+          style={{
+            marginTop: 12,
+            padding: 10,
+            border: "1px solid var(--danger)",
+            borderRadius: 6,
+            background: "var(--danger-soft)",
+            color: "var(--danger)",
+            fontSize: 12,
+          }}
+        >
           {errorMsg}
         </div>
       )}
@@ -563,84 +860,158 @@ function WalletBindCard({ agent, viewer, token, onBound, payoutSummary }) {
   );
 }
 
-function ProjectsTable({ projects, navigate }) {
+function ProjectsTable({ projects }) {
   return (
-    <div className="agnt-resp-h-scroll" style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+    <div
+      className="agnt-resp-h-scroll"
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        overflow: "hidden",
+        background: "var(--bg)",
+      }}
+    >
       <div className="agnt-resp-h-scroll-inner">
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 2fr) 110px 140px 110px",
-        padding: "10px 16px",
-        background: "var(--bg-soft)",
-        fontSize: 9.5, color: "var(--fg-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 800,
-        borderBottom: "1px solid var(--border)",
-      }}>
-        <span>Project</span>
-        <span style={{ textAlign: "right" }}>Status</span>
-        <span style={{ textAlign: "right" }}>Reward pool</span>
-        <span style={{ textAlign: "right" }}>Created</span>
-      </div>
-      {projects.map((p) => {
-        const status = PROJECT_STATUS_CFG[p.status] || { bg: "var(--bg-tint)", fg: "var(--fg-muted)", label: p.status || "—" };
-        const tonPool = p.ton_reward_pool_nano != null ? Number(p.ton_reward_pool_nano) / 1e9 : 0;
-        const created = p.created_at ? new Date(p.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "—";
-        return (
-          <div
-            key={p.id}
-            onClick={() => navigate(`/projects/${p.slug || p.id}`)}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 2fr) 110px 140px 110px",
-              alignItems: "center",
-              padding: "12px 16px",
-              borderBottom: "1px solid var(--border)",
-              fontSize: 12.5,
-              cursor: "pointer",
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>
-                {p.name || p.slug}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 2fr) 110px 140px 110px",
+            padding: "10px 16px",
+            background: "var(--bg-soft)",
+            fontSize: 9.5,
+            color: "var(--fg-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            fontWeight: 800,
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <span>Project</span>
+          <span style={{ textAlign: "right" }}>Status</span>
+          <span style={{ textAlign: "right" }}>Reward pool</span>
+          <span style={{ textAlign: "right" }}>Created</span>
+        </div>
+        {projects.map((p) => {
+          const status = PROJECT_STATUS_CFG[p.status] || {
+            bg: "var(--bg-tint)",
+            fg: "var(--fg-muted)",
+            label: p.status || "—",
+          };
+          const tonPool =
+            p.ton_reward_pool_nano != null
+              ? Number(p.ton_reward_pool_nano) / 1e9
+              : 0;
+          const created = p.created_at
+            ? new Date(p.created_at).toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })
+            : "—";
+          return (
+            <Link
+              key={p.id}
+              to={`/projects/${p.slug || p.id}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 2fr) 110px 140px 110px",
+                alignItems: "center",
+                padding: "12px 16px",
+                borderBottom: "1px solid var(--border)",
+                fontSize: 12.5,
+                cursor: "pointer",
+                textDecoration: "none",
+                color: "inherit",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontFamily: "JetBrains Mono, monospace",
+                  }}
+                >
+                  {p.name || p.slug}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--fg-muted)",
+                    fontFamily: "JetBrains Mono, monospace",
+                    marginTop: 2,
+                  }}
+                >
+                  ${p.token_symbol || "TBD"}
+                  {p.github_repo_url && (
+                    <>
+                      {" · "}
+                      <a
+                        href={p.github_repo_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          color: "var(--fg-muted)",
+                          textDecoration: "none",
+                        }}
+                      >
+                        {p.github_repo_url.replace(
+                          /^https?:\/\/github\.com\//,
+                          "",
+                        )}
+                      </a>
+                    </>
+                  )}
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: "var(--fg-muted)", fontFamily: "JetBrains Mono, monospace", marginTop: 2 }}>
-                ${p.token_symbol || "TBD"}
-                {p.github_repo_url && (
-                  <>
-                    {" · "}
-                    <a
-                      href={p.github_repo_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ color: "var(--fg-muted)", textDecoration: "none" }}
-                    >
-                      {p.github_repo_url.replace(/^https?:\/\/github\.com\//, "")}
-                    </a>
-                  </>
-                )}
-              </div>
-            </div>
-            <span style={{ textAlign: "right" }}>
-              <span style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "2px 8px", borderRadius: 999,
-                background: status.bg, color: status.fg,
-                fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 800,
-                textTransform: "uppercase", letterSpacing: "0.05em",
-              }}>
-                {p.status === "live" && <span className="live-dot" />}
-                {status.label}
+              <span style={{ textAlign: "right" }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: status.bg,
+                    color: status.fg,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 10,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {p.status === "live" && <span className="live-dot" />}
+                  {status.label}
+                </span>
               </span>
-            </span>
-            <span style={{ textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: tonPool > 0 ? "var(--accent-fg)" : "var(--fg-muted)" }}>
-              ◇ {tonPool.toLocaleString(undefined, { maximumFractionDigits: 3 })} TON
-            </span>
-            <span style={{ textAlign: "right", fontSize: 11, color: "var(--fg-muted)" }}>
-              {created}
-            </span>
-          </div>
-        );
-      })}
+              <span
+                style={{
+                  textAlign: "right",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontWeight: 700,
+                  fontVariantNumeric: "tabular-nums",
+                  color: tonPool > 0 ? "var(--accent-fg)" : "var(--fg-muted)",
+                }}
+              >
+                ◇{" "}
+                {tonPool.toLocaleString(undefined, {
+                  maximumFractionDigits: 3,
+                })}{" "}
+                TON
+              </span>
+              <span
+                style={{
+                  textAlign: "right",
+                  fontSize: 11,
+                  color: "var(--fg-muted)",
+                }}
+              >
+                {created}
+              </span>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
@@ -678,12 +1049,21 @@ function PayoutsPanel({ agentId, isMe }) {
       setSchedule(sch || null);
       setLoading(false);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [agentId, isMe]);
 
   if (loading) {
     return (
-      <div style={{ padding: "28px 0", color: "var(--fg-muted)", fontSize: 12.5, textAlign: "center" }}>
+      <div
+        style={{
+          padding: "28px 0",
+          color: "var(--fg-muted)",
+          fontSize: 12.5,
+          textAlign: "center",
+        }}
+      >
         Loading payouts…
       </div>
     );
@@ -693,14 +1073,18 @@ function PayoutsPanel({ agentId, isMe }) {
   // state instead of a console error when summary is null.
   if (!summary) {
     return (
-      <div style={{
-        margin: "8px 0 24px",
-        padding: 18,
-        border: "1px dashed var(--border)",
-        borderRadius: 10,
-        background: "var(--bg-soft)",
-        fontSize: 12, color: "var(--fg-muted)", textAlign: "center",
-      }}>
+      <div
+        style={{
+          margin: "8px 0 24px",
+          padding: 18,
+          border: "1px dashed var(--border)",
+          borderRadius: 10,
+          background: "var(--bg-soft)",
+          fontSize: 12,
+          color: "var(--fg-muted)",
+          textAlign: "center",
+        }}
+      >
         Payouts not available yet for this agent.
       </div>
     );
@@ -708,11 +1092,30 @@ function PayoutsPanel({ agentId, isMe }) {
 
   return (
     <section style={{ margin: "4px 0 28px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 12, borderBottom: "1px solid var(--border)" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingBottom: 12,
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 13,
+            fontWeight: 800,
+          }}
+        >
           <Icon name="zap" size={12} /> Payouts
-          <span style={{ fontSize: 10, color: "var(--fg-muted)", fontWeight: 600 }}>
-            {summary.projects_paid ?? 0} project{summary.projects_paid === 1 ? "" : "s"}
+          <span
+            style={{ fontSize: 10, color: "var(--fg-muted)", fontWeight: 600 }}
+          >
+            {summary.projects_paid ?? 0} project
+            {summary.projects_paid === 1 ? "" : "s"}
           </span>
         </div>
         {schedule && <NextPayoutChip schedule={schedule} />}
@@ -739,4 +1142,3 @@ function PayoutsPanel({ agentId, isMe }) {
     </section>
   );
 }
-

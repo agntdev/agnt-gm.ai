@@ -8,18 +8,34 @@
 // timeline + per-milestone blocks).
 
 import { useMemo } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Icon, AgentAvatar } from "../components/atoms.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
 import ProjectFactsRail from "../components/ProjectFactsRail.jsx";
 import { useAuth } from "../lib/auth.js";
 
 const TASK_STATUS_CFG = {
-  open:        { bg: "var(--bg-tint)",       fg: "var(--fg)",            label: "open" },
-  in_progress: { bg: "oklch(0.95 0.06 240)", fg: "oklch(0.42 0.14 240)", label: "claimed" },
-  in_review:   { bg: "oklch(0.95 0.06 60)",  fg: "oklch(0.42 0.13 60)",  label: "in review" },
-  done:        { bg: "oklch(0.94 0.08 145)", fg: "oklch(0.32 0.12 150)", label: "merged" },
-  cancelled:   { bg: "var(--danger-soft)",   fg: "var(--danger)",        label: "cancelled" },
+  open: { bg: "var(--bg-tint)", fg: "var(--fg)", label: "open" },
+  in_progress: {
+    bg: "oklch(0.95 0.06 240)",
+    fg: "oklch(0.42 0.14 240)",
+    label: "claimed",
+  },
+  in_review: {
+    bg: "oklch(0.95 0.06 60)",
+    fg: "oklch(0.42 0.13 60)",
+    label: "in review",
+  },
+  done: {
+    bg: "oklch(0.94 0.08 145)",
+    fg: "oklch(0.32 0.12 150)",
+    label: "merged",
+  },
+  cancelled: {
+    bg: "var(--danger-soft)",
+    fg: "var(--danger)",
+    label: "cancelled",
+  },
 };
 
 // Tasks come back from /builder/projects/:slug/tasks with reward_amount in
@@ -67,13 +83,14 @@ function TaskRow({ task, decimals, sym, tonPool }) {
   const prUrl = task.pr_url;
   const prNumber = task.pr_number;
 
-  const fallbackAgent = !prAuthorName && task.solved_by_agent_id
-    ? {
-        name: task.solved_by_agent_id.slice(0, 8),
-        avatar: task.solved_by_agent_id.slice(0, 2).toUpperCase(),
-        color: "var(--bg-tint)",
-      }
-    : null;
+  const fallbackAgent =
+    !prAuthorName && task.solved_by_agent_id
+      ? {
+          name: task.solved_by_agent_id.slice(0, 8),
+          avatar: task.solved_by_agent_id.slice(0, 2).toUpperCase(),
+          color: "var(--bg-tint)",
+        }
+      : null;
 
   return (
     <div className="ms-task-row">
@@ -81,13 +98,24 @@ function TaskRow({ task, decimals, sym, tonPool }) {
       <div className="ms-task-title">
         <div>
           {task.github_issue_url ? (
-            <a href={task.github_issue_url} target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
+            <a
+              href={task.github_issue_url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "inherit" }}
+            >
               {task.title}
             </a>
-          ) : task.title}
+          ) : (
+            task.title
+          )}
         </div>
         <div className="ms-task-labels">
-          {task.difficulty && <span className={`task-label diff-${task.difficulty}`}>{task.difficulty}</span>}
+          {task.difficulty && (
+            <span className={`task-label diff-${task.difficulty}`}>
+              {task.difficulty}
+            </span>
+          )}
           {task.estimated_hours != null && (
             <span className="task-label">~{task.estimated_hours}h</span>
           )}
@@ -105,17 +133,45 @@ function TaskRow({ task, decimals, sym, tonPool }) {
                 style={{ borderRadius: "50%", flexShrink: 0 }}
               />
             ) : (
-              <AgentAvatar agent={{ name: prAuthorName, avatar: prAuthorName.slice(0, 2).toUpperCase(), color: "var(--bg-tint)" }} size={18} />
+              <AgentAvatar
+                agent={{
+                  name: prAuthorName,
+                  avatar: prAuthorName.slice(0, 2).toUpperCase(),
+                  color: "var(--bg-tint)",
+                }}
+                size={18}
+              />
             )}
-            <span style={{ fontFamily: "JetBrains Mono, monospace", display: "inline-flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{prAuthorName}</span>
+            <span
+              style={{
+                fontFamily: "JetBrains Mono, monospace",
+                display: "inline-flex",
+                alignItems: "baseline",
+                gap: 6,
+                minWidth: 0,
+              }}
+            >
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                @{prAuthorName}
+              </span>
               {prUrl && prNumber != null && (
                 <a
                   href={prUrl}
                   target="_blank"
                   rel="noreferrer"
                   title={`View PR #${prNumber} on GitHub`}
-                  style={{ fontSize: 10.5, color: "var(--accent-fg)", textDecoration: "none", fontWeight: 700 }}
+                  style={{
+                    fontSize: 10.5,
+                    color: "var(--accent-fg)",
+                    textDecoration: "none",
+                    fontWeight: 700,
+                  }}
                 >
                   PR #{prNumber} ↗
                 </a>
@@ -125,27 +181,39 @@ function TaskRow({ task, decimals, sym, tonPool }) {
         ) : fallbackAgent ? (
           <>
             <AgentAvatar agent={fallbackAgent} size={18} />
-            <span style={{ fontFamily: "JetBrains Mono, monospace" }}>{fallbackAgent.name}</span>
+            <span style={{ fontFamily: "JetBrains Mono, monospace" }}>
+              {fallbackAgent.name}
+            </span>
           </>
         ) : (
           <span style={{ color: "var(--fg-muted)" }}>—</span>
         )}
       </div>
       <div className="ms-task-reward">
-        <span className="est">{fmtReward(task.reward_amount, decimals, sym)}</span>
+        <span className="est">
+          {fmtReward(task.reward_amount, decimals, sym)}
+        </span>
         {(() => {
           const ton = fmtTonReward(task, tonPool);
           return ton ? (
             <span
               className="est"
-              style={{ color: "var(--accent-fg)", fontWeight: 700, marginTop: 2, display: "block" }}
+              style={{
+                color: "var(--accent-fg)",
+                fontWeight: 700,
+                marginTop: 2,
+                display: "block",
+              }}
             >
               + {ton}
             </span>
           ) : null;
         })()}
       </div>
-      <span className="ms-task-status" style={{ background: cfg.bg, color: cfg.fg }}>
+      <span
+        className="ms-task-status"
+        style={{ background: cfg.bg, color: cfg.fg }}
+      >
         {cfg.label}
       </span>
     </div>
@@ -154,28 +222,39 @@ function TaskRow({ task, decimals, sym, tonPool }) {
 
 export default function Milestones() {
   const { slug } = useParams();
-  const navigate = useNavigate();
-  const { live, liveTasks, taskCount, owner, loading, refresh } = useProjectData(slug);
+  const { live, liveTasks, taskCount, owner, loading, refresh } =
+    useProjectData(slug);
   const { agent: meAgent } = useAuth();
   const isOwner = !!meAgent && !!live && meAgent.id === live.owner_agent_id;
 
   const tasks = liveTasks || [];
   const decimals = live?.token_decimals ?? 0;
   const sym = live?.token_symbol || "TBD";
-  const tonPool = live?.ton_reward_pool_nano != null
-    ? Number(live.ton_reward_pool_nano) / 1e9
-    : null;
+  const tonPool =
+    live?.ton_reward_pool_nano != null
+      ? Number(live.ton_reward_pool_nano) / 1e9
+      : null;
 
   // Sort: open first, then in_progress, in_review, done, cancelled.
   const sortedTasks = useMemo(() => {
-    const order = { open: 0, in_progress: 1, in_review: 2, done: 3, cancelled: 4 };
-    return [...tasks].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+    const order = {
+      open: 0,
+      in_progress: 1,
+      in_review: 2,
+      done: 3,
+      cancelled: 4,
+    };
+    return [...tasks].sort(
+      (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9),
+    );
   }, [tasks]);
 
   const totals = {
     total: tasks.length,
     open: tasks.filter((t) => t.status === "open").length,
-    inFlight: tasks.filter((t) => t.status === "in_progress" || t.status === "in_review").length,
+    inFlight: tasks.filter(
+      (t) => t.status === "in_progress" || t.status === "in_review",
+    ).length,
     merged: tasks.filter((t) => t.status === "done").length,
   };
 
@@ -183,7 +262,14 @@ export default function Milestones() {
     return (
       <main data-screen-label="03 Tasks">
         <section className="container">
-          <div style={{ padding: "60px 0", color: "var(--fg-muted)", fontSize: 13, textAlign: "center" }}>
+          <div
+            style={{
+              padding: "60px 0",
+              color: "var(--fg-muted)",
+              fontSize: 13,
+              textAlign: "center",
+            }}
+          >
             Loading project…
           </div>
         </section>
@@ -195,17 +281,34 @@ export default function Milestones() {
     return (
       <main data-screen-label="03 Tasks">
         <section className="container" style={{ paddingTop: 60 }}>
-          <div style={{
-            padding: 40, border: "1px dashed var(--border-strong)", borderRadius: 10,
-            background: "var(--bg-soft)", textAlign: "center",
-          }}>
+          <div
+            style={{
+              padding: 40,
+              border: "1px dashed var(--border-strong)",
+              borderRadius: 10,
+              background: "var(--bg-soft)",
+              textAlign: "center",
+            }}
+          >
             <h2 style={{ margin: 0, fontSize: 18 }}>Project not found</h2>
             <p style={{ marginTop: 8, fontSize: 13, color: "var(--fg-muted)" }}>
-              No project at <code style={{ fontFamily: "JetBrains Mono, monospace" }}>{slug}</code>.
+              No project at{" "}
+              <code style={{ fontFamily: "JetBrains Mono, monospace" }}>
+                {slug}
+              </code>
+              .
             </p>
-            <button type="button" className="btn" onClick={() => navigate("/")} style={{ marginTop: 14 }}>
+            <Link
+              to="/"
+              className="btn"
+              style={{
+                marginTop: 14,
+                textDecoration: "none",
+                display: "inline-block",
+              }}
+            >
               ← Back to Pulse
-            </button>
+            </Link>
           </div>
         </section>
       </main>
@@ -215,11 +318,7 @@ export default function Milestones() {
   return (
     <main data-screen-label="03 Tasks">
       <section className="container">
-        <ProjectHero
-          live={live}
-          taskCount={taskCount}
-          activeTab="tasks-page"
-        >
+        <ProjectHero live={live} taskCount={taskCount} activeTab="tasks-page">
           <div style={{ marginTop: 8, marginBottom: 8 }}>
             <ProjectFactsRail
               live={live}
@@ -239,7 +338,12 @@ export default function Milestones() {
             </div>
             <div className="ms-stat">
               <div className="ms-stat-label">Open</div>
-              <div className="ms-stat-val" style={{ color: "var(--accent-fg)" }}>{totals.open}</div>
+              <div
+                className="ms-stat-val"
+                style={{ color: "var(--accent-fg)" }}
+              >
+                {totals.open}
+              </div>
             </div>
             <div className="ms-stat">
               <div className="ms-stat-label">In flight</div>
@@ -251,13 +355,36 @@ export default function Milestones() {
             </div>
           </div>
 
-          <div className="ms-tasks-scroll" style={{ marginTop: 24, border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+          <div
+            className="ms-tasks-scroll"
+            style={{
+              marginTop: 24,
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              overflow: "hidden",
+              background: "var(--bg)",
+            }}
+          >
             {liveTasks === null ? (
-              <div style={{ padding: 32, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>
+              <div
+                style={{
+                  padding: 32,
+                  textAlign: "center",
+                  color: "var(--fg-muted)",
+                  fontSize: 13,
+                }}
+              >
                 Loading tasks…
               </div>
             ) : sortedTasks.length === 0 ? (
-              <div style={{ padding: 40, textAlign: "center", color: "var(--fg-muted)", fontSize: 13 }}>
+              <div
+                style={{
+                  padding: 40,
+                  textAlign: "center",
+                  color: "var(--fg-muted)",
+                  fontSize: 13,
+                }}
+              >
                 No tasks yet for this project.
               </div>
             ) : (
@@ -270,12 +397,17 @@ export default function Milestones() {
                   <span>STATUS</span>
                 </div>
                 {sortedTasks.map((t) => (
-                  <TaskRow key={t.id || t.slug} task={t} decimals={decimals} sym={sym} tonPool={tonPool} />
+                  <TaskRow
+                    key={t.id || t.slug}
+                    task={t}
+                    decimals={decimals}
+                    sym={sym}
+                    tonPool={tonPool}
+                  />
                 ))}
               </div>
             )}
           </div>
-
         </div>
       </section>
     </main>
