@@ -1,19 +1,21 @@
 /* AgntM Pad — meme-token-by-agent launchpad */
 
 :root {
-  --bg: #ffffff;
-  --bg-soft: #fafaf9;
-  --bg-tint: #f5f5f4;
-  --fg: #0a0a0a;
-  --fg-muted: #71717a;
-  --fg-subtle: #a1a1aa;
-  --border: #e7e5e4;
-  --border-strong: #d6d3d1;
-  --accent: oklch(0.65 0.18 250);     /* electric blue */
+  /* Telegram Mini App theme vars (set by SDK bindThemeParamsCssVars).
+     Fall back to our light defaults when outside Telegram. */
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --bg-soft: var(--tg-theme-secondary-bg-color, #fafaf9);
+  --bg-tint: var(--tg-theme-section-bg-color, #f5f5f4);
+  --fg: var(--tg-theme-text-color, #0a0a0a);
+  --fg-muted: var(--tg-theme-hint-color, #71717a);
+  --fg-subtle: var(--tg-theme-subtitle-text-color, #a1a1aa);
+  --border: var(--tg-theme-section-separator-color, #e7e5e4);
+  --border-strong: var(--tg-theme-section-separator-color, #d6d3d1);
+  --accent: var(--tg-theme-button-color, oklch(0.65 0.18 250));
   --accent-soft: oklch(0.95 0.05 250);
-  --accent-fg: oklch(0.45 0.18 250);
+  --accent-fg: var(--tg-theme-button-text-color, oklch(0.45 0.18 250));
   --accent-hover: oklch(0.58 0.20 250);
-  --danger: #dc2626;
+  --danger: var(--tg-theme-destructive-text-color, #dc2626);
   --danger-soft: #fee2e2;
   --warn: #d97706;
   --warn-soft: #fef3c7;
@@ -21,11 +23,45 @@
   --radius-sm: 6px;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
   --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+
+  /* Telegram viewport safe area insets */
+  --sat: var(--tg-viewport-safe-area-inset-top, 0px);
+  --sab: var(--tg-viewport-safe-area-inset-bottom, 0px);
+  --sal: var(--tg-viewport-safe-area-inset-left, 0px);
+  --sar: var(--tg-viewport-safe-area-inset-right, 0px);
+  --csat: var(--tg-viewport-content-safe-area-inset-top, 0px);
+  --csab: var(--tg-viewport-content-safe-area-inset-bottom, 0px);
 }
 
 * { box-sizing: border-box; }
 
 html { font-size: 15px; }
+
+/* ── Telegram Mini App overrides ──
+   Only active when data-tg attribute is set on <html>. */
+[data-tg] {
+  /* Use Telegram's stable viewport height instead of 100vh */
+  --app-height: var(--tg-viewport-stable-height, 100vh);
+  /* Prevent iOS/Telegram overscroll bounce (Telegram only) */
+  overscroll-behavior: none;
+}
+[data-tg] .app {
+  min-height: var(--app-height, 100vh);
+}
+/* In Telegram's dark themes, lighten muted borders */
+[data-tg] .is-dark .token-stat-label,
+[data-tg] .is-dark .pr-row .feed-text,
+[data-tg] .is-dark .lb-row.head span {
+  opacity: 0.7;
+}
+/* Reduce aggressive shadows in Telegram (native feel) */
+[data-tg] .project-card:hover {
+  box-shadow: none;
+}
+/* Hide our footer when MainButton is visible (avoid overlapping) */
+[data-tg].has-main-button .footer {
+  padding-bottom: calc(18px + var(--sab) + 52px);
+}
 
 body {
   margin: 0;
@@ -34,6 +70,7 @@ body {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "ss01" on, "calt" on;
+  -webkit-overflow-scrolling: touch;
 }
 
 button { font-family: inherit; cursor: pointer; }
@@ -61,6 +98,7 @@ a { color: inherit; text-decoration: none; }
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   position: sticky; top: 0; z-index: 50;
+  padding-top: var(--sat); /* Telegram safe area */
 }
 .nav-inner {
   display: flex; align-items: center; gap: 8px;
@@ -129,6 +167,27 @@ a { color: inherit; text-decoration: none; }
 }
 .btn-sm { padding: 5px 10px; font-size: 11.5px; border-radius: 6px; }
 .btn-icon { padding: 6px; width: 30px; height: 30px; }
+
+/* Larger touch targets on mobile (Telegram / phone) */
+@media (max-width: 640px) {
+  .btn {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  .btn-sm {
+    padding: 7px 12px;
+    font-size: 12px;
+  }
+  .tab {
+    padding: 7px 14px;
+    font-size: 12.5px;
+  }
+  /* Make nav links easier to tap */
+  .nav-link {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+}
 
 .wallet-pill {
   display: inline-flex; align-items: center; gap: 8px;
@@ -215,7 +274,7 @@ h1 .punch { color: var(--accent-fg); }
 }
 
 /* section header */
-.section { padding: 28px 0; border-bottom: 1px solid var(--border); }
+.section { padding-top: 28px; padding-bottom: 28px; border-bottom: 1px solid var(--border); }
 .section:last-of-type { border-bottom: none; }
 .section-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -453,7 +512,7 @@ h1 .punch { color: var(--accent-fg); }
 /* footer */
 .footer {
   border-top: 1px solid var(--border);
-  padding: 18px 0;
+  padding: 18px 0 calc(18px + var(--sab));
   display: flex; justify-content: space-between;
   font-size: 11px; color: var(--fg-muted);
 }

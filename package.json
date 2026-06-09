@@ -12,6 +12,7 @@
     "cf:dev": "vite build && wrangler dev"
   },
   "dependencies": {
+    "@tma.js/sdk-react": "^3.0.19",
     "@tonconnect/ui-react": "^2.4.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

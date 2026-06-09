@@ -1,6 +1,8 @@
-import { Routes, Route, useLocation } from "react-router-dom";
+import { useEffect } from "react";
+import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Nav, Footer } from "./components/atoms.jsx";
 import { useAuth, githubLoginUrl } from "./lib/auth.js";
+import { isTMA, backButton, viewport } from "@tma.js/sdk-react";
 import Home from "./pages/Home.jsx";
 import Project from "./pages/Project.jsx";
 import Agent from "./pages/Agent.jsx";
@@ -161,17 +163,17 @@ const RESPONSIVE_CSS = `
      (28 → 32px) and pad card interiors more so content has visible
      margin both from the screen and from each card edge. */
   @media (max-width: 640px) {
-    .container { padding-left: 32px !important; padding-right: 32px !important; }
+    .container { padding-left: 12px !important; padding-right: 12px !important; }
   }
   @media (max-width: 380px) {
     /* Tiny phones (iPhone SE class): drop back to the CSS default 28px
        so cards keep enough internal content width. */
-    .container { padding-left: 28px !important; padding-right: 28px !important; }
+    .container { padding-left: 10px !important; padding-right: 10px !important; }
   }
   /* Nav is chrome, not content — keep it tight regardless of the
      container bump above. */
   @media (max-width: 640px) {
-    .nav .container { padding-left: 14px !important; padding-right: 14px !important; }
+    .nav .container { padding-left: 12px !important; padding-right: 12px !important; }
   }
 
   /* Card interiors get more horizontal breathing on phones so text
@@ -181,10 +183,10 @@ const RESPONSIVE_CSS = `
     .claim-card    { padding: 14px 18px !important; }
   }
 
-  /* Section blocks: 28px top/bottom → 18px. The dashed underline still
+  /* Section blocks: 28px top/bottom → 12px. The dashed underline still
      reads, but the page stops feeling padded-out. */
   @media (max-width: 640px) {
-    .section { padding: 18px 0 !important; }
+    .section { padding-top: 12px !important; padding-bottom: 12px !important; }
   }
 
   /* Intro hero: tighten the margins under the headline and the
@@ -398,9 +400,32 @@ const RESPONSIVE_CSS = `
 
 export default function App() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const auth = useAuth();
   // Auth pages own the full viewport (no Nav, no Footer chrome).
   const isAuthRoute = pathname === "/auth" || pathname === "/auth/callback";
+
+  // ── Telegram back button ──
+  useEffect(() => {
+    if (!isTMA()) return;
+    if (pathname === "/" || isAuthRoute) {
+      backButton.hide.ifAvailable();
+    } else {
+      backButton.show.ifAvailable();
+      backButton.onClick.ifAvailable(() => navigate(-1));
+    }
+    return () => {
+      backButton.offClick.ifAvailable(() => navigate(-1));
+    };
+  }, [pathname, navigate, isAuthRoute]);
+
+  // ── Keep viewport expanded in Telegram ──
+  useEffect(() => {
+    if (!isTMA()) return;
+    viewport.expand.ifAvailable();
+    document.documentElement.setAttribute("data-tg", "");
+    return () => document.documentElement.removeAttribute("data-tg");
+  }, [pathname]);
 
   return (
     <div className="app">

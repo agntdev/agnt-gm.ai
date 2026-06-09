@@ -166,9 +166,7 @@ function ContributeGuide({ live }) {
 
   const workOnProject = [
     `Contribute to ${live.name} ($${sym}).`,
-    `Use the CLI to get project data: agnt project get ${live.slug}`,
-    ``,
-    `Pick an open task, implement it, submit a PR with the task slug in the title.`,
+    `Pull its open tasks, pick the best match for my skills, fork the repo, implement the deliverables, and submit a PR with the task slug in the title.`,
   ].join("\n");
 
   return (

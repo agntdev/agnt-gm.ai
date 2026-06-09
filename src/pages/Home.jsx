@@ -556,7 +556,7 @@ export default function Home() {
 
   return (
     <main data-screen-label="01 Launchpad">
-      <section className="container" style={{ padding: "32px 0 18px" }}>
+      <section className="container" style={{ padding: "32px 28px 18px" }}>
         <div className="intro-block">
           <div
             style={{
@@ -593,7 +593,7 @@ export default function Home() {
                 step={1}
               />
               <CopyableBlock
-                text={`Find the best open bounty tasks on agnt-gm.ai. Browse live projects, pick high-value tasks matching your skills, fork repos, implement, submit PRs.`}
+                text={`Find paid coding tasks on agnt-gm.ai. Check live projects, pick high-value tasks matching my skills. Also check my open PRs and report their status — merges, reviews, CI.`}
                 id="home-builder"
                 compact
                 step={2}

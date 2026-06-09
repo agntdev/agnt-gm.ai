@@ -5,19 +5,9 @@ import {
   useTonConnectUI,
   useTonWallet,
 } from "@tonconnect/ui-react";
-import { CopyableBlock, Icon } from "../components/atoms.jsx";
-import {
-  Field,
-  ModeSwitcher,
-  RejectionBanner,
-  SectionHeader,
-  TasksEditor,
-  inputStyle,
-  monoInputStyle,
-} from "../components/manualForm.jsx";
+import { Icon } from "../components/atoms.jsx";
 import { buildCommentPayload } from "../components/ownerPayment.jsx";
 import { api, PLATFORM_TON_WALLET } from "../lib/api.js";
-import { validateManualPlan } from "../lib/manualPlan.js";
 import { useAuth, setManualToken, githubLoginUrl } from "../lib/auth.js";
 
 const POLL_INTERVAL_MS = 3000;
@@ -28,47 +18,14 @@ export default function Create() {
   const { token, agent } = useAuth();
   const [showTokenEdit, setShowTokenEdit] = useState(false);
 
-  const [form, setForm] = useState({
-    deadline: "7", // number-of-days as a string; one of "1" | "3" | "7" | "14"
-    ton_reward_pool: "5", // TON; converted to nano (×1e9) on submit
-    auto_merge_enabled: true, // PATCH-able later via /projects/:id/auto-merge
-  });
-  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  // Two creation modes:
-  //   agent  → owner pastes a CLI prompt; their agent runs create/fund/publish.
-  //   manual → full manual_plan via the form (owner authors everything; LLM
-  //            only enriches task title/weight/difficulty and moderates).
-  const [mode, setMode] = useState("agent");
-  const [manual, setManual] = useState(() => ({
-    name: "",
-    token_symbol: "",
-    total_supply: 1_000_000_000,
-    short_description: "",
-    about_of_project: "",
-    goal_of_project: "",
-    plan_md: "",
-    readme_md: "",
-    // owner_share_bps is forced to 0 in manual mode (agents get 100% of
-    // the mint). The UI used to expose it but it confused most owners,
-    // so we hide it and let the weight budget be a clean 1.00.
-    owner_share_bps: 0,
-    tasks: [],
-  }));
-  const setManualField = (k, v) => setManual((m) => ({ ...m, [k]: v }));
-
-  // Moderation rejection from the manual-mode flow (server returns 400
-  // with rejection_reason). Surfaced as a top-of-form RejectionBanner.
-  const [moderationReason, setModerationReason] = useState("");
-  // Shake the submit button briefly on client-side validation failure.
-  const [shakeKey, setShakeKey] = useState(0);
-
-  // Owner wallet comes entirely from TonConnect — no manual entry. Submission
-  // is blocked until a wallet is connected; on submit we pass the user-friendly
-  // address straight to the API.
-  const tonAddress = useTonAddress();
-  const tonWallet = useTonWallet();
-  const [tonConnectUI] = useTonConnectUI();
+  // Single-flow form: user pastes the bot idea in plain text, backend LLM
+  // plans the project (name, token, tasks, plan_md, readme_md). Funding
+  // params stay in the form (pool + deadline) since they're owner choices
+  // the LLM can't pick.
+  const [rawIdea, setRawIdea] = useState("");
+  const [tonPool, setTonPool] = useState("5");       // TON; ×1e9 on submit
+  const [deadlineDays, setDeadlineDays] = useState("7");
+  const [autoMerge, setAutoMerge] = useState(true);
 
   // Submission lifecycle:
   //   "idle" → "submitting" → "polling" → ("ready" | "rejected" | "failed")
@@ -79,6 +36,7 @@ export default function Create() {
   const [phase, setPhase] = useState("idle");
   const [project, setProject] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [shakeKey, setShakeKey] = useState(0);
   const pollAbort = useRef(null);
 
   // Funding instructions returned by POST /builder/projects when the pool is
@@ -89,6 +47,7 @@ export default function Create() {
   const [fundingInstructions, setFundingInstructions] = useState(null);
   const [fundingTxHash, setFundingTxHash] = useState(null);
   const [fundingErr, setFundingErr] = useState("");
+  const [publishErr, setPublishErr] = useState("");
 
   useEffect(
     () => () => {
@@ -97,7 +56,50 @@ export default function Create() {
     [],
   );
 
+  // Owner wallet comes entirely from TonConnect — no manual entry. Submission
+  // is blocked until a wallet is connected; on submit we pass the user-friendly
+  // address straight to the API.
+  const tonAddress = useTonAddress();
+  const tonWallet = useTonWallet();
+  const [tonConnectUI] = useTonConnectUI();
   const walletMissing = !tonAddress;
+
+  // ── LLM-plan polling: raw_idea mode returns 202 with status=`validating`
+  // immediately, then the planner runs 30–90s in the background. Poll
+  // GET /builder/projects/:id until status leaves `validating`.
+  async function pollUntilReady(idOrSlug) {
+    const start = Date.now();
+    while (Date.now() - start < POLL_MAX_MS) {
+      const res = await api.getProject(idOrSlug);
+      if (res?.project) {
+        setProject(res.project);
+        if (res.project.status === "ready_to_publish") {
+          setPhase("ready");
+          return;
+        }
+        if (res.project.status === "rejected") {
+          setPhase("rejected");
+          setErrorMsg(
+            res.project.rejection_reason ||
+              "The validator rejected this project idea.",
+          );
+          return;
+        }
+        if (res.project.status === "failed") {
+          setPhase("failed");
+          setErrorMsg("Project generation failed. Please try again.");
+          return;
+        }
+      }
+      await new Promise((r) => {
+        pollAbort.current = setTimeout(r, POLL_INTERVAL_MS);
+      });
+    }
+    setPhase("failed");
+    setErrorMsg(
+      "Timed out waiting for the validator agent. The project may still complete — check the project page.",
+    );
+  }
 
   // After the user submits a funding tx via TonConnect, the API's deposit
   // watcher takes 10–60s to spot the transfer and flip ton_pool_funded_at.
@@ -122,9 +124,6 @@ export default function Create() {
         pollAbort.current = setTimeout(r, POLL_INTERVAL_MS);
       });
     }
-    // Timed out — leave the user on ReviewPanel. If we saw the deposit
-    // confirm but never flipped to `live`, the auto-publish must have
-    // stalled; the project page link in the panel still works.
     if (!everSawFunded) {
       setErrorMsg(
         "Timed out waiting for the deposit watcher. The transfer may still confirm later — check the project page.",
@@ -136,13 +135,13 @@ export default function Create() {
     setShakeKey((n) => n + 1);
   }
 
-  function handleApiResponse(res, opts = {}) {
+  function handleApiResponse(res) {
     if (res.status === 401 || res.status === 403) {
       setPhase("idle");
       setErrorMsg(
         token
           ? "Authorization rejected by the API. Token may be expired or invalid."
-          : "Authorization required. Sign in or paste a token above.",
+          : "Sign in to propose a project.",
       );
       setShowTokenEdit(true);
       return false;
@@ -157,10 +156,9 @@ export default function Create() {
       setErrorMsg("Builder feature is currently disabled on the server.");
       return false;
     }
-    if (res.status === 400 && opts.manual && res.data?.rejection_reason) {
-      setPhase("idle");
-      setModerationReason(res.data.rejection_reason);
-      triggerShake();
+    if (res.status === 400 && res.data?.rejection_reason) {
+      setPhase("failed");
+      setErrorMsg(res.data.rejection_reason);
       return false;
     }
     if (!res.ok) {
@@ -197,79 +195,68 @@ export default function Create() {
     setFundingErr("");
   }
 
-  async function onSubmitManual() {
-    setModerationReason("");
+  async function onSubmit(e) {
+    e?.preventDefault();
     setErrorMsg("");
-    const errs = validateManualPlan(manual, "project", {
-      descriptionsOnly: true,
-    });
-    if (errs.length > 0) {
-      setErrorMsg(errs[0]);
+
+    if (!token) {
+      setErrorMsg("Sign in with GitHub to propose a project.");
+      return;
+    }
+    // NOTE: TON wallet connect was made optional per founder decision
+    // ("skip payment"). The API ignores owner_wallet_address for
+    // authenticated callers and uses the agent's bound wallet instead,
+    // so we send the TonConnect value when present and a placeholder
+    // when not (still required by the body schema).
+    const idea = rawIdea.trim();
+    if (idea.length < 20) {
+      setErrorMsg("Describe your bot idea in at least 20 characters.");
+      triggerShake();
+      return;
+    }
+    if (idea.length > 10000) {
+      setErrorMsg("Keep the idea under 10,000 characters.");
       triggerShake();
       return;
     }
 
     setPhase("submitting");
 
-    // Build the body. `total_supply` is integer-stored in smallest units
-    // (×1e9) — we splice it in as a raw integer string so values up to
-    // 1T whole tokens (≈1e21 smallest units) survive JSON.stringify.
+    // The body schema requires a syntactically valid TON address even
+    // though the API ignores it for authed callers and uses the bound
+    // wallet instead. Validation runs before the "ignore" path, so a
+    // malformed placeholder gets rejected with 400. Use the agent's
+    // bound wallet when available, else the placeholder (only reachable
+    // when the agent has no wallet yet — admin can still publish).
+    const boundWallet = agent?.ton_wallet_address || "";
     const body = {
-      owner_wallet_address: tonAddress,
-      manual_plan: {
-        name: manual.name.trim(),
-        token_symbol: manual.token_symbol.trim().toUpperCase(),
-        total_supply: "__TS_PLACEHOLDER__",
-        short_description: manual.short_description.trim() || undefined,
-        about_of_project: manual.about_of_project.trim() || undefined,
-        goal_of_project: manual.goal_of_project.trim() || undefined,
-        plan_md: manual.plan_md.trim() || undefined,
-        readme_md: manual.readme_md.trim() || undefined,
-        owner_share_bps: Number(manual.owner_share_bps) || 0,
-        // Descriptions-only: the owner writes the description; the LLM
-        // assigns title / slug / weight / difficulty / tags on submit.
-        tasks: manual.tasks.map((t) => ({ body_md: t.body_md || "" })),
-      },
+      raw_idea: idea,
+      owner_wallet_address:
+        boundWallet || tonAddress || "EQD_____________placeholder_____________",
     };
-    const tonAmount = parseFloat(form.ton_reward_pool);
+    const tonAmount = parseFloat(tonPool);
     if (Number.isFinite(tonAmount) && tonAmount > 0) {
       body.ton_reward_pool_nano = Math.round(tonAmount * 1e9);
     }
-    if (form.deadline) {
-      const days = parseInt(form.deadline, 10);
-      if (Number.isFinite(days) && days > 0) {
-        body.deadline = new Date(Date.now() + days * 86400000).toISOString();
-      }
+    const days = parseInt(deadlineDays, 10);
+    if (Number.isFinite(days) && days > 0) {
+      body.deadline = new Date(Date.now() + days * 86400000).toISOString();
     }
-    body.auto_merge_enabled = !!form.auto_merge_enabled;
-    const supplyNano = (
-      BigInt(Math.trunc(Number(manual.total_supply))) * 1_000_000_000n
-    ).toString();
-    const bodyJson = JSON.stringify(body).replace(
-      `"__TS_PLACEHOLDER__"`,
-      supplyNano,
-    );
+    body.auto_merge_enabled = !!autoMerge;
 
-    const res = await api.createProjectRaw(bodyJson, token);
-    if (!handleApiResponse(res, { manual: true })) return;
-
-    // Manual-mode 201 already lands us on `ready_to_publish` — no
-    // background plan-gen step, so we skip the polling phase entirely.
+    const res = await api.createProject(body, token);
+    if (!handleApiResponse(res)) return;
     applyCreatedProject(res);
-    setPhase("ready");
-  }
 
-  async function onSubmit(e) {
-    e?.preventDefault();
-    if (walletMissing) {
-      setErrorMsg("Connect a TON wallet to set the owner address.");
-      return;
+    // raw_idea returns 202 with status=`validating`; poll until the LLM
+    // planner lands on `ready_to_publish` (or fails / gets rejected).
+    const initial = res.data?.project;
+    if (initial?.status === "validating") {
+      setPhase("polling");
+      pollUntilReady(initial.id || initial.slug);
+    } else {
+      setPhase("ready");
     }
-    if (!token) {
-      setShowTokenEdit(true);
-      return;
-    }
-    return onSubmitManual();
   }
 
   async function onFundPool() {
@@ -324,6 +311,20 @@ export default function Create() {
         setFundingErr(String(err?.message || err) || "Wallet transfer failed.");
       }
     }
+  }
+
+  // Manually publish the project (funder mode / 0 pool). POST /publish
+  // creates the GitHub repo, writes README, and opens one issue per
+  // task — a slow operation, so we poll for `live` afterwards (same
+  // loop the deposit-watcher path uses).
+  async function onPublish() {
+    if (!project) return;
+    setPublishErr("");
+    setPhase("publishing");
+    const idOrSlug = project.id || project.slug;
+    const res = await api.publishProject(idOrSlug, token);
+    if (!handleApiResponse(res)) return;
+    pollUntilFunded(idOrSlug);
   }
 
   // onPublish() was removed when the manual "Publish to GitHub" CTA
@@ -392,89 +393,352 @@ export default function Create() {
               lineHeight: 1.5,
             }}
           >
-            Describe what you want built. The validator agent generates a
-            project plan and a list of bounty tasks (~30–90s). Review it, then
-            publish to GitHub — agents start claiming tasks immediately.
+            Describe your Telegram bot idea. The validator agent writes the
+            project plan, README, and a list of bounty tasks (~30–90s). Review
+            it, optionally fund the pool, and the project auto-publishes to
+            GitHub.
           </p>
         </div>
 
-        <AuthRow
-          token={token}
-          agent={agent}
-          editing={showTokenEdit}
-          onEdit={() => setShowTokenEdit(true)}
-          onCancel={() => setShowTokenEdit(false)}
-          onSave={(v) => {
-            setManualToken(v);
-            setShowTokenEdit(false);
-          }}
-          onSignIn={() => {
-            window.location.href = githubLoginUrl();
-          }}
-        />
-
-        {phase === "idle" && (
-          <>
+        {phase === "idle" && !token && (
+          <div
+            style={{
+              marginTop: 22,
+              padding: 24,
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              background: "var(--bg)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 14,
+            }}
+          >
             <div
+              style={{ display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <Icon name="lock" size={14} />
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 16,
+                  fontFamily: "JetBrains Mono, monospace",
+                }}
+              >
+                Sign in to propose a project
+              </h2>
+            </div>
+            <p
+              style={{
+                fontSize: 13,
+                color: "var(--fg-muted)",
+                margin: 0,
+                lineHeight: 1.55,
+                maxWidth: "55ch",
+              }}
+            >
+              Project proposals need a GitHub identity so we can publish the
+              generated repo on your behalf. Already have an API key? Paste it
+              below.
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn btn-accent"
+                onClick={() => {
+                  window.location.href = githubLoginUrl();
+                }}
+              >
+                Sign in with GitHub
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowTokenEdit(true)}
+              >
+                Paste API key
+              </button>
+            </div>
+            {showTokenEdit && (
+              <div style={{ width: "100%", marginTop: 6 }}>
+                <AuthRow
+                  token={token}
+                  agent={agent}
+                  editing={showTokenEdit}
+                  onEdit={() => setShowTokenEdit(true)}
+                  onCancel={() => setShowTokenEdit(false)}
+                  onSave={(v) => {
+                    setManualToken(v);
+                    setShowTokenEdit(false);
+                  }}
+                  onSignIn={() => {
+                    window.location.href = githubLoginUrl();
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {phase === "idle" && token && (
+          <form onSubmit={onSubmit}>
+            <div
+              style={{
+                marginTop: 22,
+                padding: 20,
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                background: "var(--bg)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <Icon name="bot" size={16} />
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    fontFamily: "JetBrains Mono, monospace",
+                  }}
+                >
+                  Your Telegram bot idea
+                </h2>
+              </div>
+              <p
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--fg-muted)",
+                  lineHeight: 1.55,
+                  margin: "0 0 12px",
+                }}
+              >
+                Plain text. The validator uses this to pick a name, token
+                symbol, task list, and README. You can refine the plan after
+                the first pass.
+              </p>
+              <textarea
+                value={rawIdea}
+                onChange={(e) => setRawIdea(e.target.value)}
+                rows={7}
+                placeholder="e.g. A Telegram bot that tracks group-raid attendance for TON communities — admins create raids, members tap a button to check in, and the bot posts a daily leaderboard with token rewards for top attendees."
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontSize: 13,
+                  lineHeight: 1.55,
+                  background: "var(--bg)",
+                  color: "var(--fg)",
+                  resize: "vertical",
+                  minHeight: 140,
+                }}
+              />
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 11,
+                  color: "var(--fg-subtle)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 8,
+                }}
+              >
+                <span>20–10,000 characters</span>
+                <span>{rawIdea.length} / 10000</span>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                padding: 16,
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                background: "var(--bg-soft)",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    letterSpacing: "0.06em",
+                    color: "var(--fg-muted)",
+                    textTransform: "uppercase",
+                    marginBottom: 6,
+                  }}
+                >
+                  TON reward pool
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={tonPool}
+                  onChange={(e) => setTonPool(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 13,
+                    background: "var(--bg)",
+                    color: "var(--fg)",
+                  }}
+                />
+              </div>
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    letterSpacing: "0.06em",
+                    color: "var(--fg-muted)",
+                    textTransform: "uppercase",
+                    marginBottom: 6,
+                  }}
+                >
+                  Deadline (days)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={deadlineDays}
+                  onChange={(e) => setDeadlineDays(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    fontFamily: "JetBrains Mono, monospace",
+                    fontSize: 13,
+                    background: "var(--bg)",
+                    color: "var(--fg)",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                color: "var(--fg-muted)",
+              }}
+            >
+              <input
+                type="checkbox"
+                id="auto-merge"
+                checked={autoMerge}
+                onChange={(e) => setAutoMerge(e.target.checked)}
+                style={{ accentColor: "var(--accent)" }}
+              />
+              <label htmlFor="auto-merge" style={{ cursor: "pointer" }}>
+                Auto-merge the first passing PR per task (recommended)
+              </label>
+            </div>
+
+            {walletMissing && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  background: "var(--bg-soft)",
+                  fontSize: 12,
+                  color: "var(--fg-muted)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Icon name="info" size={12} />
+                <span style={{ flex: 1, minWidth: 200 }}>
+                  No TON wallet connected. Your agent's bound wallet will be
+                  used as the project owner. (Funder mode — no payment
+                  required.)
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => tonConnectUI.openModal()}
+                >
+                  Connect wallet
+                </button>
+              </div>
+            )}
+
+            {errorMsg && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  border: "1px solid var(--danger)",
+                  borderRadius: 8,
+                  background: "var(--danger-soft)",
+                  color: "var(--danger)",
+                  fontSize: 12.5,
+                }}
+              >
+                {errorMsg}
+              </div>
+            )}
+
+            <div
+              key={shakeKey}
               style={{
                 marginTop: 18,
                 display: "flex",
+                gap: 10,
                 alignItems: "center",
-                gap: 12,
                 flexWrap: "wrap",
+                animation: shakeKey ? "shake 0.4s" : "none",
               }}
             >
-              <ModeSwitcher
-                value={mode}
-                onChange={(m) => {
-                  setMode(m);
-                  setErrorMsg("");
-                  setModerationReason("");
+              <button
+                type="submit"
+                className="btn btn-accent"
+                style={{
+                  padding: "10px 18px",
+                  fontSize: 13,
+                  fontWeight: 800,
                 }}
-                options={[
-                  { value: "agent", label: "Agent", icon: "bot" },
-                  { value: "manual", label: "Manual", icon: "layers" },
-                ]}
-              />
+              >
+                <Icon name="sparkles" size={12} /> Generate project
+              </button>
               <span style={{ fontSize: 11.5, color: "var(--fg-subtle)" }}>
-                {mode === "agent"
-                  ? "Paste a prompt to your AI agent. It runs the CLI: create → fund → publish."
-                  : "Author the plan + every task yourself. The platform only moderates and assigns task weights."}
+                ~30–90s. The plan appears in the review panel below.
               </span>
             </div>
-
-            <RejectionBanner
-              reason={moderationReason}
-              onDismiss={() => setModerationReason("")}
-            />
-
-            {mode === "agent" ? (
-              <AgentCreatorCTA />
-            ) : (
-              <ManualForm
-                manual={manual}
-                setManualField={setManualField}
-                setManualTasks={(tasks) => setManualField("tasks", tasks)}
-                form={form}
-                setField={setField}
-                walletMissing={walletMissing}
-                onSubmit={onSubmit}
-                errorMsg={errorMsg}
-                shakeKey={shakeKey}
-                tonConnected={!!tonAddress}
-                tonAddress={tonAddress}
-                tonWalletName={
-                  tonWallet?.device?.appName || tonWallet?.name || null
-                }
-                onConnectWallet={() => tonConnectUI.openModal()}
-                onDisconnectWallet={() => tonConnectUI.disconnect()}
-              />
-            )}
-          </>
+          </form>
         )}
 
-        {phase === "submitting" && (
-          <ValidatingPanel phase={phase} project={project} />
+        {(phase === "submitting" || phase === "polling") && (
+          <ValidatingPanel
+            phase={phase === "submitting" ? "submitting" : "polling"}
+            project={project}
+          />
         )}
 
         {phase === "ready" && project && (
@@ -484,7 +748,18 @@ export default function Create() {
             fundingInstructions={fundingInstructions}
             fundingTxHash={fundingTxHash}
             fundingErr={fundingErr}
+            publishErr={publishErr}
             onFundPool={onFundPool}
+            onPublish={onPublish}
+          />
+        )}
+
+        {phase === "publishing" && project && (
+          <ValidatingPanel
+            phase="polling"
+            project={project}
+            title="Publishing to GitHub…"
+            subtitle="Creating the repository, writing the README, and opening one issue per task. Usually takes 10–60 seconds."
           />
         )}
 
@@ -505,6 +780,9 @@ export default function Create() {
 
 // ──────────────────────────── pieces ────────────────────────────
 
+// AuthRow — only the paste-token form. The "Sign in with GitHub" banner was
+// dropped from this page (the unauthed branch renders a full sign-in card
+// instead). Keep the form so power users can paste a long-lived amk_… key.
 function AuthRow({
   token,
   agent,
@@ -519,42 +797,7 @@ function AuthRow({
     setDraft(token);
   }, [token, editing]);
 
-  // Signed in: don't render an auth banner — the Nav already shows the user.
-  // Signed out: surface the sign-in / paste-token entry points.
-  if (!editing) {
-    if (token) return null;
-    return (
-      <div
-        style={{
-          marginTop: 18,
-          padding: "10px 14px",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          background: "var(--accent-soft)",
-          fontSize: 12,
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <Icon name="info" size={12} />
-        <span style={{ fontWeight: 700 }}>Sign-in required.</span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          <button type="button" className="btn btn-sm" onClick={onEdit}>
-            Paste token
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm btn-accent"
-            onClick={onSignIn}
-          >
-            Sign in with GitHub
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (!editing) return null;
 
   return (
     <form
@@ -632,692 +875,21 @@ function AuthRow({
   );
 }
 
+// ─────────────────────────── pieces ────────────────────────────
+// (ManualForm, AutoMergeToggle, PillSwitch, AgentCreatorCTA removed in
+// the raw_idea refactor — the LLM planner generates the plan, so the
 
-// ─────────────────────────── ManualForm ───────────────────────────
-//
-// Renders the structured plan: identity → tokenomics → pitch → plan/
-// docs (collapsible) → tasks → pool/deadline/wallet → submit. Same
-// inline-style aesthetic as Form for visual continuity.
-function ManualForm({
-  manual,
-  setManualField,
-  setManualTasks,
-  form,
-  setField,
-  walletMissing,
-  onSubmit,
-  errorMsg,
-  shakeKey,
-  tonConnected,
-  tonAddress,
-  tonWalletName,
-  onConnectWallet,
-  onDisconnectWallet,
-}) {
-  // "Customize defaults" lumps tokenomics + long-form pitch + plan/readme
-  // into a single collapsible. Default-collapsed because almost every
-  // owner ships with the defaults (1B supply · 0% share · short pitch
-  // only · no plan/readme). Opening it surfaces every advanced field
-  // without losing them.
-  const [customizeOpen, setCustomizeOpen] = useState(false);
-  const canSubmit =
-    !walletMissing &&
-    manual.name.trim() &&
-    manual.token_symbol.trim() &&
-    manual.tasks.length > 0;
-
-  // Summary chips on the collapsed customize header — owners see the
-  // effective defaults at a glance without expanding.
-  const customSummary = (() => {
-    const supply = Number(manual.total_supply) || 0;
-    const supplyShort =
-      supply >= 1e9
-        ? `${(supply / 1e9).toFixed(0)}B`
-        : supply >= 1e6
-          ? `${(supply / 1e6).toFixed(0)}M`
-          : supply.toLocaleString();
-    const sharePct = (Number(manual.owner_share_bps) || 0) / 100;
-    const hasAbout =
-      manual.about_of_project?.trim() || manual.goal_of_project?.trim();
-    const hasDocs = manual.plan_md?.trim() || manual.readme_md?.trim();
-    const chips = [`${supplyShort} supply`, `${sharePct}% owner share`];
-    if (hasAbout) chips.push("about + goal set");
-    if (hasDocs) chips.push("plan/readme set");
-    return chips.join(" · ");
-  })();
-
-  return (
-    <form
-      onSubmit={onSubmit}
-      style={{
-        marginTop: 18,
-        display: "grid",
-        gridTemplateColumns: "1fr",
-        gap: 22,
-      }}
-    >
-      <div className="create-form-card">
-        <SectionHeader
-          first
-          hint="What the project is called and the ticker for its token."
-        >
-          Project identity
-        </SectionHeader>
-        <div
-          className="agnt-resp-2col"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 200px",
-            gap: 12,
-            marginTop: 10,
-          }}
-        >
-          <Field label="Project name" hint="Up to 200 characters.">
-            <input
-              style={inputStyle}
-              value={manual.name}
-              maxLength={200}
-              placeholder="Happy Button v3"
-              onChange={(e) => setManualField("name", e.target.value)}
-            />
-          </Field>
-          <Field label="Token ticker" hint="3–10 letters or digits.">
-            <input
-              style={{
-                ...monoInputStyle,
-                textTransform: "uppercase",
-                textAlign: "center",
-                fontWeight: 800,
-              }}
-              value={manual.token_symbol}
-              maxLength={10}
-              placeholder="HBTN"
-              onChange={(e) =>
-                setManualField(
-                  "token_symbol",
-                  e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""),
-                )
-              }
-            />
-          </Field>
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <Field
-            label="Tagline"
-            hint="One sentence shown on the project card and the homepage Pulse."
-          >
-            <input
-              style={inputStyle}
-              maxLength={240}
-              value={manual.short_description}
-              placeholder="A fun click-counter game"
-              onChange={(e) =>
-                setManualField("short_description", e.target.value)
-              }
-            />
-          </Field>
-        </div>
-
-        {/* "Customize defaults" — collapsed by default. Default values
-            (1B supply, 0% share, blank about/goal/plan/readme) work for
-            most owners; advanced fields stay reachable with one click. */}
-        <div
-          style={{
-            marginTop: 18,
-            padding: "10px 14px",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            background: "var(--bg-soft)",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setCustomizeOpen((v) => !v)}
-            aria-expanded={customizeOpen}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              width: "100%",
-              background: "none",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
-              color: "var(--fg)",
-              textAlign: "left",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10.5,
-                fontFamily: "JetBrains Mono, monospace",
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                color: "var(--fg-muted)",
-              }}
-            >
-              {customizeOpen ? "▾" : "▸"} Tokenomics, pitch & docs (optional)
-            </span>
-            <span
-              style={{
-                flex: 1,
-                fontSize: 10.5,
-                color: "var(--fg-muted)",
-                fontFamily: "JetBrains Mono, monospace",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {customSummary}
-            </span>
-          </button>
-          {customizeOpen && (
-            <div
-              className="agnt-fade-in"
-              style={{
-                marginTop: 14,
-                display: "flex",
-                flexDirection: "column",
-                gap: 14,
-              }}
-            >
-              {/* Tokenomics */}
-              <div
-                className="agnt-resp-2col"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 200px",
-                  gap: 12,
-                }}
-              >
-                <Field
-                  label="Token supply"
-                  hint="How many tokens to mint (1M to 1T). 9 decimals on chain."
-                >
-                  <input
-                    style={monoInputStyle}
-                    type="number"
-                    min={1_000_000}
-                    max={1_000_000_000_000}
-                    step={1}
-                    value={manual.total_supply}
-                    onChange={(e) =>
-                      setManualField(
-                        "total_supply",
-                        e.target.value === "" ? "" : Number(e.target.value),
-                      )
-                    }
-                  />
-                </Field>
-                <Field
-                  label="Owner share"
-                  hint="Slice of the mint you keep (0–10%)."
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
-                  >
-                    <input
-                      style={{
-                        ...monoInputStyle,
-                        fontVariantNumeric: "tabular-nums",
-                        textAlign: "right",
-                      }}
-                      type="number"
-                      min={0}
-                      max={10}
-                      step={0.5}
-                      value={(Number(manual.owner_share_bps) || 0) / 100}
-                      onChange={(e) => {
-                        const pct = Math.max(
-                          0,
-                          Math.min(10, parseFloat(e.target.value) || 0),
-                        );
-                        setManualField(
-                          "owner_share_bps",
-                          Math.round(pct * 100),
-                        );
-                      }}
-                    />
-                    <span
-                      style={{
-                        fontFamily: "JetBrains Mono, monospace",
-                        fontSize: 12,
-                        color: "var(--fg-muted)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      %
-                    </span>
-                  </div>
-                </Field>
-              </div>
-
-              {/* Long-form pitch */}
-              <Field
-                label="About the project"
-                hint="Optional. A longer pitch shown on the project page."
-              >
-                <textarea
-                  style={{
-                    ...inputStyle,
-                    fontSize: 13,
-                    lineHeight: 1.55,
-                    resize: "vertical",
-                  }}
-                  rows={3}
-                  value={manual.about_of_project}
-                  placeholder="Click the button. Win. Stop clicking."
-                  onChange={(e) =>
-                    setManualField("about_of_project", e.target.value)
-                  }
-                />
-              </Field>
-              <Field
-                label="Success criteria"
-                hint="Optional. What 'done' looks like for this project."
-              >
-                <textarea
-                  style={{
-                    ...inputStyle,
-                    fontSize: 13,
-                    lineHeight: 1.55,
-                    resize: "vertical",
-                  }}
-                  rows={2}
-                  value={manual.goal_of_project}
-                  placeholder="Top of the addiction leaderboards by week 4."
-                  onChange={(e) =>
-                    setManualField("goal_of_project", e.target.value)
-                  }
-                />
-              </Field>
-
-              {/* Plan & docs */}
-              <Field
-                label="Project plan"
-                hint="Optional. Markdown roadmap or phase plan agents will read (plan.md)."
-              >
-                <textarea
-                  style={{
-                    ...inputStyle,
-                    fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 12,
-                    lineHeight: 1.55,
-                    resize: "vertical",
-                  }}
-                  rows={5}
-                  value={manual.plan_md}
-                  placeholder={
-                    "## Phase 1: button works\n- Render at /\n- Increments counter\n…"
-                  }
-                  onChange={(e) => setManualField("plan_md", e.target.value)}
-                />
-              </Field>
-              <Field
-                label="GitHub README"
-                hint="Optional. Written as README.md in the published repo, verbatim."
-              >
-                <textarea
-                  style={{
-                    ...inputStyle,
-                    fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 12,
-                    lineHeight: 1.55,
-                    resize: "vertical",
-                  }}
-                  rows={5}
-                  value={manual.readme_md}
-                  placeholder={"# Happy Button\n\nA fun click-counter game…"}
-                  onChange={(e) => setManualField("readme_md", e.target.value)}
-                />
-              </Field>
-            </div>
-          )}
-        </div>
-
-        <SectionHeader
-          hint={`${manual.tasks.length} task${manual.tasks.length === 1 ? "" : "s"} so far. The AI assigns titles and weights when you submit.`}
-        >
-          Bounty tasks
-        </SectionHeader>
-        <TasksEditor
-          tasks={manual.tasks}
-          onChange={setManualTasks}
-          isStage={false}
-          descriptionsOnly
-        />
-
-        <SectionHeader hint="You fund the pool via TonConnect after the plan is accepted.">
-          Rewards, deadline & wallet
-        </SectionHeader>
-        <div
-          className="agnt-resp-2col"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
-            marginTop: 10,
-          }}
-        >
-          <Field
-            label="Reward pool"
-            hint="TON paid out across merged PRs. Set 0 to skip."
-          >
-            <div style={{ position: "relative" }}>
-              <input
-                style={monoInputStyle}
-                type="number"
-                min={0}
-                step={0.001}
-                value={form.ton_reward_pool}
-                onChange={(e) => setField("ton_reward_pool", e.target.value)}
-              />
-              <span
-                style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  fontSize: 11,
-                  color: "var(--fg-muted)",
-                  fontFamily: "JetBrains Mono, monospace",
-                  fontWeight: 700,
-                }}
-              >
-                TON
-              </span>
-            </div>
-          </Field>
-          <Field label="Deadline" hint="How long agents have to ship.">
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 6,
-              }}
-            >
-              {[
-                { v: "1", label: "1d" },
-                { v: "3", label: "3d" },
-                { v: "7", label: "7d" },
-                { v: "14", label: "14d" },
-              ].map((opt) => (
-                <button
-                  key={opt.v}
-                  type="button"
-                  onClick={() => setField("deadline", opt.v)}
-                  style={{
-                    height: 36,
-                    padding: 0,
-                    border: `1px solid ${form.deadline === opt.v ? "var(--fg)" : "var(--border)"}`,
-                    background:
-                      form.deadline === opt.v ? "var(--fg)" : "var(--bg)",
-                    color: form.deadline === opt.v ? "var(--bg)" : "var(--fg)",
-                    borderRadius: 6,
-                    fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    transition: "all 0.12s ease",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </Field>
-        </div>
-        <div style={{ marginTop: 10 }}>
-          <Field
-            label="Owner wallet"
-            hint={
-              tonConnected
-                ? "Refunds from the pool and your owner-share tokens land here."
-                : "Connect a TON wallet — its address becomes the project owner."
-            }
-            error={walletMissing ? "Connect a wallet to continue." : undefined}
-          >
-            {tonConnected ? (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "10px 12px",
-                  border: "1px solid var(--accent)",
-                  borderRadius: 6,
-                  background: "var(--accent-soft)",
-                }}
-              >
-                <span className="live-dot" />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 10.5,
-                      fontWeight: 800,
-                      letterSpacing: "0.06em",
-                      color: "var(--accent-fg)",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {tonWalletName || "Wallet"} connected
-                  </div>
-                  <div
-                    title={tonAddress}
-                    style={{
-                      marginTop: 2,
-                      fontFamily: "JetBrains Mono, monospace",
-                      fontSize: 11.5,
-                      fontWeight: 700,
-                      color: "var(--fg)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {tonAddress}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={onDisconnectWallet}
-                  className="btn btn-sm"
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={onConnectWallet}
-                className="btn"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  width: "100%",
-                  height: 38,
-                  background: "var(--bg)",
-                  borderColor: "var(--border-strong)",
-                  fontWeight: 700,
-                }}
-              >
-                <Icon name="zap" size={12} /> Connect TON wallet
-              </button>
-            )}
-          </Field>
-        </div>
-
-        <AutoMergeToggle
-          enabled={!!form.auto_merge_enabled}
-          onChange={(v) => setField("auto_merge_enabled", v)}
-        />
-
-        {errorMsg && (
-          <div
-            className="agnt-fade-in"
-            style={{
-              marginTop: 14,
-              padding: 12,
-              border: "1px solid var(--danger)",
-              borderRadius: 6,
-              background: "var(--danger-soft)",
-              color: "var(--danger)",
-              fontSize: 12,
-            }}
-          >
-            {errorMsg}
-          </div>
-        )}
-
-        <div
-          style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}
-        >
-          <button
-            key={shakeKey}
-            type="submit"
-            className={
-              shakeKey > 0 ? "agnt-shake btn-primary-big" : "btn-primary-big"
-            }
-            style={{
-              background: "var(--accent)",
-              opacity: canSubmit ? 1 : 0.5,
-              cursor: canSubmit ? "pointer" : "not-allowed",
-            }}
-            disabled={!canSubmit}
-          >
-            <Icon name="zap" size={12} /> Submit for moderation
-          </button>
-        </div>
-      </div>
-    </form>
-  );
-}
-
-// AutoMergeToggle — owner-side switch for the platform's automatic PR
-// merge pipeline. When ON, the platform-reviewer agent auto-merges the
-// first PR that passes validation. When OFF, every PR waits for manual
-// owner approval. Shared between AI and Manual project forms.
-function AutoMergeToggle({ enabled, onChange }) {
-  return (
-    <div
-      className="agnt-resp-auto-toggle"
-      style={{
-        marginTop: 18,
-        padding: "12px 14px",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        background: "var(--bg-soft)",
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        flexWrap: "wrap",
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 220 }}>
-        <div
-          style={{
-            fontSize: 10.5,
-            fontWeight: 800,
-            color: "var(--fg-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          Auto review
-        </div>
-        <div
-          style={{
-            marginTop: 4,
-            fontSize: 12.5,
-            color: "var(--fg)",
-            lineHeight: 1.5,
-            maxWidth: "60ch",
-          }}
-        >
-          {enabled ? (
-            <>
-              The platform reviewer agent auto-merges the first PR that passes
-              all checks. Faster shipping, no owner ping required.
-            </>
-          ) : (
-            <>
-              Every PR waits for your manual review and approval. Slower, but
-              you sign off on every merge.
-            </>
-          )}
-        </div>
-      </div>
-      <PillSwitch enabled={enabled} onChange={onChange} />
-    </div>
-  );
-}
-
-// PillSwitch — iOS-style segmented binary control. Tabular-mono labels
-// (ON / OFF) keep widths stable when the user flips it.
-function PillSwitch({
-  enabled,
-  onChange,
-  onLabel = "ON",
-  offLabel = "OFF",
-  disabled = false,
-}) {
-  return (
-    <div
-      role="switch"
-      aria-checked={enabled}
-      style={{
-        display: "inline-flex",
-        gap: 2,
-        padding: 3,
-        border: "1px solid var(--border)",
-        borderRadius: 999,
-        background: "var(--bg)",
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      {[
-        { v: false, label: offLabel },
-        { v: true, label: onLabel },
-      ].map((opt) => {
-        const active = opt.v === enabled;
-        return (
-          <button
-            key={String(opt.v)}
-            type="button"
-            disabled={disabled}
-            onClick={() => !disabled && onChange(opt.v)}
-            style={{
-              padding: "5px 12px",
-              border: "none",
-              borderRadius: 999,
-              background: active
-                ? opt.v
-                  ? "var(--accent)"
-                  : "var(--fg)"
-                : "transparent",
-              color: active ? "var(--bg)" : "var(--fg-muted)",
-              fontFamily: "JetBrains Mono, monospace",
-              fontSize: 10.5,
-              fontWeight: 800,
-              letterSpacing: "0.06em",
-              cursor: disabled ? "not-allowed" : "pointer",
-              transition: "background 0.18s ease, color 0.18s ease",
-            }}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function ValidatingPanel({ phase, project }) {
+function ValidatingPanel({ phase, project, title, subtitle }) {
+  const heading =
+    title ||
+    (phase === "submitting"
+      ? "Submitting…"
+      : phase === "polling"
+        ? "Validating in background"
+        : "Working…");
+  const sub =
+    subtitle ||
+    "The validator agent is generating a project plan, README, and a list of bounty tasks. This usually takes 30–90 seconds.";
   return (
     <div
       style={{
@@ -1330,9 +902,7 @@ function ValidatingPanel({ phase, project }) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span className="live-dot" />
-        <h2 style={{ margin: 0, fontSize: 18 }}>
-          {phase === "submitting" ? "Submitting…" : "Validating in background"}
-        </h2>
+        <h2 style={{ margin: 0, fontSize: 18 }}>{heading}</h2>
       </div>
       <p
         style={{
@@ -1342,8 +912,7 @@ function ValidatingPanel({ phase, project }) {
           lineHeight: 1.55,
         }}
       >
-        The validator agent is generating a project plan, README, and a list of
-        bounty tasks. This usually takes 30–90 seconds.
+        {sub}
       </p>
       {project && (
         <div
@@ -1371,7 +940,9 @@ function ReviewPanel({
   fundingInstructions,
   fundingTxHash,
   fundingErr,
+  publishErr,
   onFundPool,
+  onPublish,
 }) {
   const poolNano = Number(project.ton_reward_pool_nano) || 0;
   const needsFunding = poolNano > 0 && !project.ton_pool_funded_at;
@@ -1381,6 +952,9 @@ function ReviewPanel({
   });
   const canFundFromUI =
     needsFunding && !!fundingInstructions?.address && !funded;
+  // Funder mode (0 TON pool) skips the funding card and goes straight
+  // to "publish to GitHub".
+  const canPublishDirect = !needsFunding && !funded;
 
   return (
     <div style={{ marginTop: 22 }}>
@@ -1414,9 +988,74 @@ function ReviewPanel({
         >
           {funded
             ? "The deposit confirmed on-chain. The platform is creating the GitHub repo, writing the README and opening one issue per task. This page will flip to the live view in a moment."
-            : "The validator approved the plan. Once you fund the reward pool, the project auto-publishes to GitHub — the platform creates the repo, writes the README and opens one issue per task."}
+            : needsFunding
+              ? "The validator approved the plan. Once you fund the reward pool, the project auto-publishes to GitHub — the platform creates the repo, writes the README and opens one issue per task."
+              : "The validator approved the plan. Funder mode — no pool required. Click below to publish to GitHub. The platform will create the repo, write the README and open one issue per task."}
         </p>
       </div>
+
+      {canPublishDirect && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 20,
+            border: "1px solid var(--accent)",
+            borderRadius: 10,
+            background: "var(--accent-soft)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 8 }}
+          >
+            <Icon name="rocket" size={14} />
+            <h3
+              style={{
+                margin: 0,
+                fontSize: 14,
+                fontFamily: "JetBrains Mono, monospace",
+              }}
+            >
+              Ready to publish
+            </h3>
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5 }}>
+            Creates the GitHub repo, writes the README, and opens one issue per
+            task. Takes 10–60 seconds. Agents start claiming as soon as issues
+            are live.
+          </div>
+          <div>
+            <button
+              type="button"
+              className="btn btn-accent"
+              onClick={onPublish}
+              style={{
+                padding: "10px 18px",
+                fontSize: 13,
+                fontWeight: 800,
+              }}
+            >
+              <Icon name="rocket" size={12} /> Publish to GitHub
+            </button>
+          </div>
+          {publishErr && (
+            <div
+              style={{
+                padding: 10,
+                border: "1px solid var(--danger)",
+                borderRadius: 6,
+                background: "var(--danger-soft)",
+                color: "var(--danger)",
+                fontSize: 12,
+              }}
+            >
+              {publishErr}
+            </div>
+          )}
+        </div>
+      )}
 
       <div
         style={{
@@ -1743,141 +1382,6 @@ function ErrorPanel({ phase, message, onReset }) {
       >
         Try again
       </button>
-    </div>
-  );
-}
-
-function AgentCreatorCTA() {
-  const [idea, setIdea] = useState("");
-
-  const examples = [
-    "Build a Telegram mini-app for splitting restaurant bills in TON",
-    "A Discord bot that rewards server members with tokens for contributions",
-    "CLI tool that generates TON wallet vanity addresses",
-  ];
-
-  const promptText = [
-    `Create a bounty project on agnt-gm.ai.`,
-    `Use agnt project create with AI brief mode — the platform generates name, token, and task plan from the description. After creation, fund the TON pool via TonConnect and publish.`,
-    ``,
-    `Your project idea: ${idea.trim() || "[Your project idea goes here]"}`,
-  ].join("\n");
-
-  return (
-    <div style={{ marginTop: 22 }}>
-      <div
-        style={{
-          padding: 24,
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          background: "var(--bg)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 8,
-          }}
-        >
-          <Icon name="bot" size={16} />
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 18,
-              fontFamily: "JetBrains Mono, monospace",
-            }}
-          >
-            Create with an AI agent
-          </h2>
-        </div>
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--fg-muted)",
-            lineHeight: 1.55,
-            marginTop: 4,
-            marginBottom: 16,
-          }}
-        >
-          Instead of filling out the form, paste a prompt to your agent. It runs
-          the CLI commands: create → fund → publish.
-        </p>
-
-        <div style={{ marginBottom: 16 }}>
-          <CopyableBlock
-            text={`npx skills add agntdev/agnt-cli --all`}
-            label="1. Install skill"
-            id="create-install"
-          />
-        </div>
-
-        <div style={{ marginBottom: 8 }}>
-          <CopyableBlock
-            text={promptText}
-            label="2. Create project"
-            copyBtnLabel="Copy prompt"
-            id="create-prompt"
-          />
-        </div>
-
-        <div
-          style={{
-            marginTop: 14,
-            fontSize: 11,
-            fontWeight: 800,
-            color: "var(--fg-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            marginBottom: 8,
-          }}
-        >
-          Example ideas
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {examples.map((ex, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setIdea(ex)}
-              style={{
-                display: "block",
-                textAlign: "left",
-                padding: "8px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                background: "var(--bg)",
-                color: "var(--fg)",
-                fontSize: 12.5,
-                lineHeight: 1.45,
-                fontFamily: "inherit",
-                cursor: "pointer",
-                transition: "border-color 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "var(--accent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "var(--border)";
-              }}
-            >
-              • {ex}
-            </button>
-          ))}
-        </div>
-
-        <p
-          style={{
-            marginTop: 16,
-            fontSize: 12,
-            color: "var(--fg-muted)",
-            lineHeight: 1.5,
-          }}
-        >
-          Prefer the form? Switch to Manual mode.
-        </p>
-      </div>
     </div>
   );
 }
