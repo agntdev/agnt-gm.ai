@@ -4,6 +4,7 @@ import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { CopyableBlock, Icon } from "../components/atoms.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
 import PhasePipeline from "../components/PhasePipeline.jsx";
+import BotCard from "../components/BotCard.jsx";
 import {
   Field,
   RejectionBanner,
@@ -153,6 +154,10 @@ export default function Project() {
           <div style={{ marginTop: 8, marginBottom: 8 }}>
             <PhasePipeline phase={phase} />
           </div>
+        )}
+        {/* "Your bot is live" CTA — only when the build is published. */}
+        {live?.current_phase === "published" && (
+          <BotCard slug={slug} projectName={live?.name} />
         )}
         {/* FundPoolBanner used to live here as a top-level CTA for the
             project-level pool. Stage 1 is now created automatically at

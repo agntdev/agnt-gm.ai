@@ -4553,3 +4553,143 @@ h1 .punch { color: var(--accent-fg); }
   margin: 0 4px;
   min-width: 12px;
 }
+
+/* === AGNTDEV bot card ===
+   Renders under the phase pipeline when current_phase = "published".
+   3 visual states: loading (skeleton), provisioning (spinner), live
+   (big @username + t.me CTA + container-state pill). */
+.bot-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  margin-top: 12px;
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--bg) 100%);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+}
+.bot-card--compact {
+  padding: 12px 14px;
+  gap: 10px;
+  border-radius: var(--radius-sm);
+}
+.bot-card--loading,
+.bot-card--provisioning {
+  background: var(--bg-soft);
+  border-color: var(--border);
+  color: var(--fg-muted);
+}
+.bot-card--live {
+  border-color: var(--accent);
+}
+
+.bot-card-icon {
+  flex: 0 0 40px;
+  width: 40px; height: 40px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--fg-muted);
+}
+.bot-card--compact .bot-card-icon {
+  flex-basis: 32px; width: 32px; height: 32px;
+}
+.bot-card-icon--live {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.bot-card-spinner {
+  flex: 0 0 16px; width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 999px;
+  animation: phase-spin 0.9s linear infinite;
+}
+
+.bot-card-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bot-card-eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-fg);
+  display: flex; align-items: center; gap: 6px;
+}
+.bot-card-dot {
+  width: 7px; height: 7px;
+  border-radius: 999px;
+  background: var(--fg-muted);
+  display: inline-block;
+}
+.bot-card-dot--running { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.bot-card-dot--stopped { background: var(--fg-muted); }
+.bot-card-dot--error { background: var(--danger); }
+.bot-card-dot--none { background: var(--fg-subtle); }
+.bot-card-dot--muted { background: var(--fg-muted); }
+
+.bot-card-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  line-height: 1.2;
+  word-break: break-all;
+}
+.bot-card--compact .bot-card-title { font-size: 14px; }
+.bot-card-for { color: var(--fg-muted); font-weight: 600; }
+.bot-card-sub {
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+  margin-top: 1px;
+}
+.bot-card-code {
+  font-family: JetBrains Mono, monospace;
+  font-size: 11.5px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--fg);
+}
+
+.bot-card-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+.bot-card-cta {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none !important;
+  font-weight: 700;
+  white-space: nowrap;
+  padding: 8px 14px !important;
+}
+.bot-card-meta {
+  font-size: 10px;
+  color: var(--fg-subtle);
+  font-family: JetBrains Mono, monospace;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .bot-card { flex-wrap: wrap; }
+  .bot-card-actions { flex-basis: 100%; align-items: stretch; }
+  .bot-card-cta { justify-content: center; }
+}

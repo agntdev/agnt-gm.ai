@@ -110,6 +110,12 @@ export const api = {
   getProjectPhase: (idOrSlug) =>
     get(`/builder/projects/${encodeURIComponent(idOrSlug)}/phase`),
 
+  // AGNTDEV managed-bot identity (post-publish). 404s until the
+  // managed-bot auto-capture poller lands the row.
+  // get() swallows 404 → returns null → BotCard shows 'provisioning'.
+  getProjectBot: (idOrSlug) =>
+    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/bot`),
+
   listProjectTasks: (idOrSlug, { status, full } = {}) => {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
