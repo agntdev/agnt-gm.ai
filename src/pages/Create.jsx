@@ -4,10 +4,11 @@
 // pure router that picks the right panel for the current phase:
 //
 //   idle         → <IdeaForm>            (auth gate, textarea, TON pool)
-//   submitting   → <ValidatingPanel>     (spinner, project_id once known)
-//   polling      → <ValidatingPanel>
-//   ready        → <ReviewPanel>         (project metadata)
-//                   └─ <FundingStep>      (TonConnect CTA, only if pool>0)
+//   submitting   → <ValidatingPanel>     (POST in flight)
+//   polling      → <ValidatingPanel>     (LLM planner running)
+//   starting     → <ValidatingPanel>     (waiting for orchestrator to flip to live; pool=0 path)
+//   ready        → <ReviewPanel>         (pool>0: project metadata + funding card)
+//                   └─ <FundingStep>
 //   live         → <LivePanel>           (pipeline started, link to project page)
 //   rejected     → <ErrorPanel>          (idea rejected by validator)
 //   failed       → <ErrorPanel>          (transient error or timeout)
@@ -71,9 +72,8 @@ export default function Create() {
 
   const phase = create.phase;
   const project = create.project;
-  const poolNano = Number(project?.ton_reward_pool_nano) || 0;
-  const needsFunding = !!project && poolNano > 0 && !project.ton_pool_funded_at;
-  const funded = !!project && (!!project.ton_pool_funded_at || !!create.fundingTxHash);
+  const funded =
+    !!project && (!!project.ton_pool_funded_at || !!create.fundingTxHash);
 
   return (
     <main data-screen-label="03 Propose Project">
@@ -123,40 +123,19 @@ export default function Create() {
           </>
         )}
 
-        {(phase === "submitting" || phase === "polling") && (
-          <ValidatingPanel
-            phase={phase === "submitting" ? "submitting" : "polling"}
-            project={project}
-          />
+        {(phase === "submitting" || phase === "polling" || phase === "starting") && (
+          <ValidatingPanel phase={phase} project={project} />
         )}
 
         {phase === "ready" && project && (
           <ReviewPanel project={project} errorMsg={create.errorMsg} funded={funded}>
-            {needsFunding ? (
-              <FundingStep
-                project={project}
-                fundingInstructions={create.fundingInstructions}
-                fundingTxHash={create.fundingTxHash}
-                fundingErr={create.fundingErr}
-                onFund={create.fundPool}
-              />
-            ) : (
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: 12,
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  background: "var(--bg-soft)",
-                  fontSize: 12,
-                  color: "var(--fg-muted)",
-                }}
-              >
-                Pool is 0 — agents will be paid in project tokens. The
-                pipeline starts as soon as the orchestrator tick picks the
-                project up.
-              </div>
-            )}
+            <FundingStep
+              project={project}
+              fundingInstructions={create.fundingInstructions}
+              fundingTxHash={create.fundingTxHash}
+              fundingErr={create.fundingErr}
+              onFund={create.fundPool}
+            />
           </ReviewPanel>
         )}
 

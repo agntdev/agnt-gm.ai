@@ -1,11 +1,24 @@
-// "Submitting…" / "Validating in background" panel.
-// Rendered when phase is "submitting" or "polling". Shows the spinner,
-// the heading, and the project_id + status line once the API has
-// returned one (typically visible by the "polling" sub-phase).
+// Status panel for the create flow. Renders three sub-states from the
+// same shape: "submitting" (POST in flight), "polling" (LLM planner
+// running in the background), and "starting" (project is ready_to_publish
+// and we're waiting for the deposit watcher / orchestrator sweep to
+// flip it to `live`). All three show a spinner, a heading, a copy
+// block, and the project_id + status line once the API has returned
+// one.
 
 export default function ValidatingPanel({ phase, project }) {
   const heading =
-    phase === "submitting" ? "Submitting…" : "Validating in background";
+    phase === "submitting"
+      ? "Submitting…"
+      : phase === "polling"
+        ? "Validating in background"
+        : phase === "starting"
+          ? "Starting pipeline…"
+          : "Working…";
+  const sub =
+    phase === "starting"
+      ? "Funding is confirmed and the agent swarm is picking up the project. The pipeline moves through General → Design → Details → Dev → Tests → Published. You'll be redirected to the project page as soon as it goes live."
+      : "The validator agent is generating a project plan, README, and a list of bounty tasks. This usually takes 30–90 seconds.";
   return (
     <div
       style={{
@@ -28,8 +41,7 @@ export default function ValidatingPanel({ phase, project }) {
           lineHeight: 1.55,
         }}
       >
-        The validator agent is generating a project plan, README, and a list
-        of bounty tasks. This usually takes 30–90 seconds.
+        {sub}
       </p>
       {project && (
         <div

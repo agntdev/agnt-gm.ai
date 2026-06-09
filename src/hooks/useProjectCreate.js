@@ -2,19 +2,25 @@
 //
 // Phase transitions:
 //
-//   idle ──submit()──▶ submitting ──▶ polling ──▶ ready ──fundPool()──▶ live
-//                              │              │
-//                              └──────────────┴─▶ rejected / failed
+//   pool > 0:
+//     idle ──submit()──▶ submitting ──▶ polling ──▶ ready ──fundPool()──▶ starting ──▶ live
+//                                 │              │
+//                                 └──────────────┴─▶ rejected / failed
+//
+//   pool = 0 (no user action required — orchestrator auto-starts):
+//     idle ──submit()──▶ submitting ──▶ polling ──▶ starting ──▶ live
+//                                 │              │
+//                                 └──────────────┴─▶ rejected / failed
 //
 // - `submit(body)` calls POST /builder/projects, then either jumps to
-//   "ready" (when the server already returns a terminal status) or
-//   "polling" (when status is `validating` and the LLM planner is
-//   running in the background).
-// - `pollUntilReady` walks the project status until it leaves
-//   `validating` and lands on `ready_to_publish` (or rejected / failed).
-// - `fundPool({ tonConnectUI })` runs the TonConnect transaction for
-//   the funding-intent, then `pollUntilFunded` watches for the deposit
-//   watcher to flip the project to `live`.
+//   "ready" (pool>0) or to "starting" (pool=0) once the LLM planner
+//   lands the project on `ready_to_publish`. While status is
+//   `validating` we sit in the "polling" phase.
+// - `pollUntilReady` returns true on `ready_to_publish`, false on
+//   any other terminal state (rejected / failed / live / timeout).
+// - `pollUntilFunded` watches for the project to flip to `live`
+//   (deposit-watcher path for pool>0, orchestrator-sweep path for
+//   pool=0). On 5-minute timeout, sets phase to "failed".
 //
 // All poll loops carry a generation token so a reset / re-submit kills
 // in-flight polls without leaking the timeout. The hook itself owns
@@ -78,46 +84,60 @@ export function useProjectCreate(token) {
 
   // ── poll loops ──────────────────────────────────────────────────
 
+  // Returns true when the project lands on `ready_to_publish`
+  // (the caller can then proceed to funding or to "starting"),
+  // false for any other terminal state — rejected, failed, or a
+  // 5-minute timeout. Phase transitions for those terminal states
+  // happen inside this function; the caller doesn't need to act.
   async function pollUntilReady(idOrSlug, gen) {
     const start = Date.now();
     while (Date.now() - start < POLL_MAX_MS) {
-      if (gen !== pollGen.current) return;
+      if (gen !== pollGen.current) return false;
       const res = await api.getProject(idOrSlug);
-      if (gen !== pollGen.current) return;
+      if (gen !== pollGen.current) return false;
       if (res?.project) {
         setProject(res.project);
-        if (res.project.status === "ready_to_publish") {
-          setPhase("ready");
-          return;
-        }
+        if (res.project.status === "ready_to_publish") return true;
         if (res.project.status === "rejected") {
           setPhase("rejected");
           setErrorMsg(
             res.project.rejection_reason ||
               "The validator rejected this project idea.",
           );
-          return;
+          return false;
         }
         if (res.project.status === "failed") {
           setPhase("failed");
           setErrorMsg("Project generation failed. Please try again.");
-          return;
+          return false;
+        }
+        if (res.project.status === "live") {
+          // Fast orchestrator: the project auto-started before the
+          // LLM planner finished reporting back. Land on `live`
+          // directly — the caller would route there anyway.
+          setPhase("live");
+          return false;
         }
       }
       await new Promise((r) => {
         pollAbort.current = setTimeout(r, POLL_INTERVAL_MS);
       });
     }
-    if (gen !== pollGen.current) return;
+    if (gen !== pollGen.current) return false;
     setPhase("failed");
     setErrorMsg(
       "Timed out waiting for the validator agent. The project may still complete — check the project page.",
     );
+    return false;
   }
 
+  // Watches for the project to flip to `live` (either because the
+  // deposit watcher confirmed the TON transfer, or because the
+  // orchestrator sweep picked up a pool=0 project). On 5-minute
+  // timeout we set phase to "failed" so the user lands on the
+  // ErrorPanel instead of being stuck on the "starting" spinner.
   async function pollUntilFunded(idOrSlug, gen) {
     const start = Date.now();
-    let everSawFunded = false;
     while (Date.now() - start < POLL_MAX_MS) {
       if (gen !== pollGen.current) return;
       const res = await api.getProject(idOrSlug);
@@ -128,18 +148,16 @@ export function useProjectCreate(token) {
           setPhase("live");
           return;
         }
-        if (res.project.ton_pool_funded_at) everSawFunded = true;
       }
       await new Promise((r) => {
         pollAbort.current = setTimeout(r, POLL_INTERVAL_MS);
       });
     }
     if (gen !== pollGen.current) return;
-    if (!everSawFunded) {
-      setErrorMsg(
-        "Timed out waiting for the deposit watcher. The transfer may still confirm later — check the project page.",
-      );
-    }
+    setPhase("failed");
+    setErrorMsg(
+      "The pipeline is taking longer than expected. The project is still being processed — check the project page.",
+    );
   }
 
   // ── error handling ──────────────────────────────────────────────
@@ -219,11 +237,40 @@ export function useProjectCreate(token) {
     applyCreatedProject(res);
 
     const initial = res.data?.project;
+    const idOrSlug = initial?.id || initial?.slug;
+    const poolNano = Number(initial?.ton_reward_pool_nano) || 0;
+    const needsFunding = poolNano > 0;
+
+    if (!idOrSlug) {
+      setPhase("failed");
+      setErrorMsg("Project created without an id. Refresh and try again.");
+      return true;
+    }
+
+    // Two paths from "validating":
+    //  - pool>0: poll until ready_to_publish, then wait in "ready" for
+    //    the user to fund. The deposit watcher takes over from there.
+    //  - pool=0: poll until ready_to_publish, then kick off
+    //    pollUntilFunded immediately (the orchestrator sweep does
+    //    the work, no human in the loop).
     if (initial?.status === "validating") {
       setPhase("polling");
-      pollUntilReady(initial.id || initial.slug, bumpPollGen());
-    } else {
+      const landed = await pollUntilReady(idOrSlug, bumpPollGen());
+      if (!landed) return true; // terminal state already set
+      if (needsFunding) {
+        setPhase("ready");
+      } else {
+        setPhase("starting");
+        pollUntilFunded(idOrSlug, bumpPollGen());
+      }
+    } else if (initial?.status === "live") {
+      // Fast orchestrator beat the polling — already live.
+      setPhase("live");
+    } else if (needsFunding) {
       setPhase("ready");
+    } else {
+      setPhase("starting");
+      pollUntilFunded(idOrSlug, bumpPollGen());
     }
     return true;
   }
