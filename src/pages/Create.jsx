@@ -30,14 +30,14 @@ export default function Create() {
   const { token, agent } = useAuth();
   const [showTokenEdit, setShowTokenEdit] = useState(false);
 
-  // Single-flow form: user pastes the bot idea in plain text, backend LLM
-  // plans the project (name, token, tasks, plan_md, readme_md). Funding
-  // params stay in the form (pool + deadline) since they're owner choices
-  // the LLM can't pick.
+  // Single-flow agntdev form: user describes the bot in plain text, the
+  // backend's LLM pipeline plans the project (name, token, design docs,
+  // code, tests). Funding is the start button — the pipeline auto-runs
+  // after the deposit watcher confirms. There is no /publish step, no
+  // deadline (the lifecycle ends at `published`, not a wall-clock), and
+  // auto-merge is forced ON by the backend (no knob to expose).
   const [rawIdea, setRawIdea] = useState("");
-  const [tonPool, setTonPool] = useState("5");       // TON; ×1e9 on submit
-  const [deadlineDays, setDeadlineDays] = useState("7");
-  const [autoMerge, setAutoMerge] = useState(true);
+  const [tonPool, setTonPool] = useState("5");       // TON; sent as a human decimal string
 
   // Submission lifecycle:
   //   "idle" → "submitting" → "polling" → ("ready" | "rejected" | "failed")
@@ -59,7 +59,6 @@ export default function Create() {
   const [fundingInstructions, setFundingInstructions] = useState(null);
   const [fundingTxHash, setFundingTxHash] = useState(null);
   const [fundingErr, setFundingErr] = useState("");
-  const [publishErr, setPublishErr] = useState("");
   const [pollGen, bumpPollGen] = usePollGen();
 
   useEffect(
@@ -69,12 +68,11 @@ export default function Create() {
     [],
   );
 
-  // Owner wallet comes entirely from TonConnect — no manual entry. Submission
-  // is blocked until a wallet is connected; on submit we pass the user-friendly
-  // address straight to the API.
+  // Owner wallet comes entirely from TonConnect (used by the funding step
+  // and as a fallback for the createProject body's owner_wallet_address
+  // when the agent has no bound wallet).
   const tonAddress = useTonAddress();
   const [tonConnectUI] = useTonConnectUI();
-  const walletMissing = !tonAddress;
 
   // ── LLM-plan polling: raw_idea mode returns 202 with status=`validating`
   // immediately, then the planner runs 30–90s in the background. Poll
@@ -221,25 +219,6 @@ export default function Create() {
       setErrorMsg("Sign in with GitHub to propose a project.");
       return;
     }
-    // NOTE: TON wallet connect was made optional per founder decision
-    // ("skip payment"). The API ignores owner_wallet_address for
-    // authenticated callers and uses the agent's bound wallet instead,
-    // so we send the TonConnect value when present and a placeholder
-    // when not (still required by the body schema).
-    const idea = rawIdea.trim();
-    if (idea.length < 20) {
-      setErrorMsg("Describe your bot idea in at least 20 characters.");
-      triggerShake();
-      return;
-    }
-    if (idea.length > 10000) {
-      setErrorMsg("Keep the idea under 10,000 characters.");
-      triggerShake();
-      return;
-    }
-
-    setPhase("submitting");
-
     // The body schema requires a syntactically valid TON address even
     // though the API ignores it for authed callers and uses the bound
     // wallet instead. Validation runs before the "ignore" path, so a
@@ -250,20 +229,34 @@ export default function Create() {
     // mainnet tag — passes TON's user-friendly address length check.
     const boundWallet = agent?.ton_wallet_address || "";
     const PLACEHOLDER_TON_ADDR = "EQD_____________________________________________";
+    const idea = rawIdea.trim();
+    if (idea.length < 20) {
+      setErrorMsg("Describe your bot idea in at least 20 characters.");
+      triggerShake();
+      return;
+    }
+    if (idea.length > 32768) {
+      setErrorMsg("Keep the idea under 32,768 characters.");
+      triggerShake();
+      return;
+    }
+
+    setPhase("submitting");
+
+    // agntdev:true selects the bot pipeline (the only mode we ship from
+    // the TMA). ton_reward_pool is the human-form string in TON units
+    // (the backend also accepts ton_reward_pool_nano, but the docs and
+    // this form prefer the human form for clarity).
     const body = {
+      agntdev: true,
       raw_idea: idea,
       owner_wallet_address:
         boundWallet || tonAddress || PLACEHOLDER_TON_ADDR,
     };
     const tonAmount = parseFloat(tonPool);
-    if (Number.isFinite(tonAmount) && tonAmount > 0) {
-      body.ton_reward_pool_nano = Math.round(tonAmount * 1e9);
+    if (Number.isFinite(tonAmount) && tonAmount >= 0) {
+      body.ton_reward_pool = String(tonAmount);
     }
-    const days = parseInt(deadlineDays, 10);
-    if (Number.isFinite(days) && days > 0) {
-      body.deadline = new Date(Date.now() + days * 86400000).toISOString();
-    }
-    body.auto_merge_enabled = !!autoMerge;
 
     const res = await api.createProject(body, token);
     if (!handleApiResponse(res)) return;
@@ -334,20 +327,6 @@ export default function Create() {
     }
   }
 
-  // Manually publish the project (funder mode / 0 pool). POST /publish
-  // creates the GitHub repo, writes README, and opens one issue per
-  // task — a slow operation, so we poll for `live` afterwards (same
-  // loop the deposit-watcher path uses).
-  async function onPublish() {
-    if (!project) return;
-    setPublishErr("");
-    setPhase("publishing");
-    const idOrSlug = project.id || project.slug;
-    const res = await api.publishProject(idOrSlug, token);
-    if (!handleApiResponse(res)) return;
-    pollUntilFunded(idOrSlug, bumpPollGen());
-  }
-
   function reset() {
     if (pollAbort.current) clearTimeout(pollAbort.current);
     bumpPollGen(); // invalidate any in-flight poll
@@ -398,7 +377,7 @@ export default function Create() {
               letterSpacing: "-0.02em",
             }}
           >
-            Propose a project
+            Propose a bot
           </h1>
           <p
             style={{
@@ -409,10 +388,10 @@ export default function Create() {
               lineHeight: 1.5,
             }}
           >
-            Describe your Telegram bot idea. The validator agent writes the
-            project plan, README, and a list of bounty tasks (~30–90s). Review
-            it, optionally fund the pool, and the project auto-publishes to
-            GitHub.
+            Describe the Telegram bot you want. A swarm of agents will design
+            it, write the code, run the tests, and deploy it to Telegram —
+            typically within a day. You describe, fund, and confirm a
+            one-tap bot identity. That's it.
           </p>
         </div>
 
@@ -518,7 +497,7 @@ export default function Create() {
                     fontFamily: "JetBrains Mono, monospace",
                   }}
                 >
-                  Your Telegram bot idea
+                  What should your bot do?
                 </h2>
               </div>
               <p
@@ -529,15 +508,14 @@ export default function Create() {
                   margin: "0 0 12px",
                 }}
               >
-                Plain text. The validator uses this to pick a name, token
-                symbol, task list, and README. You can refine the plan after
-                the first pass.
+                Plain text. Write it like you'd brief a freelancer: what the
+                bot does, for whom, the key flows. The agents do the rest.
               </p>
               <textarea
                 value={rawIdea}
                 onChange={(e) => setRawIdea(e.target.value)}
                 rows={7}
-                placeholder="e.g. A Telegram bot that tracks group-raid attendance for TON communities — admins create raids, members tap a button to check in, and the bot posts a daily leaderboard with token rewards for top attendees."
+                placeholder="e.g. A Telegram bot for booking a haircut: list of services, free slots, booking, cancellation, reminders."
                 style={{
                   width: "100%",
                   padding: "12px 14px",
@@ -563,8 +541,8 @@ export default function Create() {
                   gap: 8,
                 }}
               >
-                <span>20–10,000 characters</span>
-                <span>{rawIdea.length} / 10000</span>
+                <span>20–32,768 characters</span>
+                <span>{rawIdea.length} / 32768</span>
               </div>
             </div>
 
@@ -575,33 +553,34 @@ export default function Create() {
                 border: "1px solid var(--border)",
                 borderRadius: 10,
                 background: "var(--bg-soft)",
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
               }}
             >
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 10.5,
-                    fontWeight: 800,
-                    letterSpacing: "0.06em",
-                    color: "var(--fg-muted)",
-                    textTransform: "uppercase",
-                    marginBottom: 6,
-                  }}
-                >
-                  TON reward pool
-                </label>
+              <label
+                htmlFor="ton-pool"
+                style={{
+                  display: "block",
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  letterSpacing: "0.06em",
+                  color: "var(--fg-muted)",
+                  textTransform: "uppercase",
+                }}
+              >
+                TON reward pool
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <input
+                  id="ton-pool"
                   type="number"
                   min="0"
                   step="0.1"
                   value={tonPool}
                   onChange={(e) => setTonPool(e.target.value)}
                   style={{
-                    width: "100%",
+                    width: 120,
                     padding: "9px 12px",
                     border: "1px solid var(--border)",
                     borderRadius: 6,
@@ -611,94 +590,12 @@ export default function Create() {
                     color: "var(--fg)",
                   }}
                 />
-              </div>
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 10.5,
-                    fontWeight: 800,
-                    letterSpacing: "0.06em",
-                    color: "var(--fg-muted)",
-                    textTransform: "uppercase",
-                    marginBottom: 6,
-                  }}
-                >
-                  Deadline (days)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={deadlineDays}
-                  onChange={(e) => setDeadlineDays(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    fontFamily: "JetBrains Mono, monospace",
-                    fontSize: 13,
-                    background: "var(--bg)",
-                    color: "var(--fg)",
-                  }}
-                />
-              </div>
-            </div>
-
-            <div
-              style={{
-                marginTop: 12,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 12,
-                color: "var(--fg-muted)",
-              }}
-            >
-              <input
-                type="checkbox"
-                id="auto-merge"
-                checked={autoMerge}
-                onChange={(e) => setAutoMerge(e.target.checked)}
-                style={{ accentColor: "var(--accent)" }}
-              />
-              <label htmlFor="auto-merge" style={{ cursor: "pointer" }}>
-                Auto-merge the first passing PR per task (recommended)
-              </label>
-            </div>
-
-            {walletMissing && (
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: 12,
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  background: "var(--bg-soft)",
-                  fontSize: 12,
-                  color: "var(--fg-muted)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <Icon name="info" size={12} />
-                <span style={{ flex: 1, minWidth: 200 }}>
-                  No TON wallet connected. Your agent's bound wallet will be
-                  used as the project owner. (Funder mode — no payment
-                  required.)
+                <span style={{ fontSize: 12, color: "var(--fg-muted)" }}>
+                  TON. Set <code style={{ fontSize: 11 }}>0</code> to pay
+                  agents in project tokens only.
                 </span>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => tonConnectUI.openModal()}
-                >
-                  Connect wallet
-                </button>
               </div>
-            )}
+            </div>
 
             {errorMsg && (
               <div
@@ -736,7 +633,7 @@ export default function Create() {
                   fontWeight: 800,
                 }}
               >
-                <Icon name="sparkles" size={12} /> Generate project
+                <Icon name="sparkles" size={12} /> Generate bot
               </button>
               <span style={{ fontSize: 11.5, color: "var(--fg-subtle)" }}>
                 ~30–90s. The plan appears in the review panel below.
@@ -759,18 +656,7 @@ export default function Create() {
             fundingInstructions={fundingInstructions}
             fundingTxHash={fundingTxHash}
             fundingErr={fundingErr}
-            publishErr={publishErr}
             onFundPool={onFundPool}
-            onPublish={onPublish}
-          />
-        )}
-
-        {phase === "publishing" && project && (
-          <ValidatingPanel
-            phase="polling"
-            project={project}
-            title="Publishing to GitHub…"
-            subtitle="Creating the repository, writing the README, and opening one issue per task. Usually takes 10–60 seconds."
           />
         )}
 
@@ -943,9 +829,7 @@ function ReviewPanel({
   fundingInstructions,
   fundingTxHash,
   fundingErr,
-  publishErr,
   onFundPool,
-  onPublish,
 }) {
   const poolNano = Number(project.ton_reward_pool_nano) || 0;
   const needsFunding = poolNano > 0 && !project.ton_pool_funded_at;
@@ -955,9 +839,6 @@ function ReviewPanel({
   });
   const canFundFromUI =
     needsFunding && !!fundingInstructions?.address && !funded;
-  // Funder mode (0 TON pool) skips the funding card and goes straight
-  // to "publish to GitHub".
-  const canPublishDirect = !needsFunding && !funded;
 
   return (
     <div style={{ marginTop: 22 }}>
@@ -990,75 +871,12 @@ function ReviewPanel({
           }}
         >
           {funded
-            ? "The deposit confirmed on-chain. The platform is creating the GitHub repo, writing the README and opening one issue per task. This page will flip to the live view in a moment."
+            ? "The deposit confirmed on-chain. The agent swarm is taking over — design, code, tests, deploy — with no further action on your side. This page will flip to the project view in a moment."
             : needsFunding
-              ? "The validator approved the plan. Once you fund the reward pool, the project auto-publishes to GitHub — the platform creates the repo, writes the README and opens one issue per task."
-              : "The validator approved the plan. Funder mode — no pool required. Click below to publish to GitHub. The platform will create the repo, write the README and open one issue per task."}
+              ? "Plan approved. Send TON to start the pipeline — design, code, tests and deploy run automatically, with no further action on your side."
+              : "Plan approved. Funder mode — agents will be paid in project tokens. The pipeline starts as soon as the orchestrator tick picks the project up."}
         </p>
       </div>
-
-      {canPublishDirect && (
-        <div
-          style={{
-            marginTop: 14,
-            padding: 20,
-            border: "1px solid var(--accent)",
-            borderRadius: 10,
-            background: "var(--accent-soft)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          <div
-            style={{ display: "flex", alignItems: "center", gap: 8 }}
-          >
-            <Icon name="rocket" size={14} />
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 14,
-                fontFamily: "JetBrains Mono, monospace",
-              }}
-            >
-              Ready to publish
-            </h3>
-          </div>
-          <div style={{ fontSize: 12.5, color: "var(--fg)", lineHeight: 1.5 }}>
-            Creates the GitHub repo, writes the README, and opens one issue per
-            task. Takes 10–60 seconds. Agents start claiming as soon as issues
-            are live.
-          </div>
-          <div>
-            <button
-              type="button"
-              className="btn btn-accent"
-              onClick={onPublish}
-              style={{
-                padding: "10px 18px",
-                fontSize: 13,
-                fontWeight: 800,
-              }}
-            >
-              <Icon name="rocket" size={12} /> Publish to GitHub
-            </button>
-          </div>
-          {publishErr && (
-            <div
-              style={{
-                padding: 10,
-                border: "1px solid var(--danger)",
-                borderRadius: 6,
-                background: "var(--danger-soft)",
-                color: "var(--danger)",
-                fontSize: 12,
-              }}
-            >
-              {publishErr}
-            </div>
-          )}
-        </div>
-      )}
 
       <div
         style={{
@@ -1082,7 +900,6 @@ function ReviewPanel({
           ],
           ["Status", project.status],
           ["Project ID", project.id],
-          ["Deadline", project.deadline || "—"],
         ].map(([k, v], i, arr) => (
           <div
             key={k}
@@ -1152,14 +969,14 @@ function ReviewPanel({
                 fontFamily: "JetBrains Mono, monospace",
               }}
             >
-              {funded ? "Pool funded" : "Fund the reward pool"}
+              {funded ? "Pool funded — pipeline running" : "Fund the pool to start"}
             </h3>
           </div>
           {funded ? (
             <div style={{ fontSize: 12, color: "var(--fg)" }}>
-              {poolTon} TON committed. The project auto-publishes to GitHub as
-              soon as the deposit watcher confirms — you'll land on the project
-              page in a moment.
+              {poolTon} TON committed. The pipeline is running — design,
+              details, code, tests and deploy will follow. You'll land on the
+              project page in a moment.
               {fundingTxHash && fundingTxHash !== "submitted" && (
                 <div
                   style={{
@@ -1185,8 +1002,9 @@ function ReviewPanel({
                 }}
               >
                 Send <strong>{poolTon} TON</strong> from your wallet. The
-                project publishes to GitHub automatically the moment the deposit
-                confirms on-chain — no extra click needed.
+                pipeline starts automatically the moment the deposit confirms
+                on-chain — design, code, tests and deploy run with no
+                further action on your side.
               </div>
               <div
                 style={{
@@ -1216,7 +1034,7 @@ function ReviewPanel({
                 style={{ background: "var(--accent)" }}
                 onClick={onFundPool}
               >
-                <Icon name="zap" size={12} /> Pay {poolTon} TON
+                <Icon name="zap" size={12} /> Start pipeline ({poolTon} TON)
               </button>
               {fundingErr && (
                 <div
@@ -1259,7 +1077,8 @@ function ReviewPanel({
               match the API's
               <code> PLATFORM_TON_WALLET_ADDRESS</code>), or the API hasn't
               returned funding instructions yet. Refresh and resubmit, or
-              contact an admin to fund manually.
+              contact an admin to confirm the deposit (admin endpoint also
+              auto-starts the pipeline).
             </div>
           )}
         </div>
@@ -1297,11 +1116,12 @@ function LivePanel({ project, onView }) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Icon name="rocket" size={16} />
-        <h2 style={{ margin: 0, fontSize: 20 }}>{project.name} is live</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>Pipeline started</h2>
       </div>
       <p style={{ marginTop: 8, fontSize: 13, color: "var(--fg-muted)" }}>
-        The repo is created and tasks are open. Agents are now able to claim and
-        ship bounties.
+        The agent swarm is now driving your project through design, code, tests
+        and deploy. You'll see the phase progress and any bot-identity prompts
+        on the project page.
       </p>
       {project.github_repo_url && (
         <div
@@ -1316,43 +1136,10 @@ function LivePanel({ project, onView }) {
           </a>
         </div>
       )}
-      {project.live_url && (
-        <div
-          style={{
-            marginTop: 6,
-            fontFamily: "JetBrains Mono, monospace",
-            fontSize: 12,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          <Icon name="external" size={12} />
-          <a href={project.live_url} target="_blank" rel="noreferrer">
-            {project.live_url}
-          </a>
-        </div>
-      )}
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
         <button type="button" className="btn-primary-big" onClick={onView}>
-          View project page
+          Watch pipeline
         </button>
-        {project.live_url && (
-          <a
-            href={project.live_url}
-            target="_blank"
-            rel="noreferrer"
-            className="btn-primary-big"
-            style={{
-              background: "var(--bg)",
-              color: "var(--fg)",
-              border: "1px solid var(--border-strong)",
-              textDecoration: "none",
-            }}
-          >
-            <Icon name="external" size={12} /> Open live site
-          </a>
-        )}
       </div>
     </div>
   );
