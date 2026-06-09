@@ -4346,3 +4346,212 @@ h1 .punch { color: var(--accent-fg); }
   .proj-cover .cv-h1 { font-size: 26px; }
   .proj-cover .glass-logo .token-avatar { width: 56px !important; height: 56px !important; }
 }
+
+/* === AGNTDEV phase pipeline ===
+   Horizontal stepper for the 5 build stages + terminal badges. Used
+   in the project page, the TMA project status view, and anywhere we
+   need to show "where is this project in the build pipeline". */
+.phase-pipeline {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 0;
+  padding: 14px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.phase-stage-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.phase-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  min-width: 0;
+  position: relative;
+  flex: 0 0 auto;
+}
+.phase-stage--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+.phase-stage--in_review {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.phase-stage--passed {
+  background: var(--bg-soft);
+  border-color: var(--border);
+  color: var(--fg);
+  opacity: 0.85;
+}
+.phase-stage--failed {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.phase-stage--pending {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--fg-muted);
+  opacity: 0.7;
+}
+.phase-stage--terminal {
+  flex: 0 0 auto;
+  margin-left: 0;
+}
+.phase-stage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid currentColor;
+}
+.phase-stage--passed .phase-stage-icon { background: var(--accent); border-color: var(--accent); color: white; }
+.phase-stage--active .phase-stage-icon { background: var(--accent); border-color: var(--accent); }
+.phase-stage--failed .phase-stage-icon { background: var(--danger); border-color: var(--danger); color: white; }
+.phase-stage--in_review .phase-stage-icon { background: var(--warn); border-color: var(--warn); }
+
+.phase-state-dot {
+  width: 8px; height: 8px; border-radius: 999px;
+  background: var(--fg-subtle); display: inline-block;
+}
+.phase-state-dot--active {
+  background: var(--bg);
+  box-shadow: 0 0 0 2px var(--accent);
+  animation: phase-pulse 1.4s ease-in-out infinite;
+}
+.phase-state-ring {
+  width: 8px; height: 8px; border-radius: 999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  background: transparent;
+  display: inline-block;
+  animation: phase-spin 0.9s linear infinite;
+}
+@keyframes phase-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.85); }
+}
+@keyframes phase-spin { to { transform: rotate(360deg); } }
+
+.phase-stage-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.phase-stage-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phase-stage-hint {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phase-stage--active .phase-stage-hint,
+.phase-stage--failed .phase-stage-hint,
+.phase-stage--in_review .phase-stage-hint {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.phase-fix-badge {
+  position: absolute;
+  top: -6px; right: -6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--danger);
+  color: white;
+  border-radius: 999px;
+  padding: 1px 5px;
+  line-height: 1.4;
+}
+
+.phase-connector {
+  flex: 1 1 auto;
+  height: 2px;
+  background: var(--border);
+  margin: 0 4px;
+  min-width: 12px;
+  align-self: center;
+}
+.phase-connector--passed {
+  background: var(--accent);
+}
+
+.phase-next {
+  flex: 1 1 100%;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  line-height: 1.45;
+}
+.phase-next-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+.phase-next-code {
+  font-family: JetBrains Mono, monospace;
+  font-size: 11px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--fg);
+}
+.phase-next-reason {
+  color: var(--fg-muted);
+}
+
+/* Compact variant: TMA + narrow viewports. Hides hints, shrinks chips. */
+.phase-pipeline--compact {
+  padding: 10px 8px;
+  gap: 0;
+}
+.phase-pipeline--compact .phase-stage {
+  padding: 6px 8px;
+  gap: 6px;
+}
+.phase-pipeline--compact .phase-stage-icon {
+  width: 18px; height: 18px; flex-basis: 18px;
+}
+.phase-pipeline--compact .phase-stage-label {
+  font-size: 11.5px;
+}
+.phase-pipeline--compact .phase-connector {
+  margin: 0 2px;
+  min-width: 8px;
+}

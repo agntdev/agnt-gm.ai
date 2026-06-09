@@ -104,6 +104,12 @@ export const api = {
   getProject: (idOrSlug) =>
     get(`/builder/projects/${encodeURIComponent(idOrSlug)}`),
 
+  // AGNTDEV phase state (current_phase + status + audit trail).
+  // Distinct from `status` on the project payload (which is the legacy
+  // bounty-platform state machine). The phase pipeline UI reads this.
+  getProjectPhase: (idOrSlug) =>
+    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/phase`),
+
   listProjectTasks: (idOrSlug, { status, full } = {}) => {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
