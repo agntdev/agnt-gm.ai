@@ -15,11 +15,11 @@
 // All the panels live under `src/components/create/`. The hook lives
 // under `src/hooks/useProjectCreate.js`.
 
-import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTonAddress } from "@tonconnect/ui-react";
 import { useAuth } from "../lib/auth.js";
 import { useProjectCreate } from "../hooks/useProjectCreate.js";
+import { useIdeaDraft } from "../hooks/useIdeaDraft.js";
 import IdeaForm from "../components/create/IdeaForm.jsx";
 import ValidatingPanel from "../components/create/ValidatingPanel.jsx";
 import ReviewPanel from "../components/create/ReviewPanel.jsx";
@@ -38,8 +38,7 @@ export default function Create() {
   const tonAddress = useTonAddress();
   const create = useProjectCreate(token);
 
-  const [rawIdea, setRawIdea] = useState("");
-  const [tonPool, setTonPool] = useState("5");
+  const [rawIdea, setRawIdea, tonPool, setTonPool, clearDraft] = useIdeaDraft();
 
   async function onSubmitIdea(e) {
     e?.preventDefault();
@@ -62,7 +61,12 @@ export default function Create() {
     if (Number.isFinite(tonAmount) && tonAmount >= 0) {
       body.ton_reward_pool = String(tonAmount);
     }
-    await create.submit(body);
+    // Clear the draft only on a successful submit. On a 4xx/5xx
+    // the user keeps their text — a 429 or transient network blip
+    // shouldn't burn a 2000-character idea.
+    if (await create.submit(body)) {
+      clearDraft();
+    }
   }
 
   const phase = create.phase;

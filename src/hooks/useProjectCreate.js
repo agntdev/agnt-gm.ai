@@ -209,13 +209,13 @@ export function useProjectCreate(token) {
   async function submit(body) {
     if (!token) {
       setErrorMsg("Sign in with GitHub to propose a project.");
-      return;
+      return false;
     }
     setErrorMsg("");
     setPhase("submitting");
 
     const res = await api.createProject(body, token);
-    if (!handleApiResponse(res)) return;
+    if (!handleApiResponse(res)) return false;
     applyCreatedProject(res);
 
     const initial = res.data?.project;
@@ -225,6 +225,7 @@ export function useProjectCreate(token) {
     } else {
       setPhase("ready");
     }
+    return true;
   }
 
   async function fundPool({ tonConnectUI }) {
