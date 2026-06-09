@@ -125,13 +125,18 @@ export default function PhasePipeline({ phase, compact = false, showNextAction =
     >
       {states.map((s, i) => {
         const prev = i > 0 ? states[i - 1] : null;
-        const connector = prev
-          ? prev.state === "passed"
-            ? "phase-connector phase-connector--passed"
-            : "phase-connector"
+        // Connector sits BEFORE the stage it links to, not after the
+        // previous one — with `display: contents` on the wrap, "before
+        // stage N" = "after stage N-1" in the flat flex flow, but the
+        // className decision belongs to the gap between N-1 and N.
+        const connectorCls = prev
+          ? `phase-connector${prev.state === "passed" ? " phase-connector--passed" : ""}`
           : null;
         return (
           <div className="phase-stage-wrap" role="listitem" key={s.key}>
+            {connectorCls && (
+              <div className={connectorCls} aria-hidden="true" />
+            )}
             <div className={`phase-stage phase-stage--${s.state}`}>
               <div className="phase-stage-icon" aria-hidden="true">
                 <StateIcon state={s.state} size={compact ? 12 : 14} />
@@ -144,7 +149,6 @@ export default function PhasePipeline({ phase, compact = false, showNextAction =
               </div>
               {s.isFix && <span className="phase-fix-badge">Fix</span>}
             </div>
-            {connector && <div className={connector} aria-hidden="true" />}
           </div>
         );
       })}
