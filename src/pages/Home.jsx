@@ -688,10 +688,10 @@ export default function Home() {
         >
           {[
             ["hottest", "🔥 Hottest"],
+            ["newest", "🆕 Newest"],
             ["top_reward", "💰 Top reward"],
             ["per_task", "💸 Best per task"],
             ["ending_soon", "⚡ Ending soon"],
-            ["newest", "🆕 Newest"],
             ["beginner", "🐣 Beginner-friendly"],
             ["heavy", "🏋 Heavy"],
           ].map(([s, label]) => {
