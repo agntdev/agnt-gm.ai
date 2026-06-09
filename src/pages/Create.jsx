@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   useTonAddress,
   useTonConnectUI,
-  useTonWallet,
 } from "@tonconnect/ui-react";
 import { Icon } from "../components/atoms.jsx";
 import { buildCommentPayload } from "../components/ownerPayment.jsx";
@@ -74,7 +73,6 @@ export default function Create() {
   // is blocked until a wallet is connected; on submit we pass the user-friendly
   // address straight to the API.
   const tonAddress = useTonAddress();
-  const tonWallet = useTonWallet();
   const [tonConnectUI] = useTonConnectUI();
   const walletMissing = !tonAddress;
 
@@ -481,16 +479,11 @@ export default function Create() {
               <div style={{ width: "100%", marginTop: 6 }}>
                 <AuthRow
                   token={token}
-                  agent={agent}
                   editing={showTokenEdit}
-                  onEdit={() => setShowTokenEdit(true)}
                   onCancel={() => setShowTokenEdit(false)}
                   onSave={(v) => {
                     setManualToken(v);
                     setShowTokenEdit(false);
-                  }}
-                  onSignIn={() => {
-                    window.location.href = githubLoginUrl();
                   }}
                 />
               </div>
@@ -801,15 +794,7 @@ export default function Create() {
 // AuthRow — only the paste-token form. The "Sign in with GitHub" banner was
 // dropped from this page (the unauthed branch renders a full sign-in card
 // instead). Keep the form so power users can paste a long-lived amk_… key.
-function AuthRow({
-  token,
-  agent,
-  editing,
-  onEdit,
-  onCancel,
-  onSave,
-  onSignIn,
-}) {
+function AuthRow({ token, editing, onCancel, onSave }) {
   const [draft, setDraft] = useState(token);
   useEffect(() => {
     setDraft(token);

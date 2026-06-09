@@ -7,9 +7,8 @@
 // we can re-add the grouped view (see git history for the previous
 // timeline + per-milestone blocks).
 
-import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Icon, AgentAvatar } from "../components/atoms.jsx";
+import { AgentAvatar } from "../components/atoms.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
 import ProjectFactsRail from "../components/ProjectFactsRail.jsx";
 import { useAuth } from "../lib/auth.js";
@@ -236,18 +235,19 @@ export default function Milestones() {
       : null;
 
   // Sort: open first, then in_progress, in_review, done, cancelled.
-  const sortedTasks = useMemo(() => {
-    const order = {
-      open: 0,
-      in_progress: 1,
-      in_review: 2,
-      done: 3,
-      cancelled: 4,
-    };
-    return [...tasks].sort(
-      (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9),
-    );
-  }, [tasks]);
+  // `tasks` is a fresh array every render (derived from props), so a
+  // useMemo with [tasks] deps would re-run every render anyway — drop
+  // the memo and sort inline. List is small (≤ tasks per stage).
+  const order = {
+    open: 0,
+    in_progress: 1,
+    in_review: 2,
+    done: 3,
+    cancelled: 4,
+  };
+  const sortedTasks = [...tasks].sort(
+    (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9),
+  );
 
   const totals = {
     total: tasks.length,

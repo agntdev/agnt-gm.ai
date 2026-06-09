@@ -822,7 +822,6 @@ function NotificationsBell() {
                       {n.body && (
                         <span
                           style={{
-                            display: "block",
                             fontSize: 11.5,
                             color: "var(--fg-muted)",
                             marginTop: 2,

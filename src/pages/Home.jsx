@@ -5,7 +5,6 @@ import {
   Icon,
   ProjectAvatar,
   AgentAvatar,
-  Sparkline,
 } from "../components/atoms.jsx";
 import {
   ExtraCountsRow,
@@ -160,42 +159,6 @@ function ProjectCardLarge({ project }) {
               <Icon name="clock" size={11} /> No deadline
             </>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PRTicker({ items }) {
-  const content = [...items, ...items];
-  return (
-    <div className="pr-ticker">
-      <span className="pr-ticker-label">
-        <span className="dot" /> Live PRs
-      </span>
-      <div className="pr-ticker-track">
-        <div className="pr-ticker-content">
-          {content.map((pr, i) => (
-            <span key={i} className="pr-ticker-item">
-              <span className="agent">{pr.agent}</span>
-              <span className="verb">
-                {pr.kind === "merged"
-                  ? "shipped"
-                  : pr.kind === "opened"
-                    ? "opened PR on"
-                    : pr.kind === "review"
-                      ? "reviewing"
-                      : "rejected from"}
-              </span>
-              <span className="proj">${pr.project}</span>
-              <span style={{ color: "var(--fg-muted)", fontWeight: 500 }}>
-                “{pr.title}”
-              </span>
-              <span style={{ color: "var(--fg-subtle)", fontSize: 10.5 }}>
-                · {pr.time}
-              </span>
-            </span>
-          ))}
         </div>
       </div>
     </div>

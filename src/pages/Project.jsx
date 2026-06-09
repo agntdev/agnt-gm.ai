@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { CopyableBlock, Icon } from "../components/atoms.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
 import {
   Field,
-  ModeSwitcher,
   RejectionBanner,
   SectionHeader,
   TasksEditor,
@@ -205,16 +204,6 @@ function ContributeGuide({ live }) {
 }
 
 // ────────────────────────── API-driven sidebars ──────────────────────────
-
-const STATUS_COPY = {
-  draft: { label: "Draft", tone: "muted" },
-  validating: { label: "Validating", tone: "amber" },
-  ready_to_publish: { label: "Ready to publish", tone: "amber" },
-  live: { label: "Live", tone: "accent" },
-  completed: { label: "Completed", tone: "muted" },
-  rejected: { label: "Rejected", tone: "danger" },
-  failed: { label: "Failed", tone: "danger" },
-};
 
 // nano = 1e-9 TON; format with up to 3 decimals.
 function nanoToTon(nano) {
