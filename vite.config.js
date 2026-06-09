@@ -1,19 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { Readable } from "node:stream";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
-  server: {
-    // Vite's built-in proxy silently strips the `Authorization` header on
-    // cross-origin requests (http-proxy treats it as hop-by-hop). That breaks
-    // Bearer auth on POST /api/builder/* — GETs sometimes sneak through
-    // because http-proxy's strip-list is header-name sensitive. Workaround:
-    // register a custom Connect middleware that forwards /api/* to prod
-    // manually, then explicitly copying every header the request arrived with.
-    proxy: undefined,
-  },
+  // Vite's built-in proxy silently strips the `Authorization` header on
+  // cross-origin requests (http-proxy treats it as hop-by-hop). That breaks
+  // Bearer auth on POST /api/builder/* — GETs sometimes sneak through
+  // because http-proxy's strip-list is header-name sensitive. Workaround:
+  // register a custom Connect middleware that forwards /api/* to prod
+  // manually, then explicitly copying every header the request arrived with.
   plugins: [
     react(),
     {

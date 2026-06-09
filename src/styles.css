@@ -49,18 +49,14 @@ html { font-size: 15px; }
   min-height: var(--app-height, 100vh);
 }
 /* In Telegram's dark themes, lighten muted borders */
-[data-tg] .is-dark .token-stat-label,
-[data-tg] .is-dark .pr-row .feed-text,
-[data-tg] .is-dark .lb-row.head span {
+.is-dark .token-stat-label,
+.is-dark .pr-row .feed-text,
+.is-dark .lb-row.head span {
   opacity: 0.7;
 }
 /* Reduce aggressive shadows in Telegram (native feel) */
 [data-tg] .project-card:hover {
   box-shadow: none;
-}
-/* Hide our footer when MainButton is visible (avoid overlapping) */
-[data-tg].has-main-button .footer {
-  padding-bottom: calc(18px + var(--sab) + 52px);
 }
 
 body {

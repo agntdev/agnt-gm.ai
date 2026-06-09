@@ -19,7 +19,10 @@ const TONCONNECT_MANIFEST = "https://agnt-gm.ams3.digitaloceanspaces.com/tonconn
 
 // ── Init Telegram Mini App SDK ──
 try {
-  const lp = retrieveLaunchParams();
+  // retrieveLaunchParams() throws outside Telegram, so its call lives
+  // inside the try — we don't need the return value, just the side
+  // effect of validating the launch context.
+  retrieveLaunchParams();
 
   // Init the core SDK (must be called once before any components).
   initSDK();

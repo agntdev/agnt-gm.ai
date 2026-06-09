@@ -1,8 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { Nav, Footer } from "./components/atoms.jsx";
 import { useAuth, githubLoginUrl } from "./lib/auth.js";
-import { isTMA, backButton, viewport } from "@tma.js/sdk-react";
+import {
+  isTMA,
+  backButton,
+  viewport,
+  miniApp,
+  useSignal,
+} from "@tma.js/sdk-react";
 import Home from "./pages/Home.jsx";
 import Project from "./pages/Project.jsx";
 import Agent from "./pages/Agent.jsx";
@@ -406,16 +412,25 @@ export default function App() {
   const isAuthRoute = pathname === "/auth" || pathname === "/auth/callback";
 
   // ── Telegram back button ──
+  // Save the listener in a ref so cleanup can pass the SAME reference
+  // to offClick. (The SDK matches listeners by reference, so a new
+  // arrow in cleanup would silently leave the old listener attached.)
+  const backClickRef = useRef(null);
   useEffect(() => {
     if (!isTMA()) return;
     if (pathname === "/" || isAuthRoute) {
       backButton.hide.ifAvailable();
     } else {
       backButton.show.ifAvailable();
-      backButton.onClick.ifAvailable(() => navigate(-1));
+      const handler = () => navigate(-1);
+      backClickRef.current = handler;
+      backButton.onClick.ifAvailable(handler);
     }
     return () => {
-      backButton.offClick.ifAvailable(() => navigate(-1));
+      if (backClickRef.current) {
+        backButton.offClick.ifAvailable(backClickRef.current);
+        backClickRef.current = null;
+      }
     };
   }, [pathname, navigate, isAuthRoute]);
 
@@ -426,6 +441,33 @@ export default function App() {
     document.documentElement.setAttribute("data-tg", "");
     return () => document.documentElement.removeAttribute("data-tg");
   }, [pathname]);
+
+  // ── Telegram safe-area insets → CSS vars ──
+  // viewport.bindCssVars() only emits width/height/stableHeight, NOT
+  // safe-area-insets, so we wire those manually via signals.
+  const safeTop = useSignal(viewport.safeAreaInsetTop);
+  const safeBottom = useSignal(viewport.safeAreaInsetBottom);
+  const safeLeft = useSignal(viewport.safeAreaInsetLeft);
+  const safeRight = useSignal(viewport.safeAreaInsetRight);
+  const contentSafeTop = useSignal(viewport.contentSafeAreaInsetTop);
+  const contentSafeBottom = useSignal(viewport.contentSafeAreaInsetBottom);
+  useEffect(() => {
+    if (!isTMA()) return;
+    const root = document.documentElement.style;
+    root.setProperty("--sat", `${safeTop() || 0}px`);
+    root.setProperty("--sab", `${safeBottom() || 0}px`);
+    root.setProperty("--sal", `${safeLeft() || 0}px`);
+    root.setProperty("--sar", `${safeRight() || 0}px`);
+    root.setProperty("--csat", `${contentSafeTop() || 0}px`);
+    root.setProperty("--csab", `${contentSafeBottom() || 0}px`);
+  }, [safeTop, safeBottom, safeLeft, safeRight, contentSafeTop, contentSafeBottom]);
+
+  // ── Telegram dark scheme → .is-dark on <html> ──
+  const isDark = useSignal(miniApp.isDark);
+  useEffect(() => {
+    if (!isTMA()) return;
+    document.documentElement.classList.toggle("is-dark", !!isDark());
+  }, [isDark]);
 
   return (
     <div className="app">

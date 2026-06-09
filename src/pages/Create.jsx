@@ -12,6 +12,19 @@ import { useAuth, setManualToken, githubLoginUrl } from "../lib/auth.js";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_MS = 5 * 60 * 1000;
+// Each submit bumps a generation token. Polls check it at every
+// iteration and bail out if a newer submit (or a reset) happened
+// while they were in flight. Without this, a stale poll will
+// happily overwrite phase/project after the user reset the form
+// or navigated away.
+const usePollGen = () => {
+  const ref = useRef(0);
+  const bump = () => {
+    ref.current += 1;
+    return ref.current;
+  };
+  return [ref, bump];
+};
 
 export default function Create() {
   const navigate = useNavigate();
@@ -48,6 +61,7 @@ export default function Create() {
   const [fundingTxHash, setFundingTxHash] = useState(null);
   const [fundingErr, setFundingErr] = useState("");
   const [publishErr, setPublishErr] = useState("");
+  const [pollGen, bumpPollGen] = usePollGen();
 
   useEffect(
     () => () => {
@@ -67,10 +81,12 @@ export default function Create() {
   // ── LLM-plan polling: raw_idea mode returns 202 with status=`validating`
   // immediately, then the planner runs 30–90s in the background. Poll
   // GET /builder/projects/:id until status leaves `validating`.
-  async function pollUntilReady(idOrSlug) {
+  async function pollUntilReady(idOrSlug, gen) {
     const start = Date.now();
     while (Date.now() - start < POLL_MAX_MS) {
+      if (gen !== pollGen.current) return; // user reset / re-submitted
       const res = await api.getProject(idOrSlug);
+      if (gen !== pollGen.current) return;
       if (res?.project) {
         setProject(res.project);
         if (res.project.status === "ready_to_publish") {
@@ -95,6 +111,7 @@ export default function Create() {
         pollAbort.current = setTimeout(r, POLL_INTERVAL_MS);
       });
     }
+    if (gen !== pollGen.current) return;
     setPhase("failed");
     setErrorMsg(
       "Timed out waiting for the validator agent. The project may still complete — check the project page.",
@@ -107,11 +124,13 @@ export default function Create() {
   // moment later. Since the manual "Publish to GitHub" CTA is gone, we
   // keep polling all the way past `funded` until `live` — the UI then
   // auto-flips to LivePanel without making the owner refresh.
-  async function pollUntilFunded(idOrSlug) {
+  async function pollUntilFunded(idOrSlug, gen) {
     const start = Date.now();
     let everSawFunded = false;
     while (Date.now() - start < POLL_MAX_MS) {
+      if (gen !== pollGen.current) return; // user reset / re-submitted
       const res = await api.getProject(idOrSlug);
+      if (gen !== pollGen.current) return;
       if (res?.project) {
         setProject(res.project);
         if (res.project.status === "live") {
@@ -124,6 +143,7 @@ export default function Create() {
         pollAbort.current = setTimeout(r, POLL_INTERVAL_MS);
       });
     }
+    if (gen !== pollGen.current) return;
     if (!everSawFunded) {
       setErrorMsg(
         "Timed out waiting for the deposit watcher. The transfer may still confirm later — check the project page.",
@@ -228,11 +248,14 @@ export default function Create() {
     // malformed placeholder gets rejected with 400. Use the agent's
     // bound wallet when available, else the placeholder (only reachable
     // when the agent has no wallet yet — admin can still publish).
+    // Placeholder is a 48-char base64url string with `EQ` bounceable
+    // mainnet tag — passes TON's user-friendly address length check.
     const boundWallet = agent?.ton_wallet_address || "";
+    const PLACEHOLDER_TON_ADDR = "EQD_____________________________________________";
     const body = {
       raw_idea: idea,
       owner_wallet_address:
-        boundWallet || tonAddress || "EQD_____________placeholder_____________",
+        boundWallet || tonAddress || PLACEHOLDER_TON_ADDR,
     };
     const tonAmount = parseFloat(tonPool);
     if (Number.isFinite(tonAmount) && tonAmount > 0) {
@@ -253,7 +276,7 @@ export default function Create() {
     const initial = res.data?.project;
     if (initial?.status === "validating") {
       setPhase("polling");
-      pollUntilReady(initial.id || initial.slug);
+      pollUntilReady(initial.id || initial.slug, bumpPollGen());
     } else {
       setPhase("ready");
     }
@@ -302,7 +325,7 @@ export default function Create() {
       // Kick off background polling so the UI reflects on-chain confirmation
       // (and the auto-publish that follows) without forcing a refresh.
       if (project?.id || project?.slug) {
-        pollUntilFunded(project.id || project.slug);
+        pollUntilFunded(project.id || project.slug, bumpPollGen());
       }
     } catch (err) {
       if (err?.message?.toLowerCase()?.includes("reject")) {
@@ -324,17 +347,12 @@ export default function Create() {
     const idOrSlug = project.id || project.slug;
     const res = await api.publishProject(idOrSlug, token);
     if (!handleApiResponse(res)) return;
-    pollUntilFunded(idOrSlug);
+    pollUntilFunded(idOrSlug, bumpPollGen());
   }
-
-  // onPublish() was removed when the manual "Publish to GitHub" CTA
-  // was dropped from ReviewPanel: projects auto-publish via the deposit
-  // watcher's AutoPublishOnDeposit hook once the pool funds. The
-  // /publish endpoint still exists for admin use but isn't reachable
-  // from the SPA anymore.
 
   function reset() {
     if (pollAbort.current) clearTimeout(pollAbort.current);
+    bumpPollGen(); // invalidate any in-flight poll
     setPhase("idle");
     setProject(null);
     setErrorMsg("");

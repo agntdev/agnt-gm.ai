@@ -243,11 +243,6 @@ export const api = {
   // Returns { ok, status, data } so callers can distinguish 401/429/503.
   createProject: (body, token) =>
     send("POST", "/builder/projects", body, { auth: token }),
-  // Accept a pre-serialized JSON body string. Used by Create.jsx so we can inject
-  // a BigInt total_supply (smallest units, can exceed Number.MAX_SAFE_INTEGER)
-  // as a raw integer that survives JSON.stringify.
-  createProjectRaw: (bodyJson, token) =>
-    send("POST", "/builder/projects", bodyJson, { auth: token, raw: true }),
   publishProject: (idOrSlug, token) =>
     send(
       "POST",
