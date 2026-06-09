@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { CopyableBlock, Icon } from "../components/atoms.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
+import PhasePipeline from "../components/PhasePipeline.jsx";
 import {
   Field,
   RejectionBanner,
@@ -31,11 +32,38 @@ import {
 } from "../lib/manualPlan.js";
 import { useAuth } from "../lib/auth.js";
 
+// Lightweight phase poller. 5s while the build is in motion, 30s once
+// terminal (published/failed). Phase rarely changes — no need to poll
+// hot. Calls the same api.getProjectPhase() the PhasePipeline reads.
+function useProjectPhase(slug) {
+  const [phase, setPhase] = useState(null);
+  useEffect(() => {
+    if (!slug) return undefined;
+    let cancelled = false;
+    let timer = null;
+    const tick = async () => {
+      const res = await api.getProjectPhase(slug);
+      if (cancelled || !res) return;
+      setPhase(res);
+      const terminal =
+        res.current_phase === "published" || res.current_phase === "failed";
+      timer = setTimeout(tick, terminal ? 30000 : 5000);
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [slug]);
+  return phase;
+}
+
 export default function Project() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { live, taskCount, owner, loading, refresh } = useProjectData(slug);
+  const phase = useProjectPhase(slug);
   // Honor `state.tab` set by ProjectTabs when bouncing back from the
   // /milestones page so clicking "How to contribute" while on Tasks
   // lands on that tab, not the default Details one.
@@ -119,6 +147,13 @@ export default function Project() {
             />
           </div>
         </ProjectHero>
+        {/* AGNTDEV build pipeline. Polled by useProjectPhase; 5s while
+            non-terminal, 30s once published/failed. */}
+        {phase && (
+          <div style={{ marginTop: 8, marginBottom: 8 }}>
+            <PhasePipeline phase={phase} />
+          </div>
+        )}
         {/* FundPoolBanner used to live here as a top-level CTA for the
             project-level pool. Stage 1 is now created automatically at
             publish time and its pending deposit IS the project pool
