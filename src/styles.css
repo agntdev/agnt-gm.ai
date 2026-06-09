@@ -4350,24 +4350,23 @@ h1 .punch { color: var(--accent-fg); }
 /* === AGNTDEV phase pipeline ===
    Horizontal stepper for the 5 build stages + terminal badges. Used
    in the project page, the TMA project status view, and anywhere we
-   need to show "where is this project in the build pipeline". */
+   need to show "where is this project in the build pipeline".
+
+   The wrap around each stage uses `display: contents` so the stage
+   + connector are direct flex children of the pipeline — this keeps
+   the connectors at a sane width regardless of the wrap count. */
 .phase-pipeline {
   display: flex;
-  align-items: stretch;
-  flex-wrap: nowrap;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 0;
   padding: 14px 12px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
 .phase-stage-wrap {
-  display: flex;
-  align-items: center;
-  flex: 1 1 0;
-  min-width: 0;
+  display: contents;
 }
 .phase-stage {
   display: flex;
@@ -4377,7 +4376,6 @@ h1 .punch { color: var(--accent-fg); }
   border-radius: var(--radius-sm);
   background: var(--bg-soft);
   border: 1px solid var(--border);
-  min-width: 0;
   position: relative;
   flex: 0 0 auto;
 }
@@ -4496,11 +4494,11 @@ h1 .punch { color: var(--accent-fg); }
 }
 
 .phase-connector {
-  flex: 1 1 auto;
+  flex: 1 1 24px;
   height: 2px;
   background: var(--border);
-  margin: 0 4px;
-  min-width: 12px;
+  margin: 0 6px;
+  min-width: 16px;
   align-self: center;
 }
 .phase-connector--passed {
@@ -4552,6 +4550,6 @@ h1 .punch { color: var(--accent-fg); }
   font-size: 11.5px;
 }
 .phase-pipeline--compact .phase-connector {
-  margin: 0 2px;
-  min-width: 8px;
+  margin: 0 4px;
+  min-width: 12px;
 }
