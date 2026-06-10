@@ -252,11 +252,7 @@ export default function Milestones() {
   return (
     <main data-screen-label="03 Tasks">
       <section className="container">
-        <ProjectHero live={live}>
-          <div style={{ marginTop: 8, marginBottom: 8 }}>
-            <ProjectFactsRail live={live} owner={owner} />
-          </div>
-        </ProjectHero>
+        <ProjectHero live={live} />
 
         <div style={{ paddingTop: 24, paddingBottom: 60 }}>
           {/* Phase pipeline strip — same as the project page so the

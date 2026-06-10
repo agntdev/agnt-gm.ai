@@ -86,11 +86,7 @@ export default function Project() {
   return (
     <main data-screen-label="02 Project Detail">
       <section className="container">
-        <ProjectHero live={live}>
-          <div style={{ marginTop: 8, marginBottom: 8 }}>
-            <ProjectFactsRail live={live} owner={owner} />
-          </div>
-        </ProjectHero>
+        <ProjectHero live={live} isOwner={isOwner} />
         {/* AGNTDEV build pipeline. Polled by useProjectPhase; 5s while
             non-terminal, 30s once published/failed. */}
         {phase && (
@@ -207,32 +203,77 @@ function AboutDetails({ live, owner, isOwner }) {
         )}
 
         {goal && (
-          <div
+          <details
+            className="about-collapsible about-collapsible--goal"
             style={{
               marginTop: 16,
               paddingTop: 14,
               borderTop: "1px dashed var(--border)",
             }}
           >
-            <div
+            <summary
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 11,
-                fontWeight: 800,
-                color: "var(--accent-fg)",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                marginBottom: 8,
+                cursor: "pointer",
+                listStyle: "none",
               }}
             >
-              <Icon name="zap" size={11} /> Goal
-            </div>
-            <p className="about-prose" style={{ margin: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "var(--accent-fg)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  marginBottom: 8,
+                }}
+              >
+                <Icon name="zap" size={11} /> Goal
+                <span className="about-collapsible-chevron" aria-hidden="true">
+                  ▾
+                </span>
+              </div>
+              {/* Always-visible peek: a two-line preview of the goal
+                  text so the user knows what the section is about
+                  before tapping. The fade gradient below the peek
+                  hints there's more — it visually says "this
+                  continues below, tap to see" without forcing the
+                  whole goal onto the page. The peek is INSIDE the
+                  <summary> so it stays visible when the disclosure
+                  is collapsed (the <details> default behavior hides
+                  everything except <summary> when closed). When
+                  the disclosure opens, the full <p> below takes
+                  over and the peek is hidden. */}
+              <div className="about-collapsible-peek">
+                <p
+                  className="about-prose about-collapsible-preview"
+                  style={{ margin: 0 }}
+                >
+                  {goal.length > 100 ? `${goal.slice(0, 100)}…` : goal}
+                </p>
+                <div className="about-collapsible-fade" aria-hidden="true" />
+              </div>
+            </summary>
+            <p
+              className="about-prose"
+              style={{ margin: 0, cursor: "pointer" }}
+              onClick={(e) => {
+                // The full <p> lives OUTSIDE <summary> so the browser
+                // doesn't auto-toggle <details> on click — the user
+                // has to click the summary row at the top. We want
+                // the whole text block to be tappable to collapse,
+                // so we toggle the parent <details> manually. Stop
+                // propagation so the click doesn't bubble to the
+                // summary and double-toggle.
+                e.stopPropagation();
+                e.currentTarget.parentElement.open = false;
+              }}
+            >
               {goal}
             </p>
-          </div>
+          </details>
         )}
 
         <div
@@ -406,16 +447,27 @@ function AboutDetails({ live, owner, isOwner }) {
                   target="_blank"
                   rel="noreferrer"
                   title={repoUrl}
-                  style={{
-                    color: "var(--fg)",
-                    textDecoration: "none",
-                    display: "block",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
+                  className="proj-repo-chip"
                 >
-                  {repoUrl.replace(/^https?:\/\//, "")}
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                    style={{ flexShrink: 0 }}
+                  >
+                    <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.7-3.87-1.36-3.87-1.36-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.35.95.1-.74.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18.92-.26 1.9-.39 2.88-.39.98 0 1.96.13 2.88.39 2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.13v3.16c0 .31.21.68.8.56 4.56-1.52 7.85-5.83 7.85-10.91C23.5 5.65 18.35.5 12 .5z" />
+                  </svg>
+                  <span className="proj-repo-chip-text">
+                    {/* Strip "https://github.com/" so the cell shows
+                        just "agntdev/barberbook" instead of the full
+                        URL. The full URL stays in the title attr for
+                        the hover tooltip. */}
+                    {repoUrl
+                      .replace(/^https?:\/\/(www\.)?github\.com\//, "")
+                      .replace(/\/$/, "")}
+                  </span>
                 </a>
               ) : (
                 <span style={{ color: "var(--fg-muted)" }}>—</span>
@@ -496,6 +548,13 @@ function TokenRail({ live, isOwner, refresh }) {
     <div className="about-facts" style={{ marginTop: 12 }}>
       <div className="about-fact-head">Token</div>
 
+      {/* Always-visible summary: symbol + reward pool. The reward
+          pool is the number a builder cares about ("how much can I
+          earn here?"); the symbol is the brand. Everything else
+          (supply, decimals, owner share, minter address) is owner
+          metadata that the visitor rarely needs to read. On phones
+          those rows collapse under a "View token details" disclosure
+          so the project page stops being a wall of metadata. */}
       <div className="fact-row" style={{ alignItems: "center" }}>
         <span className="l">Symbol</span>
         <span
@@ -519,47 +578,6 @@ function TokenRail({ live, isOwner, refresh }) {
         </span>
       </div>
 
-      <div className="fact-row">
-        <span className="l">Total supply</span>
-        <span className="v">{totalSupply}</span>
-      </div>
-
-      <div className="fact-row">
-        <span className="l">Decimals</span>
-        <span className="v">{live.token_decimals ?? "—"}</span>
-      </div>
-
-      {ownerSharePct != null && (
-        <div className="fact-row">
-          <span className="l">Owner share</span>
-          <span className="v">{ownerSharePct.toFixed(2)}%</span>
-        </div>
-      )}
-
-      <SupplyLockRow live={live} isOwner={isOwner} refresh={refresh} />
-
-      <div className="fact-row">
-        <span className="l">Jetton minter</span>
-        <span
-          className="v"
-          style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}
-        >
-          {minter ? (
-            <a
-              href={`https://tonviewer.com/${minter}`}
-              target="_blank"
-              rel="noreferrer"
-              title={minter}
-              style={{ color: "var(--fg)" }}
-            >
-              {shortAddr(minter)}
-            </a>
-          ) : (
-            <span style={{ color: "var(--fg-muted)" }}>not deployed</span>
-          )}
-        </span>
-      </div>
-
       <div className="fact-row" style={{ borderBottom: "none" }}>
         <span className="l">Reward pool</span>
         <span
@@ -569,6 +587,71 @@ function TokenRail({ live, isOwner, refresh }) {
           {tonPool.toLocaleString(undefined, { maximumFractionDigits: 3 })} TON
         </span>
       </div>
+
+      <details
+        className="about-collapsible about-collapsible--token"
+        style={{ marginTop: 4 }}
+      >
+        <summary
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 11,
+            fontWeight: 700,
+            color: "var(--fg-muted)",
+            cursor: "pointer",
+            listStyle: "none",
+            padding: "6px 0",
+          }}
+        >
+          View token details
+          <span className="about-collapsible-chevron" aria-hidden="true">
+            ▾
+          </span>
+        </summary>
+
+        <div className="fact-row">
+          <span className="l">Total supply</span>
+          <span className="v">{totalSupply}</span>
+        </div>
+
+        <div className="fact-row">
+          <span className="l">Decimals</span>
+          <span className="v">{live.token_decimals ?? "—"}</span>
+        </div>
+
+        {ownerSharePct != null && (
+          <div className="fact-row">
+            <span className="l">Owner share</span>
+            <span className="v">{ownerSharePct.toFixed(2)}%</span>
+          </div>
+        )}
+
+        <SupplyLockRow live={live} isOwner={isOwner} refresh={refresh} />
+
+        <div className="fact-row" style={{ borderBottom: "none" }}>
+          <span className="l">Jetton minter</span>
+          <span
+            className="v"
+            style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}
+          >
+            {minter ? (
+              <a
+                href={`https://tonviewer.com/${minter}`}
+                target="_blank"
+                rel="noreferrer"
+                title={minter}
+                style={{ color: "var(--fg)" }}
+              >
+                {shortAddr(minter)}
+              </a>
+            ) : (
+              <span style={{ color: "var(--fg-muted)" }}>not deployed</span>
+            )}
+          </span>
+        </div>
+      </details>
     </div>
   );
 }

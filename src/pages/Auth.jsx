@@ -1,5 +1,8 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Icon } from "../components/atoms.jsx";
 import { api } from "../lib/api.js";
+import { setManualToken } from "../lib/auth.js";
 
 function GitHubMark({ size = 18 }) {
   return (
@@ -42,6 +45,45 @@ function AuthBackground() {
 }
 
 function AuthSignIn() {
+  // The default GitHub OAuth flow redirects the user through
+  // api.agnt-gm.ai (prod) which then bounces back to the SPA at the
+  // prod WEB_URL. On a phone hitting the dev server (e.g. via LAN
+  // IP 10.x.x.x:5173) the prod callback redirects to https://agnt-gm.ai
+  // and the user lands on the deployed app, not the dev server. To
+  // let dev users (and phones) sign in without a working OAuth
+  // round-trip, we expose a paste-token path: a JWT from a prior
+  // /api/auth/github/callback redirect, or a long-lived amk_… API
+  // key. Same auth storage as the rest of the app.
+  const [showTokenForm, setShowTokenForm] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const navigate = useNavigate();
+
+  async function onSaveToken(e) {
+    e.preventDefault();
+    const v = draft.trim();
+    if (!v) return;
+    setSaving(true);
+    setErr("");
+    // Verify the token works before persisting. /me 401s on a bad
+    // token, so we catch and surface a friendly error.
+    setManualToken(v);
+    try {
+      const r = await api.me(v);
+      if (r?.agent?.id) {
+        navigate("/");
+        return;
+      }
+      setErr("Token saved but /me returned no agent. Double-check the value.");
+    } catch (e) {
+      setErr("Invalid token. /me returned 401.");
+      setManualToken("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="auth-card">
       <div className="auth-card-head">
@@ -71,6 +113,53 @@ function AuthSignIn() {
           <span>Continue with GitHub</span>
           <span className="btn-github-kbd">↵</span>
         </a>
+
+        {/* Dev / phone escape hatch — paste a token instead of going
+            through GitHub OAuth. The GitHub button always wins on
+            web (one click, no typing); this path is for users on
+            mobile hitting the dev server (where the OAuth redirect
+            can't complete because the prod API bounces to the prod
+            SPA). */}
+        <button
+          type="button"
+          className="auth-token-toggle"
+          onClick={() => setShowTokenForm((v) => !v)}
+        >
+          {showTokenForm ? "Hide token paste" : "Paste a token instead"}
+        </button>
+        {showTokenForm && (
+          <form
+            onSubmit={onSaveToken}
+            className="auth-token-form"
+          >
+            <div className="auth-token-form-hint">
+              Paste a session JWT (<code>eyJ…</code>) or a long-lived
+              API key (<code>amk_…</code>). Get one on the same network
+              as the API — for dev, run <code>agnt auth login</code> on
+              your laptop and copy the token out of the CLI.
+            </div>
+            <input
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="amk_… or eyJhbGc…"
+              className="auth-token-input"
+              autoFocus
+            />
+            {err && <div className="auth-token-err">{err}</div>}
+            <div className="auth-token-actions">
+              <button
+                type="submit"
+                className="btn btn-accent btn-sm"
+                disabled={!draft.trim() || saving}
+              >
+                {saving ? "Verifying…" : "Save & sign in"}
+              </button>
+            </div>
+          </form>
+        )}
 
         <div className="auth-scopes">
           <div className="auth-scopes-title">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   CopyableBlock,
@@ -98,6 +98,38 @@ function ProjectCardLarge({ project }) {
     >
       <ProjectHero project={project} />
       <div className="project-body">
+        {/* Mobile / TMA row header: token avatar + name + ticker.
+            Hidden on desktop (≥640px) where the hero already carries
+            the identity. The .project-card-row-head class is a single
+            flex-row that collapses to a one-line tappable surface in
+            list mode. */}
+        <div className="project-card-row-head">
+          <ProjectAvatar project={project} size={28} />
+          <div className="project-card-row-id">
+            <span className="project-card-row-name">{project.name}</span>
+            <span className="project-card-row-meta">
+              <span className="project-card-row-ticker">${project.sym}</span>
+              <span className="project-card-row-repo">{project.repo}</span>
+              {/* Deadline on the same meta line on mobile — the right
+                  column was empty real estate, and putting it inline
+                  keeps the row to a single tappable block. */}
+              <span className="project-card-row-deadline">
+                <Icon name="clock" size={9} />
+                {project.daysLeft != null
+                  ? `${project.daysLeft.toFixed(1)}d left`
+                  : project.apiStatus === "ready_to_publish"
+                    ? "Awaiting publish"
+                    : "No deadline"}
+              </span>
+            </span>
+          </div>
+          {project.status && (
+            <span className={`project-card-row-status ${project.status}`}>
+              <span className="dot" />
+              {project.statusLabel || project.status.replace("-", " ")}
+            </span>
+          )}
+        </div>
         <div className="project-pitch">{project.pitch}</div>
         <div className="project-stats-row">
           <div className="project-stat">
@@ -204,6 +236,102 @@ function AgentLeaderboard({ agents, compact }) {
           </div>
         </Link>
       ))}
+    </div>
+  );
+}
+
+// Short label for the current sort option. Used in the mobile /
+// TMA "Sort: Hottest" button so the user knows what the list is
+// ranked by without opening a sheet. Returns the same emoji+word
+// as the corresponding pill on desktop.
+function sortLabel(s) {
+  return {
+    hottest: "Hottest",
+    top_reward: "Top reward",
+    per_task: "Best per task",
+    ending_soon: "Ending soon",
+    newest: "Newest",
+    beginner: "Beginner",
+    heavy: "Heavy",
+  }[s] || "Hottest";
+}
+
+// Full sort menu — 7 options in a defined order. The icon + label
+// in `.pulse-sort-button` and the rows in `.sort-menu` both read
+// from the same list so the two never disagree.
+const SORT_OPTIONS = [
+  { id: "hottest", label: "Hottest", icon: "🔥" },
+  { id: "top_reward", label: "Top reward", icon: "💰" },
+  { id: "per_task", label: "Best per task", icon: "💸" },
+  { id: "ending_soon", label: "Ending soon", icon: "⚡" },
+  { id: "newest", label: "Newest", icon: "🆕" },
+  { id: "beginner", label: "Beginner-friendly", icon: "🐣" },
+  { id: "heavy", label: "Heavy", icon: "🏋" },
+];
+
+// Sort icon button + dropdown. Click the icon to open, click an
+// option to apply + close, click outside (or press Esc) to close.
+// The icon button is the same component on desktop and phone/TMA —
+// desktop previously had 7 inline pills; those are gone now.
+function SortMenu({ sort, onChange }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="sort-menu-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className="sort-menu-trigger"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="Sort"
+      >
+        <Icon name="arrow_up_down" size={12} />
+        <span>Sort: {sortLabel(sort)}</span>
+        <Icon name="chevron_down" size={11} />
+      </button>
+      {open && (
+        <div className="sort-menu" role="listbox">
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              role="option"
+              aria-selected={sort === opt.id}
+              className={`sort-menu-item ${sort === opt.id ? "active" : ""}`}
+              onClick={() => {
+                onChange(opt.id);
+                setOpen(false);
+              }}
+            >
+              <span className="sort-menu-ico">{opt.icon}</span>
+              <span className="sort-menu-lbl">{opt.label}</span>
+              {sort === opt.id && (
+                <Icon name="check" size={12} className="sort-menu-check" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -527,40 +655,52 @@ export default function Home() {
           <div
             style={{
               display: "flex",
-              gap: 40,
-              alignItems: "stretch",
+              gap: 28,
+              alignItems: "flex-start",
               flexWrap: "wrap",
             }}
           >
-            <div style={{ flex: 1, minWidth: 320 }}>
-              <h1 className="intro-h">
-                <span className="intro-h-l1">Your agent can now</span>
-                <span className="intro-h-l2">pay for itself</span>
-              </h1>
+            <div style={{ flex: 1, minWidth: 280 }}>
+              <div className="intro-brand">
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: "inline-grid",
+                    placeItems: "center",
+                    width: 44,
+                    height: 44,
+                    borderRadius: 10,
+                    background: "var(--fg)",
+                    color: "var(--bg)",
+                    fontSize: 20,
+                    fontWeight: 800,
+                    flexShrink: 0,
+                  }}
+                >
+                  ◆
+                </span>
+                <h1 className="intro-h" style={{ margin: 0 }}>
+                  <span className="intro-h-l1">Your agent can now</span>
+                  <span className="intro-h-l2">pay for itself</span>
+                </h1>
+              </div>
               <p className="intro-sub">
                 Founders fund a reward pool. Agents ship tasks — every merged PR
                 pays the agent in tokens and TON, automatically and on-chain.
               </p>
             </div>
-            <div
-              style={{
-                flex: "0 0 340px",
-                minWidth: 260,
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
+            <div className="intro-code-col">
               <CopyableBlock
                 text={`npx skills add agntdev/skills --all`}
                 id="home-install"
+                label="Install the skill"
                 compact
                 step={1}
               />
               <CopyableBlock
                 text={`Find paid coding tasks on agnt-gm.ai. Check live projects, pick high-value tasks matching my skills. Also check my open PRs and report their status — merges, reviews, CI.`}
                 id="home-builder"
+                label="Tell your agent"
                 compact
                 step={2}
               />
@@ -568,28 +708,22 @@ export default function Home() {
           </div>
           <div className="intro-foot">
             <div className="intro-stats">
-              <span className="is-row">
-                <span className="is-v">{projectsLive}</span>
-                <span className="is-l">projects live</span>
-              </span>
-              <span className="is-sep">/</span>
-              <span className="is-row">
-                <span className="is-v">{tonUpForGrabs}</span>
-                <span className="is-l">TON up for grabs</span>
-              </span>
-              <span className="is-sep">/</span>
-              <span className="is-row">
-                <span className="is-v">{tonPaidOut}</span>
-                <span className="is-l">TON paid out</span>
-              </span>
-              <span className="is-sep">/</span>
-              <span className="is-row">
-                <span className="is-v">
-                  <span className="live-dot" style={{ marginRight: 4 }} />
-                  {agentsShipping7d}
+              {[
+                { v: projectsLive, l: "projects live" },
+                { v: tonUpForGrabs, l: "TON up for grabs" },
+                { v: tonPaidOut, l: "TON paid out" },
+                { v: agentsShipping7d, l: "agents · 7d", dot: true },
+              ].map((s, i) => (
+                <span key={i} className="intro-stat">
+                  <span className="intro-stat-v">
+                    {s.dot && (
+                      <span className="live-dot" style={{ marginRight: 5 }} />
+                    )}
+                    {s.v}
+                  </span>
+                  <span className="intro-stat-l">{s.l}</span>
                 </span>
-                <span className="is-l">agents shipping · 7d</span>
-              </span>
+              ))}
             </div>
             <div className="intro-cta">
               <Link
@@ -624,67 +758,32 @@ export default function Home() {
               Pick a task. Open a PR. Get paid on merge.
             </div>
           </div>
-          <div className="tabs">
-            {[
-              ["live", "Live"],
-              ["funding", "Funding"],
-              ["completed", "Completed"],
-              ["all", "All"],
-            ].map(([f, label]) => (
-              <button
-                key={f}
-                className={`tab ${filter === f ? "active" : ""}`}
-                onClick={() => setFilter(f)}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
+          {/* Sort: one icon button on the right of the section head,
+              opens a dropdown listing all 7 sort options. Same
+              component on desktop and on phone/TMA — the 7 inline
+              pills that used to live below the section head are
+              gone. The button always shows the current sort name so
+              the user knows what the list is ranked by. */}
+          <div className="section-head-actions">
+            <div className="tabs">
+              {[
+                ["live", "Live"],
+                ["funding", "Funding"],
+                ["completed", "Completed"],
+                ["all", "All"],
+              ].map(([f, label]) => (
+                <button
+                  key={f}
+                  className={`tab ${filter === f ? "active" : ""}`}
+                  onClick={() => setFilter(f)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <SortMenu sort={sort} onChange={setSort} />
           </div>
-        </div>
-        {/* Sort / highlight chips — rank the filtered set. */}
-        <div
-          className="agnt-sort-row"
-          style={{
-            display: "flex",
-            gap: 6,
-            flexWrap: "wrap",
-            marginBottom: 16,
-          }}
-        >
-          {[
-            ["hottest", "🔥 Hottest"],
-            ["top_reward", "💰 Top reward"],
-            ["per_task", "💸 Best per task"],
-            ["ending_soon", "⚡ Ending soon"],
-            ["newest", "🆕 Newest"],
-            ["beginner", "🐣 Beginner-friendly"],
-            ["heavy", "🏋 Heavy"],
-          ].map(([s, label]) => {
-            const active = sort === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSort(s)}
-                style={{
-                  padding: "5px 11px",
-                  borderRadius: 999,
-                  cursor: "pointer",
-                  border: `1px solid ${active ? "var(--fg)" : "var(--border)"}`,
-                  background: active ? "var(--fg)" : "var(--bg)",
-                  color: active ? "var(--bg)" : "var(--fg-muted)",
-                  fontFamily: "JetBrains Mono, monospace",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.02em",
-                  transition: "all 0.12s ease",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
         </div>
         {projects === null ? (
           <div

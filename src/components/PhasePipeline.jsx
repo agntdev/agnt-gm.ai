@@ -1,3 +1,11 @@
+// Pretty label for a phase key — used by the hint line so the user
+// can see "Current phase is Dev" without having to count circles.
+// Falls back to the raw key capitalized if the stage is unknown.
+function labelFor(key) {
+  const found = STAGES.find((s) => s.key === key);
+  return found ? found.label : (key || "general").replace(/_/g, " ");
+}
+
 // AGNTDEV build-pipeline visual.
 //
 // Shows the 5 sequential stages (General → Design → Details → Dev → Tests)
@@ -19,6 +27,7 @@
 // `compact` — TMA-friendly: smaller chips, shorter labels.
 // `showNextAction` — render the next_action hint under the pipeline (default true).
 
+import { useEffect, useRef } from "react";
 import { Icon } from "./atoms.jsx";
 
 const STAGES = [
@@ -112,69 +121,128 @@ function StateIcon({ state, size = 14 }) {
 }
 
 export default function PhasePipeline({ phase, compact = false, showNextAction = true }) {
+  const scrollerRef = useRef(null);
   if (!phase) return null;
   const states = stageStates(phase);
   const terminalKey = phase.current_phase;
   const terminal = TERMINAL[terminalKey];
 
+  // Center the current/active stage in the horizontal scroller on
+  // mount and whenever the current phase changes. Without this, the
+  // pipeline always opens with stage 1 (General) on the left and the
+  // user has to manually scroll right to see the active one — bad UX
+  // on a phone where most projects are mid-pipeline.
+  //
+  // We find the .phase-stage--active (or in_review, fix, etc.) and
+  // compute scrollLeft = elementCenter - viewportCenter. The setTimeout
+  // is 0 because the scroll container's clientWidth is 0 until after
+  // the first paint, so we wait one frame. Re-runs on every phase
+  // change (e.g. dev → tests) so the active stage stays centered as
+  // the project advances.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const findActive = () => {
+      const active = el.querySelector(
+        ".phase-stage--active, .phase-stage--in_review, .phase-stage--fix_bugs",
+      );
+      if (!active) return;
+      const elRect = el.getBoundingClientRect();
+      const aRect = active.getBoundingClientRect();
+      const elCenter = elRect.left + elRect.width / 2;
+      const aCenter = aRect.left + aRect.width / 2;
+      const delta = aCenter - elCenter;
+      el.scrollBy({ left: delta, behavior: "smooth" });
+    };
+    // Two RAFs to make sure the layout is settled (the inner stage
+    // widths depend on the container, which depends on the parent's
+    // own width — which is still 0 the very first frame after mount).
+    const id = requestAnimationFrame(() => requestAnimationFrame(findActive));
+    return () => cancelAnimationFrame(id);
+  }, [phase?.current_phase, phase?.phase_status, compact]);
+
   return (
-    <div
-      className={`phase-pipeline${compact ? " phase-pipeline--compact" : ""}`}
-      role="list"
-      aria-label="Build pipeline"
-    >
-      {states.map((s, i) => {
-        const prev = i > 0 ? states[i - 1] : null;
-        // Connector sits BEFORE the stage it links to, not after the
-        // previous one — with `display: contents` on the wrap, "before
-        // stage N" = "after stage N-1" in the flat flex flow, but the
-        // className decision belongs to the gap between N-1 and N.
-        const connectorCls = prev
-          ? `phase-connector${prev.state === "passed" ? " phase-connector--passed" : ""}`
-          : null;
-        return (
-          <div className="phase-stage-wrap" role="listitem" key={s.key}>
-            {connectorCls && (
-              <div className={connectorCls} aria-hidden="true" />
+    <div className="phase-pipeline-wrap">
+      {/* Hint line — sits ABOVE the phase chips, inside the same
+          bordered block, so it doesn't get squashed by the
+          horizontal scroll. The hint is a sibling of the scroll
+          container, not a child, otherwise flexbox would lay it
+          out next to the chips instead of above them. */}
+      <div className="phase-pipeline-hint">
+        <span className="phase-pipeline-hint-dot" />
+        <span>
+          Bots move through 5 phases. Current phase is{" "}
+          <strong>
+            {labelFor(
+              states.find(
+                (s) => s.state === "active" || s.state === "in_review",
+              )?.key ||
+                states.find((s) => s.state === "passed")?.key ||
+                "general",
             )}
-            <div className={`phase-stage phase-stage--${s.state}`}>
-              <div className="phase-stage-icon" aria-hidden="true">
-                <StateIcon state={s.state} size={compact ? 12 : 14} />
+          </strong>
+          .
+        </span>
+      </div>
+      <div
+        ref={scrollerRef}
+        className={`phase-pipeline${compact ? " phase-pipeline--compact" : ""}`}
+        role="list"
+        aria-label="Build pipeline"
+      >
+        {states.map((s, i) => {
+          const prev = i > 0 ? states[i - 1] : null;
+          // Connector sits BEFORE the stage it links to, not after the
+          // previous one — with `display: contents` on the wrap, "before
+          // stage N" = "after stage N-1" in the flat flex flow, but the
+          // className decision belongs to the gap between N-1 and N.
+          const connectorCls = prev
+            ? `phase-connector${prev.state === "passed" ? " phase-connector--passed" : ""}`
+            : null;
+          return (
+            <div className="phase-stage-wrap" role="listitem" key={s.key}>
+              {connectorCls && (
+                <div className={connectorCls} aria-hidden="true" />
+              )}
+              <div className={`phase-stage phase-stage--${s.state}`}>
+                <div className="phase-stage-icon" aria-hidden="true">
+                  <StateIcon state={s.state} size={compact ? 12 : 14} />
+                </div>
+                <div className="phase-stage-text">
+                  <div className="phase-stage-label">{s.label}</div>
+                  {!compact && s.hint && (
+                    <div className="phase-stage-hint">{s.hint}</div>
+                  )}
+                </div>
+                {s.isFix && <span className="phase-fix-badge">Fix</span>}
               </div>
-              <div className="phase-stage-text">
-                <div className="phase-stage-label">{s.label}</div>
-                {!compact && s.hint && (
-                  <div className="phase-stage-hint">{s.hint}</div>
-                )}
-              </div>
-              {s.isFix && <span className="phase-fix-badge">Fix</span>}
+            </div>
+          );
+        })}
+
+        {terminal && (
+          <div
+            className={`phase-stage phase-stage--${terminal.tone} phase-stage--terminal`}
+            role="listitem"
+            key="__terminal__"
+          >
+            <div className="phase-stage-icon" aria-hidden="true">
+              <StateIcon
+                state={terminal.tone === "accent" ? "passed" : "failed"}
+                size={compact ? 12 : 14}
+              />
+            </div>
+            <div className="phase-stage-text">
+              <div className="phase-stage-label">{terminal.label}</div>
+              {!compact && (
+                <div className="phase-stage-hint">
+                  {terminal.tone === "accent" ? "Bot is live" : "Halted"}
+                </div>
+              )}
             </div>
           </div>
-        );
-      })}
-
-      {terminal && (
-        <div
-          className={`phase-stage phase-stage--${terminal.tone} phase-stage--terminal`}
-          role="listitem"
-          key="__terminal__"
-        >
-          <div className="phase-stage-icon" aria-hidden="true">
-            <StateIcon
-              state={terminal.tone === "accent" ? "passed" : "failed"}
-              size={compact ? 12 : 14}
-            />
-          </div>
-          <div className="phase-stage-text">
-            <div className="phase-stage-label">{terminal.label}</div>
-            {!compact && (
-              <div className="phase-stage-hint">
-                {terminal.tone === "accent" ? "Bot is live" : "Halted"}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {showNextAction && phase.next_action && phase.next_action !== "none" && (
         <div className="phase-next">

@@ -2256,7 +2256,7 @@ h1 .punch { color: var(--accent-fg); }
 /* === Intro block (feed-first hero, redesigned) === */
 .intro-block {
   position: relative;
-  padding: 28px 0 24px;
+  padding: 24px 0 22px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 18px;
 }
@@ -2272,12 +2272,31 @@ h1 .punch { color: var(--accent-fg); }
 .intro-meta .live-dot { width: 7px; height: 7px; }
 .intro-meta .intro-sep { color: var(--border); margin: 0 -2px; font-weight: 400; }
 
+/* Brand mark on the left of the slogan, vertically centered
+   with the two-line headline. The logo is the same one used in
+   the desktop header (◆ + AGNT-GM), so the hero feels of-a-piece
+   with the chrome above. */
+.intro-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.intro-brand .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+  flex-shrink: 0;
+}
+
 .intro-h {
-  font-size: clamp(40px, 6vw, 72px);
-  line-height: 0.94;
-  letter-spacing: -0.04em;
+  font-size: clamp(26px, 3.2vw, 36px);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
   font-weight: 800;
-  margin: 0 0 14px;
+  margin: 0 0 10px;
   display: block;
   text-wrap: balance;
 }
@@ -2291,55 +2310,62 @@ h1 .punch { color: var(--accent-fg); }
   color: var(--accent-fg);
   position: relative;
   display: inline-block;
-  margin-top: 2px;
+  margin-top: 1px;
 }
-.intro-h-l2::after {
-  content: "_";
-  display: inline-block;
-  margin-left: 4px;
-  color: var(--accent);
-  animation: caret 1.1s steps(2) infinite;
-}
-@keyframes caret { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+/* The old blinking "_" caret is gone — the previous treatment
+   read as a 90s terminal, not a 2025 mini app. The accent-colored
+   second line stands on its own now. */
+.intro-h-l2::after { content: none; }
 
 .intro-sub {
-  font-size: 15px; line-height: 1.55;
-  color: var(--fg);
-  max-width: 64ch;
-  margin: 0 0 22px;
+  font-size: 13.5px; line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 56ch;
+  margin: 0 0 16px;
   text-wrap: pretty;
+}
+
+.intro-code-col {
+  flex: 0 0 280px;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
 }
 
 .intro-foot {
   display: flex; justify-content: space-between; align-items: center;
-  gap: 24px; flex-wrap: wrap;
-  padding-top: 18px;
+  gap: 20px; flex-wrap: wrap;
+  padding-top: 16px;
   border-top: 1px dashed var(--border);
 }
 
 .intro-stats {
-  display: inline-flex; align-items: baseline; flex-wrap: wrap;
-  gap: 10px;
+  display: inline-flex; align-items: stretch; flex-wrap: wrap;
+  gap: 0;
   font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
 }
-.is-row {
+.intro-stat {
   display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 6px 14px;
+  border-right: 1px dashed var(--border);
 }
-.is-row .is-v {
-  font-size: 22px; font-weight: 800;
+.intro-stat:last-child { border-right: none; }
+.intro-stat-v {
+  font-size: 16px; font-weight: 800;
   color: var(--fg);
   font-variant-numeric: tabular-nums;
   display: inline-flex; align-items: baseline;
 }
-.is-row .is-l {
-  font-size: 10.5px; font-weight: 700;
+.intro-stat-l {
+  font-size: 9.5px; font-weight: 700;
   color: var(--fg-muted);
   text-transform: uppercase; letter-spacing: 0.06em;
-}
-.is-sep {
-  color: var(--border); font-size: 22px; font-weight: 300;
-  font-family: 'JetBrains Mono', monospace;
-  user-select: none;
 }
 
 .intro-cta {
@@ -2348,9 +2374,180 @@ h1 .punch { color: var(--accent-fg); }
 
 @media (max-width: 720px) {
   .intro-foot { flex-direction: column; align-items: stretch; }
-  .intro-stats { gap: 6px 14px; }
-  .is-sep { display: none; }
+  .intro-stats { gap: 0; }
+  .intro-stat { padding: 5px 10px; }
 }
+@media (max-width: 480px) {
+  /* On a narrow phone the 4 stat cells don't fit on one line
+     cleanly — wrap to 2x2. */
+  .intro-stat { flex: 1 1 50%; border-right: none; }
+  .intro-stat:nth-child(odd) { border-right: 1px dashed var(--border); }
+  .intro-stat:nth-child(-n+2) { border-bottom: 1px dashed var(--border); }
+}
+
+
+/* === Copyable block (install / agent-prompt) ===
+   Whole block is clickable to copy. In compact mode there's a
+   real header row at the top: "Step 01" on the left, the copy
+   icon on the right, space-between, with a dashed divider
+   separating the header from the text. The two are real UI
+   elements (not corner ghosts in the padding), so the user
+   actually sees them and knows the block is tappable + which
+   step they're on. */
+.copyable-block { user-select: text; }
+.copyable-block:hover { border-color: var(--border-strong) !important; }
+
+.copyable-block-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0 0 8px;
+  border-bottom: 1px dashed var(--border);
+  min-height: 22px;
+}
+.copyable-block-step {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--fg);
+  color: var(--bg);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.copyable-block-label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.copyable-block-copy {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  border-radius: 5px;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.copyable-block-copy:hover {
+  color: var(--fg);
+  background: var(--bg);
+}
+
+
+/* === Sort menu (icon button + dropdown) ===
+   The icon button is the only sort/filter affordance on phones
+   (tabs are hidden below 640px). It starts as a friendly
+   "Sort: Hottest" pill on desktop and shrinks to a bare icon
+   button on phones — same component, two visual modes driven
+   by media query. The dropdown is identical in both modes. */
+.sort-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.sort-menu-trigger {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 700;
+  color: var(--fg);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.sort-menu-trigger:hover {
+  border-color: var(--border-strong);
+  background: var(--bg);
+}
+.sort-menu-trigger[aria-expanded="true"] {
+  border-color: var(--fg-muted);
+  color: var(--accent-fg);
+}
+.sort-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 200px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px -10px rgba(0,0,0,0.18);
+  display: flex; flex-direction: column;
+  gap: 1px;
+}
+.sort-menu-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px; font-weight: 700;
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.sort-menu-item:hover { background: var(--bg-soft); }
+.sort-menu-item.active { color: var(--accent-fg); }
+.sort-menu-ico { font-size: 12px; line-height: 1; }
+.sort-menu-lbl { flex: 1; }
+.sort-menu-check { color: var(--accent); flex-shrink: 0; }
+
+
+/* === Section head: row of actions on the right (sort menu + tabs) === */
+.section-head-actions {
+  display: inline-flex; align-items: center; gap: 12px;
+  flex-shrink: 0;
+}
+
+/* === Phone layout: collapse the sort trigger to a bare icon,
+   hide the tabs (default filter = Live is the obvious choice).
+   The trigger sits to the right of the title block, vertically
+   centered with it. This is the only sort/filter control on
+   mobile — no tabs, no pill row, no decision fatigue. */
+@media (max-width: 640px) {
+  .sort-menu-trigger {
+    padding: 6px 8px;
+    font-size: 0;             /* hide the "Sort: …" label */
+    gap: 0;
+    border-radius: 8px;
+  }
+  .sort-menu-trigger svg { display: block; }
+  .sort-menu {
+    right: 0;
+    min-width: 180px;
+  }
+}
+[data-tg] .sort-menu-trigger {
+  padding: 6px 8px;
+  font-size: 0;
+  gap: 0;
+  border-radius: 8px;
+}
+[data-tg] .sort-menu-trigger svg { display: block; }
+[data-tg] .sort-menu { right: 0; min-width: 180px; }
+
+
 
 
 /* ============== AUTH (GitHub-only) ============== */
@@ -2568,6 +2765,71 @@ h1 .punch { color: var(--accent-fg); }
   color: var(--fg-muted);
   text-decoration: underline;
   text-decoration-color: var(--border-strong);
+}
+
+/* Token paste escape hatch (dev / phone sign-in). The GitHub
+   button above is the default; this is a small secondary path
+   for when the OAuth round-trip can't complete (e.g. the dev
+   server is on a LAN IP and the prod API bounces the redirect
+   back to https://agnt-gm.ai). */
+.auth-token-toggle {
+  margin-top: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  padding: 4px 0;
+}
+.auth-token-toggle:hover { color: var(--fg); }
+.auth-token-form {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  text-align: left;
+}
+.auth-token-form-hint {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+.auth-token-form-hint code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.auth-token-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.auth-token-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.auth-token-err {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--danger);
+}
+.auth-token-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
 }
 
 /* === Authorizing === */
