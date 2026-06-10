@@ -14,6 +14,15 @@ import {
 
 import "./styles.css";
 import App from "./App.jsx";
+import { installTelegramDevMock } from "./lib/telegramDev.js";
+
+// Dev-only: inject a minimal window.Telegram mock so Chrome can
+// exercise the bot-creation flow without a real Telegram context.
+// See src/lib/telegramDev.js for the contract. Skipped when
+// import.meta.env.DEV is false (i.e. the production build) or when
+// window.Telegram is already defined (i.e. we're inside real
+// Telegram).
+installTelegramDevMock();
 
 const TONCONNECT_MANIFEST = "https://agnt-gm.ams3.digitaloceanspaces.com/tonconnect-manifest.json";
 
