@@ -76,7 +76,7 @@ function AuthSignIn() {
         return;
       }
       setErr("Token saved but /me returned no agent. Double-check the value.");
-    } catch (e) {
+    } catch {
       setErr("Invalid token. /me returned 401.");
       setManualToken("");
     } finally {

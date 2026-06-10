@@ -11,7 +11,6 @@
 
 import { Link, useParams } from "react-router-dom";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
-import ProjectFactsRail from "../components/ProjectFactsRail.jsx";
 import PhasePipeline from "../components/PhasePipeline.jsx";
 import { useProjectDag } from "../hooks/useProjectDag.js";
 import { useProjectPhase } from "../hooks/useProjectPhase.js";
@@ -75,7 +74,7 @@ function statusPill(task) {
   };
 }
 
-function TaskRow({ task, slug }) {
+function TaskRow({ task }) {
   const kind = KIND_CFG[task.task_kind] || {
     bg: "var(--bg-tint)",
     fg: "var(--fg-muted)",
@@ -128,7 +127,7 @@ function TaskRow({ task, slug }) {
 
 export default function Milestones() {
   const { slug } = useParams();
-  const { live, owner, loading } = useProjectData(slug);
+  const { live, loading } = useProjectData(slug);
   const dag = useProjectDag(slug);
   const phase = useProjectPhase(slug);
 

@@ -22,7 +22,7 @@ import { useEffect, useState } from "react";
 export default function BottomTabBar({ authed, agent }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const tonAddress = useTonAddress();
+  const _tonAddress = useTonAddress();
   const [unread, setUnread] = useState(0);
 
   // Poll the unread notification count for the badge. Skipped when

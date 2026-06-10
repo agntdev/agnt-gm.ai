@@ -14,7 +14,6 @@ import {
   WeeklyBars,
 } from "../components/payoutWidgets.jsx";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
-import ProjectFactsRail, { fmtDate } from "../components/ProjectFactsRail.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
 import { useProjectPhase } from "../hooks/useProjectPhase.js";
