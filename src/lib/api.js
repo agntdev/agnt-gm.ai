@@ -273,23 +273,6 @@ export const api = {
   // Returns { ok, status, data } so callers can distinguish 401/429/503.
   createProject: (body, token) =>
     send("POST", "/builder/projects", body, { auth: token }),
-  publishProject: (idOrSlug, token) =>
-    send(
-      "POST",
-      `/builder/projects/${encodeURIComponent(idOrSlug)}/publish`,
-      null,
-      { auth: token },
-    ),
-
-  // Owner toggles the PR auto-merge policy. Owner-only on the API.
-  // Body: { enabled: bool }. Response: { ok, project_id, auto_merge_enabled }.
-  setAutoMergePolicy: (idOrSlug, enabled, token) =>
-    send(
-      "PATCH",
-      `/builder/projects/${encodeURIComponent(idOrSlug)}/auto-merge`,
-      { enabled },
-      { auth: token },
-    ),
 
   // Owner renounces jetton admin (one-way). Empty body.
   // Response: { ok, project_id, locked_at, tx_hash?, note? }.
