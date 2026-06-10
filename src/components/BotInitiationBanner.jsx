@@ -96,7 +96,6 @@ export default function BotInitiationBanner({ live, token }) {
   if (pollDisabled) return null;
   if (botReady) return null;
   if (!live) return null;
-  if (live.current_phase === "published") return null;
   if (live.status !== "live") return null;
 
   async function onConfirm() {

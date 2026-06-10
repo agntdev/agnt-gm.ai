@@ -115,8 +115,14 @@ export default function Project() {
         {live && (
           <BotInitiationBanner live={live} token={token} />
         )}
-        {/* "Your bot is live" CTA — only when the build is published. */}
-        {live?.current_phase === "published" && (
+        {/* "Your bot is live" CTA — only when the build is published.
+            Gate on `phase.current_phase` (loaded by useProjectPhase, polled
+            every 5s) NOT `live.current_phase` — the project GET response
+            doesn't include current_phase, so the live-derived check was
+            permanently false and BotCard never rendered. Same class of bug
+            as the BotInitiationBanner's `live.suggested_bot_username`
+            check (post-launch fix). */}
+        {phase?.current_phase === "published" && (
           <BotCard slug={slug} projectName={live?.name} />
         )}
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
