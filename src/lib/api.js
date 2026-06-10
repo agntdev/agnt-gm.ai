@@ -116,6 +116,16 @@ export const api = {
   getProjectBot: (idOrSlug) =>
     get(`/builder/projects/${encodeURIComponent(idOrSlug)}/bot`),
 
+  // AGNTDEV task DAG (per-phase task graph with kind, deps, claimable
+  // verdict). 404s until the LLM planner has materialized the Dev DAG
+  // (typically right after the Design phase lands). Response shape:
+  //   { project_id, project_slug, current_phase, phase_status,
+  //     tasks: [{ slug, title, task_kind, phase, status,
+  //              depends_on: [...], claimable, claim_reason? }] }
+  // task_kind is one of: foundation | feature | integration | doc | fix.
+  getProjectDag: (idOrSlug) =>
+    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/dag`),
+
   // AGNTDEV managed-bot creation (pre-publish, owner-only). Records
   // a suggested_bot_username on the project, returns the manager-bot
   // deeplink the user taps to create the bot in Telegram. Side

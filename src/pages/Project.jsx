@@ -5,6 +5,7 @@ import ConfirmModal from "../components/ConfirmModal.jsx";
 import PhasePipeline from "../components/PhasePipeline.jsx";
 import BotCard from "../components/BotCard.jsx";
 import BotInitiationBanner from "../components/BotInitiationBanner.jsx";
+import DagSummary from "../components/DagSummary.jsx";
 import {
   ExtraCountsRow,
   PayoutsList,
@@ -121,6 +122,10 @@ export default function Project() {
             <PhasePipeline phase={phase} />
           </div>
         )}
+        {/* Task DAG summary — only renders when the project is in a
+            phase that has a DAG (Dev/Tests/published) and the LLM
+            planner has materialized one. Self-hides otherwise. */}
+        <DagSummary slug={slug} phase={phase} />
         {/* "Confirm your bot identity" — one-tap Telegram interstitial.
             Renders only when the project is live, has a suggested
             bot username, and the bot row hasn't landed yet. Self-hides
