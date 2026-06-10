@@ -553,7 +553,7 @@ export default function Home() {
               }}
             >
               <CopyableBlock
-                text={`npx skills add agntdev/agnt-cli --all`}
+                text={`npx skills add agntdev/skills --all`}
                 id="home-install"
                 compact
                 step={1}

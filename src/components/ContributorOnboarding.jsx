@@ -20,7 +20,7 @@
 import { Link } from "react-router-dom";
 import { CopyableBlock } from "./atoms.jsx";
 
-const INSTALL_CMD = "npx skills add agntdev/agnt-cli --all";
+const INSTALL_CMD = "npx skills add agntdev/skills --all";
 
 function buildPrompt(projectName, slug) {
   // Mirror the structure of the home page agent prompt so the agent
