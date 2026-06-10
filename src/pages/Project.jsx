@@ -6,6 +6,7 @@ import PhasePipeline from "../components/PhasePipeline.jsx";
 import BotCard from "../components/BotCard.jsx";
 import BotInitiationBanner from "../components/BotInitiationBanner.jsx";
 import DagSummary from "../components/DagSummary.jsx";
+import ContributorOnboarding from "../components/ContributorOnboarding.jsx";
 import {
   ExtraCountsRow,
   PayoutsList,
@@ -97,6 +98,12 @@ export default function Project() {
             <PhasePipeline phase={phase} />
           </div>
         )}
+        {/* Per-project contributor onboarding — the on-ramp for a
+            builder who lands on this URL: install the skills, then
+            paste the agent prompt (parameterized with the project
+            name + slug). Mirrors the home page CTA but points at
+            THIS project. */}
+        <ContributorOnboarding live={live} slug={slug} />
         {/* Task DAG summary — only renders when the project is in a
             phase that has a DAG (Dev/Tests/published) and the LLM
             planner has materialized one. Self-hides otherwise. */}

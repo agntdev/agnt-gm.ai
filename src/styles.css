@@ -4652,3 +4652,54 @@ h1 .punch { color: var(--accent-fg); }
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* === Contributor onboarding (per-project) ===
+   Per-project install + agent-prompt block, mirroring the home page
+   "Get started" CTA but parameterized with the project's name and
+   slug. Visible on every project page so a creator sharing the
+   URL with a builder has a one-paste on-ramp. */
+.contrib-onboard {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+}
+.contrib-onboard-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.contrib-onboard-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+.contrib-onboard-link {
+  font-size: 11px;
+  color: var(--accent-fg);
+  font-weight: 700;
+  font-family: JetBrains Mono, monospace;
+  text-decoration: none;
+  margin-left: auto;
+}
+.contrib-onboard-link:hover {
+  text-decoration: underline;
+}
+.contrib-onboard-sub {
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  margin: 0 0 10px 0;
+}
+.contrib-onboard-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+@media (max-width: 640px) {
+  .contrib-onboard-head { flex-wrap: wrap; }
+  .contrib-onboard-link { margin-left: 0; }
+}
