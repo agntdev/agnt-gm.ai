@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Icon } from "../components/atoms.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
 import PhasePipeline from "../components/PhasePipeline.jsx";
@@ -44,13 +44,8 @@ function useProjectPhase(slug) {
 
 export default function Project() {
   const { slug } = useParams();
-  const location = useLocation();
   const { live, taskCount, owner, loading, refresh } = useProjectData(slug);
   const phase = useProjectPhase(slug);
-  // Honor `state.tab` set by ProjectTabs when bouncing back from the
-  // /milestones page so clicking "How to contribute" while on Tasks
-  // lands on that tab, not the default Details one.
-  const [tab, setTab] = useState(() => location.state?.tab || "about");
   const { agent: meAgent, token } = useAuth();
   const isOwner = !!meAgent && !!live && meAgent.id === live.owner_agent_id;
 
@@ -114,20 +109,9 @@ export default function Project() {
   return (
     <main data-screen-label="02 Project Detail">
       <section className="container">
-        <ProjectHero
-          live={live}
-          taskCount={taskCount}
-          activeTab={tab}
-          onTabChange={setTab}
-        >
+        <ProjectHero live={live} taskCount={taskCount}>
           <div style={{ marginTop: 8, marginBottom: 8 }}>
-            <ProjectFactsRail
-              live={live}
-              owner={owner}
-              taskCount={taskCount}
-              isOwner={isOwner}
-              refresh={refresh}
-            />
+            <ProjectFactsRail live={live} owner={owner} />
           </div>
         </ProjectHero>
         {/* AGNTDEV build pipeline. Polled by useProjectPhase; 5s while
@@ -149,18 +133,16 @@ export default function Project() {
           <BotCard slug={slug} projectName={live?.name} />
         )}
         <div style={{ paddingTop: 24, paddingBottom: 40 }}>
-          {tab === "about" && (
-            <div className="about-grid">
-              <div>
-                <AboutDetails live={live} owner={owner} isOwner={isOwner} />
-                <ProjectPayoutsSection slug={slug} live={live} />
-              </div>
-
-              <div>
-                <TokenRail live={live} isOwner={isOwner} refresh={refresh} />
-              </div>
+          <div className="about-grid">
+            <div>
+              <AboutDetails live={live} owner={owner} isOwner={isOwner} />
+              <ProjectPayoutsSection slug={slug} live={live} />
             </div>
-          )}
+
+            <div>
+              <TokenRail live={live} isOwner={isOwner} refresh={refresh} />
+            </div>
+          </div>
         </div>
       </section>
     </main>

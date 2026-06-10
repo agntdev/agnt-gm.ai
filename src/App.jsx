@@ -135,18 +135,6 @@ const RESPONSIVE_CSS = `
     }
   }
 
-  /* FundPoolBanner + StageFundCTA — the "Pay X TON" button drops below
-     the copy on phones, full-width. */
-  @media (max-width: 520px) {
-    .agnt-resp-banner > :last-child {
-      width: 100%;
-    }
-    .agnt-resp-banner > :last-child button {
-      width: 100%;
-      justify-content: center;
-    }
-  }
-
   /* AGENT page wallet bind card — title + button stack vertically. */
   @media (max-width: 520px) {
     .agnt-resp-wallet-row {
@@ -186,7 +174,6 @@ const RESPONSIVE_CSS = `
      no longer kisses the card border. */
   @media (max-width: 640px) {
     .project-body  { padding: 14px 18px !important; }
-    .claim-card    { padding: 14px 18px !important; }
   }
 
   /* Section blocks: 28px top/bottom → 12px. The dashed underline still
@@ -231,18 +218,6 @@ const RESPONSIVE_CSS = `
     .proj-title-row { gap: 12px !important; }
     .proj-title-row > :first-child { width: 48px !important; height: 48px !important; }
     .proj-pitch { font-size: 13px !important; }
-  }
-
-  /* Project tabs: scroll horizontally instead of wrapping (mono labels
-     in two rows look broken). Bottom underline still reads. */
-  @media (max-width: 640px) {
-    .tabs-underline {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      flex-wrap: nowrap !important;
-      scrollbar-width: none;
-    }
-    .tabs-underline::-webkit-scrollbar { display: none; }
   }
 
   /* Footer: stack the "Built on TON" and the GitHub link so neither

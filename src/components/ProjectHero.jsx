@@ -8,7 +8,7 @@
 // each page renders the strip with its own tab highlighted.
 
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Icon, ProjectAvatar } from "./atoms.jsx";
 import { api } from "../lib/api.js";
 
@@ -120,59 +120,6 @@ export function useProjectData(slug) {
   };
 }
 
-const TABS = [
-  { id: "about", label: "Details", icon: "info" },
-  { id: "tasks", label: "Tasks", icon: "layers" },
-  { id: "contribute", label: "How to contribute", icon: "zap" },
-];
-
-export function ProjectTabs({ project, activeTab, taskCount, onTabChange }) {
-  const navigate = useNavigate();
-  return (
-    <div className="tabs-underline" style={{ marginTop: 4 }}>
-      {TABS.map((t) => {
-        // Milestones page passes activeTab="tasks-page" as a sentinel for the
-        // breadcrumb + cross-page routing below — treat it as a match for the
-        // "tasks" tab so the strip still underlines while we're on /milestones.
-        const isActive =
-          activeTab === t.id ||
-          (activeTab === "tasks-page" && t.id === "tasks");
-        return (
-          <button
-            key={t.id}
-            type="button"
-            className={`tab-underline ${isActive ? "active" : ""}`}
-            onClick={() => {
-              // The Tasks tab is its own page; the rest stay in-page on /projects/:slug.
-              if (t.id === "tasks") {
-                navigate(`/projects/${project.slug}/milestones`);
-              } else if (activeTab === "tasks-page") {
-                // Coming from Milestones — bounce back to the project root and select the tab there.
-                navigate(`/projects/${project.slug}`, { state: { tab: t.id } });
-                onTabChange?.(t.id);
-              } else {
-                onTabChange?.(t.id);
-              }
-            }}
-          >
-            <Icon name={t.icon} size={11} /> {t.label}
-            <span
-              style={{
-                fontSize: 10,
-                color: "var(--fg-muted)",
-                marginLeft: 6,
-                fontWeight: 600,
-              }}
-            >
-              {t.id === "tasks" && (taskCount ?? 0)}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // Build a card-shaped object for ProjectAvatar (it expects `{sym, tone}`).
 // Visual fields are derived from a hash of the slug so the look is stable.
 function djb2(str) {
@@ -185,13 +132,7 @@ function avatarTone(slug) {
   return { bg: `oklch(0.94 0.07 ${hue})`, fg: `oklch(0.4 0.16 ${hue})` };
 }
 
-export default function ProjectHero({
-  live,
-  taskCount,
-  activeTab,
-  onTabChange,
-  children,
-}) {
+export default function ProjectHero({ live, children }) {
   if (!live) return null;
 
   const slug = live.slug;
@@ -229,27 +170,9 @@ export default function ProjectHero({
           Pulse
         </Link>
         <span>/</span>
-        {activeTab === "tasks-page" ? (
-          <>
-            <Link
-              to={`/projects/${slug}`}
-              style={{
-                textDecoration: "none",
-                color: "inherit",
-                fontFamily: "inherit",
-                fontSize: "inherit",
-              }}
-            >
-              {live.name}
-            </Link>
-            <span>/</span>
-            <span style={{ color: "var(--fg)", fontWeight: 700 }}>tasks</span>
-          </>
-        ) : (
-          <span style={{ color: "var(--fg)", fontWeight: 700 }}>
-            {live.name}
-          </span>
-        )}
+        <span style={{ color: "var(--fg)", fontWeight: 700 }}>
+          {live.name}
+        </span>
       </div>
 
       {hasCover && <ProjectCover live={live} avatarShape={avatarShape} />}
@@ -354,20 +277,7 @@ export default function ProjectHero({
           <p className="proj-pitch">{live.short_description}</p>
           {children && <div style={{ marginTop: 14 }}>{children}</div>}
         </div>
-
-        <ClaimCard
-          live={live}
-          taskCount={taskCount}
-          onTabChange={onTabChange}
-        />
       </div>
-
-      <ProjectTabs
-        project={live}
-        activeTab={activeTab}
-        taskCount={taskCount}
-        onTabChange={onTabChange}
-      />
     </>
   );
 }
@@ -475,61 +385,3 @@ function ProjectCover({ live, avatarShape }) {
   );
 }
 
-function ClaimCard({ live, taskCount, onTabChange }) {
-  // Reward pool = total across ALL stages (total_ton_reward_pool_nano),
-  // not just stage 1 (ton_reward_pool_nano). Fall back to the legacy
-  // project pool when the new field is absent (pre-backend-deploy).
-  const poolNano =
-    live?.total_ton_reward_pool_nano ?? live?.ton_reward_pool_nano;
-  const tonPool = poolNano != null ? Number(poolNano) / 1e9 : 0;
-  const tonPoolLabel = tonPool.toLocaleString(undefined, {
-    maximumFractionDigits: 3,
-  });
-  const sym = live?.token_symbol || "TBD";
-  // Open tasks = actually-open count (server-computed); fall back to the
-  // total task count only when open_tasks isn't present.
-  const openTasks = live?.open_tasks ?? taskCount;
-
-  return (
-    <div className="claim-card">
-      <div className="claim-head">
-        <Icon name="zap" size={14} />
-        <span style={{ fontWeight: 800, fontSize: 13 }}>Join the project</span>
-      </div>
-      <div className="claim-section">
-        <div className="claim-pool-row">
-          <div className="claim-pool">
-            <div className="l">Reward pool</div>
-            <div className="v" style={{ color: "var(--accent-fg)" }}>
-              {tonPoolLabel} TON
-            </div>
-            <div className="s">${sym}</div>
-          </div>
-          <div className="claim-pool">
-            <div className="l">Open tasks</div>
-            <div className="v">{openTasks ?? "—"}</div>
-            <div className="s">
-              {live?.deadline ? "deadline set" : "no deadline"}
-            </div>
-          </div>
-        </div>
-      </div>
-      <div
-        className="claim-section"
-        style={{ display: "flex", flexDirection: "column", gap: 8 }}
-      >
-        <button
-          type="button"
-          className="btn btn-accent"
-          style={{ justifyContent: "center" }}
-          onClick={() => {
-            onTabChange?.("contribute");
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
-        >
-          <Icon name="zap" size={12} /> Contribute
-        </button>
-      </div>
-    </div>
-  );
-}
