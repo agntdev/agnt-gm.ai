@@ -233,7 +233,7 @@ export default function Milestones() {
           }
         />
 
-        <div style={{ paddingTop: 24, paddingBottom: 60 }}>
+        <div>
           {/* Phase pipeline strip — same as the project page so the
               user knows which phase these tasks belong to. */}
           {phase && (

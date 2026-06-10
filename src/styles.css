@@ -1562,7 +1562,7 @@ h1 .punch { color: var(--accent-fg); }
   display: grid;
   grid-template-columns: 1fr 380px;
   gap: 24px;
-  padding: 22px 0 0;
+  padding: 22px 0 14px;
   align-items: flex-start;
 }
 @media (max-width: 980px) { .proj-hero { grid-template-columns: 1fr; } }

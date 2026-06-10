@@ -194,21 +194,18 @@ const RESPONSIVE_CSS = `
     flex-shrink: 0;
   }
   /* Pitch subtitle inside the card body (mobile/TMA). The
-     project name is the title at the top, the pitch is one line
-     below the pills, then the 3-col stats grid, then the Earn
-     footer. Muted, 1 line, truncate. */
+     project name is the title at the top, the pitch is two
+     lines below the pills, then the 3-col stats grid, then the
+     Earn footer. Muted, 2-line clamp, ellipsis on overflow. */
   .project-card-row-pitch {
-    display: block;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
     margin-top: 6px;
     font-size: 12px;
     color: var(--fg-muted);
     line-height: 1.4;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    white-space: normal;
   }
 
   /* Pills row under the project name. Replaces the old
@@ -828,12 +825,12 @@ const RESPONSIVE_CSS = `
     .project-grid .project-card-row-name { font-size: 14px; }
     .project-grid .project-card-row-pitch {
       display: -webkit-box;
-      -webkit-line-clamp: 1;
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
-      font-size: 11.5px;
+      font-size: 12px;
       color: var(--fg-muted);
-      line-height: 1.35;
+      line-height: 1.4;
     }
     /* The body-level pitch is redundant on mobile (the row head
        already carries it as a subtitle). Hide it. */
@@ -858,12 +855,12 @@ const RESPONSIVE_CSS = `
   [data-tg] .project-grid .project-card-row-name { font-size: 14px; }
   [data-tg] .project-grid .project-card-row-pitch {
     display: -webkit-box;
-    -webkit-line-clamp: 1;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--fg-muted);
-    line-height: 1.35;
+    line-height: 1.4;
   }
   [data-tg] .project-grid .project-pitch { display: none !important; }
   [data-tg] .project-grid .project-stats-row { display: none !important; }
