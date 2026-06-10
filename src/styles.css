@@ -1562,7 +1562,7 @@ h1 .punch { color: var(--accent-fg); }
   display: grid;
   grid-template-columns: 1fr 380px;
   gap: 24px;
-  padding: 22px 0 10px;
+  padding: 22px 0 0;
   align-items: flex-start;
 }
 @media (max-width: 980px) { .proj-hero { grid-template-columns: 1fr; } }
@@ -4971,6 +4971,7 @@ h1 .punch { color: var(--accent-fg); }
 .contrib-onboard-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   margin-bottom: 6px;
 }
@@ -5003,14 +5004,11 @@ h1 .punch { color: var(--accent-fg); }
   gap: 6px;
 }
 @media (max-width: 640px) {
-  /* Head row stacks: title on the first line, "View tasks" link
-     right-aligned on the second line. The link takes full width
-     and the text is right-aligned, so the affordance stays on the
-     right edge regardless of how it wraps. */
-  .contrib-onboard-head { flex-wrap: wrap; }
-  .contrib-onboard-link {
-    margin-left: 0;
-    width: 100%;
-    text-align: right;
-  }
+  /* Keep title + "View tasks" on the SAME line, link pushed to
+     the right edge via justify-content: space-between. The
+     previous wrap-to-a-second-line layout made the link look
+     diagonally offset from the title — the user expects both
+     to share one horizontal row. */
+  .contrib-onboard-head { flex-wrap: nowrap; }
+  .contrib-onboard-link { margin-left: 0; }
 }

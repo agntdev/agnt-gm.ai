@@ -99,48 +99,68 @@ function ProjectCardLarge({ project }) {
       <ProjectHero project={project} />
       <div className="project-body">
         {/* Mobile / TMA row header: avatar + (name + pitch subtitle)
-            + status pill. The pitch lives here in mobile list mode
-            so the whole identity is one block, no separate pitch
-            row underneath. Hidden on desktop where the hero carries
-            the identity. */}
+        {/* Mobile / TMA card layout mirrors the project page hero:
+           logo on the left, title on the right (top line), pills
+           ($BBK ticker + LIVE status) on a separate line under
+           the title, pitch as a subtitle below, then the 3-col
+           stats grid (tasks / agents / deadline), then the
+           full-width Earn footer with the reward. Hidden on
+           desktop where the hero carries the identity. */}
         <div className="project-card-row-head">
-          <ProjectAvatar project={project} size={36} />
+          <ProjectAvatar project={project} size={44} />
           <div className="project-card-row-id">
             <span className="project-card-row-name">{project.name}</span>
-            <span className="project-card-row-pitch">{project.pitch}</span>
+            <div className="project-card-row-pills">
+              <span className="proj-pill proj-pill-sym">${project.sym}</span>
+              {project.status && (
+                <span className={`proj-pill proj-pill-${project.apiStatus || "live"}`}>
+                  {project.statusLabel || project.status.replace("-", " ")}
+                </span>
+              )}
+            </div>
           </div>
-          {project.status && (
-            <span className={`project-card-row-status ${project.status}`}>
-              <span className="dot" />
-              {project.statusLabel || project.status.replace("-", " ")}
-            </span>
-          )}
         </div>
-        {/* Mobile meta line: 3 inline metrics, separated by dots.
-            Replaces the 3-column stats grid (which had stacked
-            values and felt busy) and the bottom deadline row.
-            Hidden on desktop where the full stats grid shows. */}
-        <div className="project-card-mobile-meta">
-          <span className="project-card-mobile-meta-item">
-            <Icon name="git_branch" size={10} />
-            {project.tasksOpen} task{project.tasksOpen === 1 ? "" : "s"}
-          </span>
-          <span className="project-card-mobile-meta-sep">·</span>
-          <span
-            className="project-card-mobile-meta-item"
-            style={{ color: "var(--accent-fg)", fontWeight: 700 }}
-          >
-            {project.rewardPool?.crypto}
-          </span>
-          <span className="project-card-mobile-meta-sep">·</span>
-          <span className="project-card-mobile-meta-item">
-            <Icon name="clock" size={10} />
-            {project.daysLeft != null
-              ? `${project.daysLeft.toFixed(1)}d left`
-              : project.apiStatus === "ready_to_publish"
-                ? "Awaiting publish"
-                : "No deadline"}
-          </span>
+        <div className="project-card-row-pitch">{project.pitch}</div>
+        {/* Mobile stats grid: 3 cells, full card width, each cell
+            gets an equal third. TON reward is intentionally NOT
+            here — it lives in the Earn footer below, the most
+            prominent spot on the card. Replacing it with active
+            agents count gives the stats a real "is this project
+            alive?" signal without duplicating the reward. */}
+        <div className="project-card-mobile-stats">
+          <div className="project-card-mobile-stat">
+            <div className="project-card-mobile-stat-label">Tasks</div>
+            <div className="project-card-mobile-stat-value">
+              <Icon name="git_branch" size={11} />
+              {project.tasksOpen}
+            </div>
+          </div>
+          <div className="project-card-mobile-stat">
+            <div className="project-card-mobile-stat-label">Agents</div>
+            <div className="project-card-mobile-stat-value">
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  background: "var(--accent)",
+                  animation: "pulse 1.5s ease-in-out infinite",
+                }}
+              />
+              {project.agentsActive}
+            </div>
+          </div>
+          <div className="project-card-mobile-stat">
+            <div className="project-card-mobile-stat-label">Deadline</div>
+            <div className="project-card-mobile-stat-value">
+              <Icon name="clock" size={11} />
+              {project.daysLeft != null
+                ? `${project.daysLeft.toFixed(1)}d`
+                : project.apiStatus === "ready_to_publish"
+                  ? "soon"
+                  : "—"}
+            </div>
+          </div>
         </div>
         {/* Mobile-only "earn" footer. Full-width bar at the bottom
             of the card that puts the reward pool in the user's

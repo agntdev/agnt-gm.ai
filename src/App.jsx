@@ -193,19 +193,88 @@ const RESPONSIVE_CSS = `
     color: var(--fg-muted);
     flex-shrink: 0;
   }
-  /* Pitch subtitle inside the row head (mobile/TMA). The row head
-     is hidden on desktop, so the rule only needs to define the
-     mobile/TMA look. Muted, 1 line, truncate, sits right under
-     the project name. */
+  /* Pitch subtitle inside the card body (mobile/TMA). The
+     project name is the title at the top, the pitch is one line
+     below the pills, then the 3-col stats grid, then the Earn
+     footer. Muted, 1 line, truncate. */
   .project-card-row-pitch {
     display: block;
-    margin-top: 2px;
-    font-size: 11.5px;
+    margin-top: 6px;
+    font-size: 12px;
     color: var(--fg-muted);
-    line-height: 1.35;
+    line-height: 1.4;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+  }
+
+  /* Pills row under the project name. Replaces the old
+     .project-card-row-status (which was a corner pill on the
+     right of the name). Now the pills live on a separate line
+     under the title, matching the project page hero pattern:
+     name, then "$BBK  [LIVE]" below. Same .proj-pill class the
+     project page uses, so the two blocks feel like one family. */
+  .project-card-row-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  /* Mobile stats grid: 3 cells, full card width, equal thirds.
+     Replaces the old inline meta line (tasks · reward · deadline).
+     TON reward is gone from here — it lives in the Earn footer
+     below. Now: tasks / agents / deadline.
+
+     Negative left/right margin pulls the grid flush to the
+     card edges so the dashed top-border connects with the
+     card border on both sides. Same trick the Earn footer
+     uses — the inner content (the cells) gets the same
+     padding as the body so the labels don't kiss the edge. */
+  .project-card-mobile-stats {
+    display: none;
+    grid-template-columns: 1fr 1fr 1fr;
+    margin: 10px -12px 0;
+    padding: 10px 0 0;
+    border-top: 1px dashed var(--border);
+  }
+  .project-card-mobile-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px;
+    border-right: 1px dashed var(--border);
+  }
+  .project-card-mobile-stat:last-child { border-right: none; }
+  .project-card-mobile-stat-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-family: 'JetBrains Mono', monospace;
     white-space: nowrap;
+  }
+  .project-card-mobile-stat-value {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+    font-family: 'JetBrains Mono', monospace;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  @media (max-width: 640px) {
+    .project-card-mobile-stats { display: grid; }
+  }
+  [data-tg] .project-card-mobile-stats { display: grid; }
+  @media (min-width: 641px) {
+    .project-card-mobile-stats { display: none; }
   }
 
   .project-card-row-status {
@@ -407,6 +476,14 @@ const RESPONSIVE_CSS = `
   .proj-pill-ready_to_publish {
     background: oklch(0.96 0.05 80);
     color: #b45309;
+  }
+  /* Ticker pill on the project card — same look as the project
+     page hero's .proj-sym (bg-tint fill, muted text). Without
+     the background the "$BBK" string just floats on the card
+     with no visual weight. */
+  .proj-pill-sym {
+    background: var(--bg-tint);
+    color: var(--fg-muted);
   }
   .proj-pill-default {
     background: var(--bg-tint);
