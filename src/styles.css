@@ -1562,7 +1562,7 @@ h1 .punch { color: var(--accent-fg); }
   display: grid;
   grid-template-columns: 1fr 380px;
   gap: 24px;
-  padding: 22px 0 18px;
+  padding: 22px 0 10px;
   align-items: flex-start;
 }
 @media (max-width: 980px) { .proj-hero { grid-template-columns: 1fr; } }
@@ -2157,6 +2157,32 @@ h1 .punch { color: var(--accent-fg); }
   min-width: 0;
 }
 
+/* Collapsible summary inside the fact-row stack. Has the same
+   9px 14px padding as .fact-row so the label aligns with the
+   other rows' "Symbol" / "Reward pool" labels above — not glued
+   to the left border. The hover background is the affordance:
+   "you can click this to unfold." */
+.about-collapsible-summary {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fg-muted);
+  cursor: pointer;
+  list-style: none;
+  padding: 9px 14px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.about-collapsible-summary:hover {
+  color: var(--fg);
+  background: var(--bg);
+}
+.about-collapsible[open] .about-collapsible-summary {
+  color: var(--fg);
+}
+
 /* Compact variant — used for the details panel hoisted above the tabs.
    Tighter padding + smaller header so the panel doesn't push the
    contribute guide down by a full screen. */
@@ -2273,9 +2299,10 @@ h1 .punch { color: var(--accent-fg); }
 .intro-meta .intro-sep { color: var(--border); margin: 0 -2px; font-weight: 400; }
 
 /* Brand mark on the left of the slogan, vertically centered
-   with the two-line headline. The logo is the same one used in
-   the desktop header (◆ + AGNT-GM), so the hero feels of-a-piece
-   with the chrome above. */
+   with the two-line headline. Shown only on mobile + TMA where
+   the top header (which has the real logo) is hidden. On desktop
+   the header already carries the brand mark, so the slogan stands
+   alone — no need to repeat the diamond next to it. */
 .intro-brand {
   display: flex;
   align-items: center;
@@ -2283,13 +2310,17 @@ h1 .punch { color: var(--accent-fg); }
   margin-bottom: 12px;
 }
 .intro-brand .logo {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 8px;
   text-decoration: none;
   color: inherit;
   flex-shrink: 0;
 }
+@media (max-width: 640px) {
+  .intro-brand .logo { display: inline-flex; }
+}
+[data-tg] .intro-brand .logo { display: inline-flex; }
 
 .intro-h {
   font-size: clamp(26px, 3.2vw, 36px);
@@ -2326,8 +2357,8 @@ h1 .punch { color: var(--accent-fg); }
 }
 
 .intro-code-col {
-  flex: 0 0 280px;
-  min-width: 240px;
+  flex: 0 0 340px;
+  min-width: 280px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -3570,59 +3601,69 @@ h1 .punch { color: var(--accent-fg); }
 }
 .ms-task-row {
   display: grid;
-  grid-template-columns: 80px 1fr 160px 140px 90px;
+  /* 3 columns: hash+status (top), title (full width), labels.
+     The top row puts hash on the left and status badge on the
+     right via grid areas; title + labels span the full width
+     below. This works the same on desktop and mobile — no
+     squeeze, no wrap, no missing column. */
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "hash . status"
+    "title title title"
+    "labels labels labels";
   align-items: center;
-  gap: 14px;
+  column-gap: 10px;
+  row-gap: 6px;
   padding: 12px 18px;
   border-top: 1px solid var(--border);
   font-size: 12.5px;
 }
 .ms-task-row:first-child { border-top: none; }
-.ms-task-head {
-  font-size: 9.5px; font-weight: 800;
-  color: var(--fg-muted);
-  text-transform: uppercase; letter-spacing: 0.08em;
-  font-family: "JetBrains Mono", monospace;
-  padding: 8px 18px;
-  background: var(--bg-soft);
+.ms-task-row-top {
+  display: contents;
 }
 .ms-task-hash {
+  grid-area: hash;
   font-family: "JetBrains Mono", monospace;
   font-size: 11.5px; font-weight: 700;
   color: var(--fg-muted);
 }
-.ms-task-title > div:first-child {
+.ms-task-title {
+  grid-area: title;
   font-weight: 700;
   color: var(--fg);
   line-height: 1.4;
+  min-width: 0;
 }
 .ms-task-labels {
-  display: flex; gap: 4px; margin-top: 4px;
+  grid-area: labels;
+  display: flex; gap: 4px;
   flex-wrap: wrap;
 }
-.ms-task-claim {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 11.5px;
-  font-family: "JetBrains Mono", monospace;
-}
-.ms-task-reward {
-  display: flex; flex-direction: column; gap: 2px;
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-}
-.ms-task-reward .crypto {
-  font-size: 12px; font-weight: 800; color: var(--fg);
-}
-.ms-task-reward .est {
-  font-size: 10.5px; color: var(--fg-muted);
-}
 .ms-task-status {
+  grid-area: status;
   display: inline-flex; align-items: center; justify-content: center;
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 10px; font-weight: 800;
   text-transform: uppercase; letter-spacing: 0.06em;
   font-family: "JetBrains Mono", monospace;
+  white-space: nowrap;
+  justify-self: end;
+}
+/* "Why not claimable" note at the bottom of a task card. Italic
+   + muted, sits under the labels row. Spans the full card width
+   via grid-area below the labels. Only rendered when the task
+   is not claimable and not done. */
+.ms-task-note {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--fg-muted);
+  line-height: 1.4;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
 }
 
 /* dot-pulse already in styles, but ensure it has the sane background here too */
@@ -4962,6 +5003,14 @@ h1 .punch { color: var(--accent-fg); }
   gap: 6px;
 }
 @media (max-width: 640px) {
+  /* Head row stacks: title on the first line, "View tasks" link
+     right-aligned on the second line. The link takes full width
+     and the text is right-aligned, so the affordance stays on the
+     right edge regardless of how it wraps. */
   .contrib-onboard-head { flex-wrap: wrap; }
-  .contrib-onboard-link { margin-left: 0; }
+  .contrib-onboard-link {
+    margin-left: 0;
+    width: 100%;
+    text-align: right;
+  }
 }

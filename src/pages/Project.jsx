@@ -90,7 +90,7 @@ export default function Project() {
         {/* AGNTDEV build pipeline. Polled by useProjectPhase; 5s while
             non-terminal, 30s once published/failed. */}
         {phase && (
-          <div style={{ marginTop: 8, marginBottom: 8 }}>
+          <div style={{ marginTop: 0, marginBottom: 8 }}>
             <PhasePipeline phase={phase} />
           </div>
         )}
@@ -592,19 +592,7 @@ function TokenRail({ live, isOwner, refresh }) {
         className="about-collapsible about-collapsible--token"
         style={{ marginTop: 4 }}
       >
-        <summary
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 11,
-            fontWeight: 700,
-            color: "var(--fg-muted)",
-            cursor: "pointer",
-            listStyle: "none",
-            padding: "6px 0",
-          }}
-        >
+        <summary className="about-collapsible-summary">
           View token details
           <span className="about-collapsible-chevron" aria-hidden="true">
             ▾

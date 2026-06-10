@@ -51,12 +51,14 @@ export default function ContributorOnboarding({ live, slug }) {
         <CopyableBlock
           text={INSTALL_CMD}
           id={`contrib-install-${slug}`}
+          label="Install the skill"
           compact
           step={1}
         />
         <CopyableBlock
           text={prompt}
           id={`contrib-prompt-${slug}`}
+          label="Tell your agent"
           compact
           step={2}
         />

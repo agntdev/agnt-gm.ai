@@ -193,6 +193,21 @@ const RESPONSIVE_CSS = `
     color: var(--fg-muted);
     flex-shrink: 0;
   }
+  /* Pitch subtitle inside the row head (mobile/TMA). The row head
+     is hidden on desktop, so the rule only needs to define the
+     mobile/TMA look. Muted, 1 line, truncate, sits right under
+     the project name. */
+  .project-card-row-pitch {
+    display: block;
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .project-card-row-status {
     display: inline-flex;
     align-items: center;
@@ -709,10 +724,12 @@ const RESPONSIVE_CSS = `
      tappable row. Same applies inside Telegram — TMA users get the
      list view by default.
 
-     Mobile row anatomy:
-       [hero avatar (left)]  [name + ticker + repo]  [reward + deadline]
-                              [1-line pitch]
-       (stats row hidden, big hero hidden, bottom hidden) */
+     Mobile row anatomy (refined):
+       [avatar]  [name]
+                 [pitch (1 line, muted)]
+                                         [LIVE]
+       [tasks · reward · deadline (inline, dot-separated)]
+       (stats grid hidden, bottom row hidden, hero hidden) */
   @media (max-width: 640px) {
     .project-grid { display: flex !important; flex-direction: column; gap: 8px; }
     /* Row direction with the hero on the left. */
@@ -723,40 +740,32 @@ const RESPONSIVE_CSS = `
     .project-grid .hero-cover { display: none !important; }
     /* Body fills the rest, single column. */
     .project-grid .project-body {
-      padding: 10px 12px;
-      gap: 4px;
+      padding: 12px 14px;
+      gap: 8px;
       min-width: 0;
       flex: 1;
     }
-    /* The .project-card-row-head we added in Home.jsx is the row
-       identity (avatar + name + ticker + status). Hidden on desktop
-       where the hero already covers this. */
+    /* The .project-card-row-head is the row identity
+       (avatar + name + pitch + status). Shown on mobile only. */
     .project-grid .project-card-row-head { display: flex; }
-    .project-grid .project-pitch {
-      font-size: 11.5px;
+    .project-grid .project-card-row-name { font-size: 14px; }
+    .project-grid .project-card-row-pitch {
+      display: -webkit-box;
       -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      font-size: 11.5px;
       color: var(--fg-muted);
+      line-height: 1.35;
     }
-    /* Stats collapse to 1 line: tasks open + reward (the two that
-       matter for "should I claim this?"). Active agents hidden. */
-    .project-grid .project-stats-row {
-      display: flex !important;
-      grid-template-columns: none !important;
-      gap: 12px !important;
-      padding-top: 6px !important;
-      border-top: none !important;
-    }
-    .project-grid .project-stats-row > :nth-child(2) {
-      flex: 1;
-    }
-    .project-grid .project-stats-row > :last-child { display: none; }
-    .project-grid .project-stat-label { font-size: 9px !important; }
-    .project-grid .project-stat-value { font-size: 12px !important; }
-    /* Deadline moved inline into .project-card-row-meta on mobile,
-       so the dedicated right column is now empty real estate. Hide
-       it entirely in list mode. The .project-bottom element still
-       exists in the DOM for desktop layout. */
-    .project-grid .project-bottom { display: none; }
+    /* The body-level pitch is redundant on mobile (the row head
+       already carries it as a subtitle). Hide it. */
+    .project-grid .project-pitch { display: none !important; }
+    /* The 3-col stats grid and the bottom deadline row are also
+       redundant — .project-card-mobile-meta carries the same info
+       on a single line. Hide both. */
+    .project-grid .project-stats-row { display: none !important; }
+    .project-grid .project-bottom { display: none !important; }
   }
   /* On desktop the row header is hidden — the hero covers it. */
   @media (min-width: 641px) {
@@ -767,18 +776,21 @@ const RESPONSIVE_CSS = `
   [data-tg] .project-grid .project-card { flex-direction: row; }
   [data-tg] .project-grid .project-hero,
   [data-tg] .project-grid .hero-cover { display: none !important; }
-  [data-tg] .project-grid .project-body { padding: 10px 12px; gap: 4px; min-width: 0; flex: 1; }
+  [data-tg] .project-grid .project-body { padding: 12px 14px; gap: 8px; min-width: 0; flex: 1; }
   [data-tg] .project-grid .project-card-row-head { display: flex; }
-  [data-tg] .project-grid .project-pitch { font-size: 11.5px; -webkit-line-clamp: 1; color: var(--fg-muted); }
-  [data-tg] .project-grid .project-stats-row {
-    display: flex !important;
-    grid-template-columns: none !important;
-    gap: 12px !important;
-    padding-top: 6px !important;
-    border-top: none !important;
+  [data-tg] .project-grid .project-card-row-name { font-size: 14px; }
+  [data-tg] .project-grid .project-card-row-pitch {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    line-height: 1.35;
   }
-  [data-tg] .project-grid .project-stats-row > :nth-child(2) { flex: 1; }
-  [data-tg] .project-grid .project-stats-row > :last-child { display: none; }
+  [data-tg] .project-grid .project-pitch { display: none !important; }
+  [data-tg] .project-grid .project-stats-row { display: none !important; }
+  [data-tg] .project-grid .project-bottom { display: none !important; }
   [data-tg] .project-grid .project-bottom {
     width: auto;
     padding: 0 12px 0 0;
@@ -789,6 +801,36 @@ const RESPONSIVE_CSS = `
     flex-shrink: 0;
   }
   [data-tg] .project-grid .project-bottom { display: none; }
+
+  /* Mobile-only meta line: tasks · reward · deadline on a single row,
+     dot-separated. Shown only on mobile/TMA — the desktop stats grid
+     carries the same info more spaciously. */
+  .project-card-mobile-meta {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-muted);
+    flex-wrap: wrap;
+  }
+  .project-card-mobile-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .project-card-mobile-meta-sep {
+    color: var(--border-strong);
+    user-select: none;
+  }
+  @media (max-width: 640px) {
+    .project-card-mobile-meta { display: inline-flex; }
+  }
+  [data-tg] .project-card-mobile-meta { display: inline-flex; }
+  @media (min-width: 641px) {
+    .project-card-mobile-meta { display: none; }
+  }
 
   /* Project page hero on mobile: smaller h1 + tighter avatar gap so the
      name doesn't squeeze the live-site card off-screen. Card interior
@@ -911,16 +953,33 @@ const RESPONSIVE_CSS = `
      on very narrow tablet widths. Also: align values to bottom so
      wrapped labels ("In flight") line up with single-line ones. */
   @media (max-width: 700px) {
-    .ms-hero-stats { grid-template-columns: 1fr 1fr !important; }
+    /* Same 1×4 row as the hero stats pill on the home page. Each
+       cell is a tight number+label stack, the 4 columns divide the
+       card width evenly. No 2×2 fallback — the user wants the
+       same compact horizontal arrangement as the hero stats so
+       both blocks feel like the same component family. */
+    .ms-hero-stats { grid-template-columns: repeat(4, 1fr) !important; }
     .ms-stat {
       border-right: none !important;
-      border-bottom: 1px solid var(--border);
+      border-bottom: none !important;
       display: flex !important;
       flex-direction: column;
       justify-content: flex-end;
-      min-height: 72px;
+      min-height: 56px;
+      /* 10px horizontal padding so the number isn't glued to the
+         card edge on narrow phones; 8px vertical to keep the row
+         compact. */
+      padding: 8px 10px !important;
     }
-    .ms-stat:nth-last-child(-n+2) { border-bottom: none; }
+    .ms-stat + .ms-stat {
+      border-left: 1px dashed var(--border);
+    }
+    /* "Ready to claim" is the longest label; without a smaller
+       size it would either wrap to 2 lines (breaking the 1×4
+       rhythm) or overflow the cell. 8.5px + a 2px line-height
+       cap keeps the label on a single line at 430px viewport. */
+    .ms-stat-label { font-size: 8.5px !important; letter-spacing: 0.04em !important; white-space: nowrap; }
+    .ms-stat-val { font-size: 16px !important; margin-top: 2px !important; }
   }
 
   /* Milestones tasks table — 80px / 1fr / 160px / 140px / 90px grid is
@@ -930,21 +989,13 @@ const RESPONSIVE_CSS = `
      (hash + title + status on top, claim + reward below) and the
      head row hides — card titles are self-explanatory. */
   @media (max-width: 640px) {
-    .ms-task-head { display: none !important; }
-    .ms-task-row {
-      grid-template-columns: auto minmax(0, 1fr) auto !important;
-      grid-template-areas:
-        "hash title status"
-        "claim reward reward" !important;
-      column-gap: 10px !important;
-      row-gap: 8px !important;
-      padding: 12px 14px !important;
-    }
-    .ms-task-hash   { grid-area: hash;   align-self: start; padding-top: 2px; }
-    .ms-task-title  { grid-area: title;  min-width: 0; }
-    .ms-task-status { grid-area: status; align-self: start; }
-    .ms-task-claim  { grid-area: claim; }
-    .ms-task-reward { grid-area: reward; text-align: right; align-items: flex-end; }
+    /* The 3-row grid (hash|.|status / title / labels) is the same
+       on desktop and mobile — no layout switch needed. The
+       bottom row of the stat block above is the 1x4 row the
+       hero uses. */
+    .ms-task-row { padding: 10px 14px !important; row-gap: 4px !important; }
+    .ms-task-hash { font-size: 11px; }
+    .ms-task-status { font-size: 9px; padding: 3px 6px; }
   }
 
   /* Create form — .field-row (1fr 1fr) puts the reward-pool input

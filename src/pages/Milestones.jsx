@@ -85,72 +85,43 @@ function TaskRow({ task, slug }) {
 
   return (
     <div className="ms-task-row">
-      <span className="ms-task-hash">#{task.slug}</span>
-      <div className="ms-task-title">
-        <div>{task.title || task.slug}</div>
-        <div className="ms-task-labels">
+      <div className="ms-task-row-top">
+        <span className="ms-task-hash">#{task.slug}</span>
+        <span
+          className="ms-task-status"
+          style={{ background: pill.bg, color: pill.fg }}
+        >
+          {pill.label}
+        </span>
+      </div>
+      <div className="ms-task-title">{task.title || task.slug}</div>
+      <div className="ms-task-labels">
+        <span
+          className="task-label"
+          style={{ background: kind.bg, color: kind.fg, fontWeight: 700 }}
+        >
+          {kind.label}
+        </span>
+        {task.depends_on && task.depends_on.length > 0 && (
           <span
             className="task-label"
-            style={{ background: kind.bg, color: kind.fg, fontWeight: 700 }}
+            title={task.depends_on.join(", ")}
+            style={{ background: "var(--bg-tint)", color: "var(--fg-muted)" }}
           >
-            {kind.label}
+            {task.depends_on.length} dep{task.depends_on.length === 1 ? "" : "s"}
           </span>
-          {task.depends_on && task.depends_on.length > 0 && (
-            <span
-              className="task-label"
-              title={task.depends_on.join(", ")}
-              style={{ background: "var(--bg-tint)", color: "var(--fg-muted)" }}
-            >
-              {task.depends_on.length} dep{task.depends_on.length === 1 ? "" : "s"}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="ms-task-claim">
-        {task.claimable ? (
-          <code
-            className="ms-task-cli"
-            style={{
-              fontFamily: "JetBrains Mono, monospace",
-              fontSize: 10.5,
-              color: "var(--accent-fg)",
-              background: "var(--accent-soft)",
-              padding: "3px 7px",
-              borderRadius: 4,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              maxWidth: "100%",
-              display: "inline-block",
-            }}
-            title="Run in the agnt CLI to claim this task"
-          >
-            agnt task claim {slug} {task.slug}
-          </code>
-        ) : task.claim_reason ? (
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--fg-muted)",
-              fontStyle: "italic",
-            }}
-            title={task.claim_reason}
-          >
-            {task.claim_reason}
-          </span>
-        ) : (
-          <span style={{ color: "var(--fg-subtle)" }}>—</span>
         )}
       </div>
-      <div className="ms-task-reward">
-        <span style={{ color: "var(--fg-muted)", fontSize: 11 }}>—</span>
-      </div>
-      <span
-        className="ms-task-status"
-        style={{ background: pill.bg, color: pill.fg }}
-      >
-        {pill.label}
-      </span>
+      {/* Inline "why not claimable" note when the task is closed
+          for claiming (in_review, blocked, etc.). Replaces the
+          old CLI claim column — nobody pasted CLI commands off
+          a card, but a one-line reason for the block is useful
+          context. Hidden when the task is claimable or done. */}
+      {!task.claimable && task.claim_reason && task.status !== "done" && (
+        <div className="ms-task-note" title={task.claim_reason}>
+          {task.claim_reason}
+        </div>
+      )}
     </div>
   );
 }
@@ -252,7 +223,15 @@ export default function Milestones() {
   return (
     <main data-screen-label="03 Tasks">
       <section className="container">
-        <ProjectHero live={live} />
+        <ProjectHero
+          live={live}
+          crumbsExtra={
+            <>
+              <span>/</span>
+              <span style={{ color: "var(--fg)", fontWeight: 700 }}>Tasks</span>
+            </>
+          }
+        />
 
         <div style={{ paddingTop: 24, paddingBottom: 60 }}>
           {/* Phase pipeline strip — same as the project page so the
@@ -323,13 +302,6 @@ export default function Milestones() {
               </div>
             ) : (
               <div className="ms-task-list">
-                <div className="ms-task-row ms-task-head">
-                  <span>HASH</span>
-                  <span>TASK</span>
-                  <span>CLAIM VIA CLI</span>
-                  <span>REWARD</span>
-                  <span>STATUS</span>
-                </div>
                 {sortedTasks.map((t) => (
                   <TaskRow key={t.slug} task={t} slug={slug} />
                 ))}

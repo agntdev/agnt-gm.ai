@@ -107,7 +107,7 @@ function avatarTone(slug) {
   return { bg: `oklch(0.94 0.07 ${hue})`, fg: `oklch(0.4 0.16 ${hue})` };
 }
 
-export default function ProjectHero({ live, children, isOwner = false }) {
+export default function ProjectHero({ live, children, isOwner = false, crumbsExtra = null }) {
   if (!live) return null;
 
   const slug = live.slug;
@@ -145,9 +145,23 @@ export default function ProjectHero({ live, children, isOwner = false }) {
           Pulse
         </Link>
         <span>/</span>
-        <span style={{ color: "var(--fg)", fontWeight: 700 }}>
+        <Link
+          to={`/projects/${live.slug}`}
+          style={{
+            textDecoration: "none",
+            color: "var(--fg)",
+            fontWeight: 700,
+            fontFamily: "inherit",
+            fontSize: "inherit",
+          }}
+        >
           {live.name}
-        </span>
+        </Link>
+        {/* Optional extra segment when this hero is rendered on a
+            sub-page (e.g. milestones). Lets us turn
+            "Pulse / BarberBook" into "Pulse / BarberBook / Tasks"
+            without duplicating the breadcrumb block. */}
+        {crumbsExtra}
       </div>
 
       {hasCover && <ProjectCover live={live} avatarShape={avatarShape} />}

@@ -98,30 +98,16 @@ function ProjectCardLarge({ project }) {
     >
       <ProjectHero project={project} />
       <div className="project-body">
-        {/* Mobile / TMA row header: token avatar + name + ticker.
-            Hidden on desktop (≥640px) where the hero already carries
-            the identity. The .project-card-row-head class is a single
-            flex-row that collapses to a one-line tappable surface in
-            list mode. */}
+        {/* Mobile / TMA row header: avatar + (name + pitch subtitle)
+            + status pill. The pitch lives here in mobile list mode
+            so the whole identity is one block, no separate pitch
+            row underneath. Hidden on desktop where the hero carries
+            the identity. */}
         <div className="project-card-row-head">
-          <ProjectAvatar project={project} size={28} />
+          <ProjectAvatar project={project} size={36} />
           <div className="project-card-row-id">
             <span className="project-card-row-name">{project.name}</span>
-            <span className="project-card-row-meta">
-              <span className="project-card-row-ticker">${project.sym}</span>
-              <span className="project-card-row-repo">{project.repo}</span>
-              {/* Deadline on the same meta line on mobile — the right
-                  column was empty real estate, and putting it inline
-                  keeps the row to a single tappable block. */}
-              <span className="project-card-row-deadline">
-                <Icon name="clock" size={9} />
-                {project.daysLeft != null
-                  ? `${project.daysLeft.toFixed(1)}d left`
-                  : project.apiStatus === "ready_to_publish"
-                    ? "Awaiting publish"
-                    : "No deadline"}
-              </span>
-            </span>
+            <span className="project-card-row-pitch">{project.pitch}</span>
           </div>
           {project.status && (
             <span className={`project-card-row-status ${project.status}`}>
@@ -130,6 +116,35 @@ function ProjectCardLarge({ project }) {
             </span>
           )}
         </div>
+        {/* Mobile meta line: 3 inline metrics, separated by dots.
+            Replaces the 3-column stats grid (which had stacked
+            values and felt busy) and the bottom deadline row.
+            Hidden on desktop where the full stats grid shows. */}
+        <div className="project-card-mobile-meta">
+          <span className="project-card-mobile-meta-item">
+            <Icon name="git_branch" size={10} />
+            {project.tasksOpen} task{project.tasksOpen === 1 ? "" : "s"}
+          </span>
+          <span className="project-card-mobile-meta-sep">·</span>
+          <span
+            className="project-card-mobile-meta-item"
+            style={{ color: "var(--accent-fg)", fontWeight: 700 }}
+          >
+            {project.rewardPool?.crypto}
+          </span>
+          <span className="project-card-mobile-meta-sep">·</span>
+          <span className="project-card-mobile-meta-item">
+            <Icon name="clock" size={10} />
+            {project.daysLeft != null
+              ? `${project.daysLeft.toFixed(1)}d left`
+              : project.apiStatus === "ready_to_publish"
+                ? "Awaiting publish"
+                : "No deadline"}
+          </span>
+        </div>
+        {/* Desktop-only: full pitch + 3-col stats grid. Hidden on
+            mobile where the row head + meta line carry the same
+            info more compactly. */}
         <div className="project-pitch">{project.pitch}</div>
         <div className="project-stats-row">
           <div className="project-stat">
