@@ -87,9 +87,21 @@ export default function DagSummary({ slug, phase }) {
     };
   }, [slug, phase]);
 
-  // Hide on phases that don't have a DAG, while we're still fetching, or
-  // when the LLM planner genuinely hasn't materialized one.
-  if (!phase || !DAG_PHASES.has(phase.current_phase)) return null;
+  // Always render so the section is never silently absent. Pre-Dev
+  // phases get a small placeholder card explaining what's coming; this
+  // is much better UX than a quiet hole on the page.
+  if (phase && !DAG_PHASES.has(phase.current_phase)) {
+    return (
+      <div className="dag-summary dag-summary--pending">
+        <div className="dag-summary-head">
+          <span className="dag-summary-title">DAG</span>
+          <span className="dag-summary-sub">
+            {phase.current_phase} phase — tasks spawn once Design completes
+          </span>
+        </div>
+      </div>
+    );
+  }
   if (tasks === null) {
     return (
       <div className="dag-summary dag-summary--loading" aria-busy="true">
@@ -98,7 +110,18 @@ export default function DagSummary({ slug, phase }) {
       </div>
     );
   }
-  if (missing || tasks.length === 0) return null;
+  if (missing || tasks.length === 0) {
+    return (
+      <div className="dag-summary dag-summary--pending">
+        <div className="dag-summary-head">
+          <span className="dag-summary-title">DAG</span>
+          <span className="dag-summary-sub">
+            LLM planner is materializing tasks…
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const { byKind, claimable } = countByKind(tasks);
 
