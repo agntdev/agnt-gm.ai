@@ -5,6 +5,7 @@ import { CopyableBlock, Icon } from "../components/atoms.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
 import PhasePipeline from "../components/PhasePipeline.jsx";
 import BotCard from "../components/BotCard.jsx";
+import BotInitiationBanner from "../components/BotInitiationBanner.jsx";
 import {
   Field,
   RejectionBanner,
@@ -69,7 +70,7 @@ export default function Project() {
   // /milestones page so clicking "How to contribute" while on Tasks
   // lands on that tab, not the default Details one.
   const [tab, setTab] = useState(() => location.state?.tab || "about");
-  const { agent: meAgent } = useAuth();
+  const { agent: meAgent, token } = useAuth();
   const isOwner = !!meAgent && !!live && meAgent.id === live.owner_agent_id;
 
   if (loading) {
@@ -154,6 +155,13 @@ export default function Project() {
           <div style={{ marginTop: 8, marginBottom: 8 }}>
             <PhasePipeline phase={phase} />
           </div>
+        )}
+        {/* "Confirm your bot identity" — one-tap Telegram interstitial.
+            Renders only when the project is live, has a suggested
+            bot username, and the bot row hasn't landed yet. Self-hides
+            on capture; otherwise hands off to BotCard at published. */}
+        {live && (
+          <BotInitiationBanner live={live} token={token} />
         )}
         {/* "Your bot is live" CTA — only when the build is published. */}
         {live?.current_phase === "published" && (

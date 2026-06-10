@@ -116,6 +116,24 @@ export const api = {
   getProjectBot: (idOrSlug) =>
     get(`/builder/projects/${encodeURIComponent(idOrSlug)}/bot`),
 
+  // AGNTDEV managed-bot creation (pre-publish, owner-only). Records
+  // a suggested_bot_username on the project, returns the manager-bot
+  // deeplink the user taps to create the bot in Telegram. Side
+  // effect: enables the managed-bot poller to match the incoming
+  // managed_bot_created event back to this project via the
+  // start_param. Response shape (per the backend):
+  //   { project_id, project_slug, suggested_username, manager_bot,
+  //     deep_link, request_managed_bot, instructions }
+  // Status codes: 200 ok · 401/403 not owner · 409 bot already
+  // exists · 503 managed-bot runtime not configured.
+  initiateBot: (idOrSlug, token) =>
+    send(
+      "POST",
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/bot/initiate`,
+      null,
+      { auth: token },
+    ),
+
   listProjectTasks: (idOrSlug, { status, full } = {}) => {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
