@@ -5,6 +5,81 @@
 // than throwing — callers fall back to fixture data when the live API has
 // nothing to return.
 
+// ── DAG fetch cache ──
+// The home page fires one /builder/projects/:slug/dag request per visible
+// project (it needs the open/claimable counts to render the card meta). On
+// reload, with 20+ projects visible, that's 20+ requests in a few hundred
+// ms — the API rate-limits and we get 429s in the dev console. Three
+// mitigations here:
+//   1. Short-TTL in-memory cache. Reloading the home page within 30s
+//      serves the previous payload; the TTL is short enough that the
+//      counts stay fresh during normal browsing.
+//   2. In-flight dedupe. If the same slug is requested twice before the
+//      first response lands, both callers share one network request
+//      (React StrictMode double-invokes effects in dev — this is the
+//      common double-fetch case).
+//   3. sessionStorage mirror. On reload the in-memory cache is empty
+//      (the JS module re-evaluates), so without this every reload
+//      re-fires every DAG request. We mirror successful responses to
+//      sessionStorage on the way out and rehydrate on the first read
+//      of the page. This is the single biggest win for the 429 issue.
+const DAG_CACHE_TTL_MS = 30_000;
+const DAG_CACHE_KEY = "agnt-dag-cache-v1";
+const dagCache = new Map();   // slug -> { ts, data }
+const dagInflight = new Map(); // slug -> Promise<data>
+
+// Rehydrate the in-memory cache from sessionStorage on first import.
+// Wrapped in try/catch because sessionStorage can throw in private
+// modes or be disabled — we'd rather fall back to per-load fetches
+// than crash the page.
+let rehydrated = false;
+function rehydrateDagCache() {
+  if (rehydrated || typeof sessionStorage === "undefined") return;
+  rehydrated = true;
+  try {
+    const raw = sessionStorage.getItem(DAG_CACHE_KEY);
+    if (!raw) return;
+    const entries = JSON.parse(raw);
+    const now = Date.now();
+    for (const [slug, entry] of entries) {
+      if (entry && typeof entry.ts === "number" && now - entry.ts < DAG_CACHE_TTL_MS) {
+        dagCache.set(slug, entry);
+      }
+    }
+  } catch {
+    // Corrupt cache — nuke it so the next save starts clean.
+    try { sessionStorage.removeItem(DAG_CACHE_KEY); } catch {}
+  }
+}
+
+let persistTimer = null;
+function persistDagCache() {
+  if (typeof sessionStorage === "undefined") return;
+  // Debounce writes so a batch of successful fetches costs one
+  // sessionStorage write, not 20.
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      sessionStorage.setItem(
+        DAG_CACHE_KEY,
+        JSON.stringify(Array.from(dagCache.entries())),
+      );
+    } catch {
+      // Quota exceeded or storage disabled — drop the mirror so
+      // we stop trying. The in-memory cache still works.
+    }
+  }, 250);
+}
+
+function dagCacheGet(slug) {
+  rehydrateDagCache();
+  const hit = dagCache.get(slug);
+  if (hit && Date.now() - hit.ts < DAG_CACHE_TTL_MS) return hit.data;
+  if (hit) dagCache.delete(slug); // expired
+  return null;
+}
+
 // Always hit the real API host directly in production. In dev, use relative
 // paths so the Vite proxy handles them — no CORS, same origin as the SPA.
 const BASE = import.meta.env.PROD
@@ -123,8 +198,25 @@ export const api = {
   //     tasks: [{ slug, title, task_kind, phase, status,
   //              depends_on: [...], claimable, claim_reason? }] }
   // task_kind is one of: foundation | feature | integration | doc | fix.
-  getProjectDag: (idOrSlug) =>
-    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/dag`),
+  getProjectDag: (idOrSlug) => {
+    const slug = String(idOrSlug);
+    const cached = dagCacheGet(slug);
+    if (cached) return Promise.resolve(cached);
+    const inflight = dagInflight.get(slug);
+    if (inflight) return inflight;
+    const p = get(`/builder/projects/${encodeURIComponent(slug)}/dag`).then(
+      (data) => {
+        dagCache.set(slug, { ts: Date.now(), data });
+        persistDagCache();
+        return data;
+      },
+    );
+    dagInflight.set(slug, p);
+    // Always clear the in-flight slot — success or failure — so a
+    // failed request doesn't poison the cache with a pending promise.
+    p.finally(() => dagInflight.delete(slug));
+    return p;
+  },
 
   // AGNTDEV managed-bot creation (pre-publish, owner-only). Records
   // a suggested_bot_username on the project, returns the manager-bot

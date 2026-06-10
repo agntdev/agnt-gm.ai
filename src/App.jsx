@@ -832,6 +832,65 @@ const RESPONSIVE_CSS = `
     .project-card-mobile-meta { display: none; }
   }
 
+  /* Mobile-only "earn" footer — full-width bar at the bottom of
+     the project card that puts the reward pool in the user's
+     face. The dashed top border separates it from the meta
+     line above; the subtle bg-soft fill makes it read as a CTA
+     row, not just more metadata. The arrow on the right is the
+     tappable affordance — the whole card is a link, but the
+     arrow makes the destination obvious. */
+  .project-card-mobile-earn {
+    display: none;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 2px;
+    margin-left: -14px;
+    margin-right: -14px;
+    margin-bottom: -12px;
+    padding: 10px 14px;
+    border-top: 1px dashed var(--border);
+    background: var(--bg-soft);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .project-card-mobile-earn-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .project-card-mobile-earn-ton {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--accent-fg);
+  }
+  .project-card-mobile-earn-tok {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--fg-muted);
+    margin-left: auto;
+    margin-right: 4px;
+  }
+  .project-card-mobile-earn-arrow {
+    font-size: 16px;
+    color: var(--fg-muted);
+    font-weight: 700;
+    transition: transform 0.15s ease, color 0.15s ease;
+  }
+  @media (max-width: 640px) {
+    .project-card-mobile-earn { display: flex; }
+  }
+  [data-tg] .project-card-mobile-earn { display: flex; }
+  @media (min-width: 641px) {
+    .project-card-mobile-earn { display: none; }
+  }
+  /* Animate the arrow on card hover so the user gets a clear
+     signal that the whole card is a tap target. */
+  .project-grid .project-card:hover .project-card-mobile-earn-arrow {
+    transform: translateX(3px);
+    color: var(--accent-fg);
+  }
+
   /* Project page hero on mobile: smaller h1 + tighter avatar gap so the
      name doesn't squeeze the live-site card off-screen. Card interior
      padding stays generous. */

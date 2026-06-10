@@ -142,6 +142,26 @@ function ProjectCardLarge({ project }) {
                 : "No deadline"}
           </span>
         </div>
+        {/* Mobile-only "earn" footer. Full-width bar at the bottom
+            of the card that puts the reward pool in the user's
+            face — "Earn 1 TON + 1B $BBK" with a tappable arrow.
+            The dashed top border separates it from the meta line
+            above; the subtle bg-soft fill makes it read as a CTA
+            row, not just more metadata. The intent: a builder
+            scrolling the Pulse list should see the reward before
+            they see the pitch, and feel invited in. */}
+        <div className="project-card-mobile-earn">
+          <span className="project-card-mobile-earn-label">Earn</span>
+          <span className="project-card-mobile-earn-ton">
+            {project.rewardPool?.crypto}
+          </span>
+          <span className="project-card-mobile-earn-tok">
+            + {project.rewardPool?.tokens}
+          </span>
+          <span className="project-card-mobile-earn-arrow" aria-hidden="true">
+            →
+          </span>
+        </div>
         {/* Desktop-only: full pitch + 3-col stats grid. Hidden on
             mobile where the row head + meta line carry the same
             info more compactly. */}

@@ -242,7 +242,7 @@ export default function Milestones() {
             </div>
           )}
 
-          <div className="ms-hero-stats" style={{ marginTop: 24 }}>
+          <div className="ms-hero-stats" style={{ marginTop: 12 }}>
             <div className="ms-stat">
               <div className="ms-stat-label">Total tasks</div>
               <div className="ms-stat-val">{totals.total}</div>
@@ -269,7 +269,7 @@ export default function Milestones() {
           <div
             className="ms-tasks-scroll"
             style={{
-              marginTop: 24,
+              marginTop: 16,
               border: "1px solid var(--border)",
               borderRadius: 10,
               overflow: "hidden",

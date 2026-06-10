@@ -4970,7 +4970,7 @@ h1 .punch { color: var(--accent-fg); }
 }
 .contrib-onboard-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   margin-bottom: 6px;
 }
