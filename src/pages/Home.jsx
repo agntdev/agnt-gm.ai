@@ -422,9 +422,12 @@ export default function Home() {
     api.payoutsSchedule().then(setSchedule);
   }, []);
 
-  // Fetch task counts for each visible project so cards show real "tasks open"
-  // numbers instead of zeros. Each project hits one extra endpoint, but with
-  // the typical handful of live projects this is fine; we can paginate later.
+  // Fetch task counts for each visible project so cards show real "ready
+  // to claim" + "merged" numbers. Hits /dag (agntdev) instead of the
+  // legacy /tasks endpoint — the latter explicitly excludes phase-typed
+  // tasks, which is all of them on agntdev projects. One extra round
+  // trip per visible card; the typical handful of live projects makes
+  // this fine. We can paginate later.
   useEffect(() => {
     if (!liveProjects?.length) return;
     let cancelled = false;
@@ -432,13 +435,13 @@ export default function Home() {
       liveProjects
         .filter((p) => p.status === "live" || p.status === "ready_to_publish")
         .map((p) =>
-          api.listProjectTasks(p.slug).then((r) => {
+          api.getProjectDag(p.slug).then((r) => {
             const tasks = r?.tasks || [];
             return [
               p.slug,
               {
                 total: tasks.length,
-                open: tasks.filter((t) => t.status === "open").length,
+                open: tasks.filter((t) => t.claimable).length,
                 done: tasks.filter((t) => t.status === "done").length,
               },
             ];

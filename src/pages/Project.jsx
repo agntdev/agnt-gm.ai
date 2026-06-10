@@ -16,36 +16,11 @@ import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
 import ProjectFactsRail, { fmtDate } from "../components/ProjectFactsRail.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
-
-// Lightweight phase poller. 5s while the build is in motion, 30s once
-// terminal (published/failed). Phase rarely changes — no need to poll
-// hot. Calls the same api.getProjectPhase() the PhasePipeline reads.
-function useProjectPhase(slug) {
-  const [phase, setPhase] = useState(null);
-  useEffect(() => {
-    if (!slug) return undefined;
-    let cancelled = false;
-    let timer = null;
-    const tick = async () => {
-      const res = await api.getProjectPhase(slug);
-      if (cancelled || !res) return;
-      setPhase(res);
-      const terminal =
-        res.current_phase === "published" || res.current_phase === "failed";
-      timer = setTimeout(tick, terminal ? 30000 : 5000);
-    };
-    tick();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [slug]);
-  return phase;
-}
+import { useProjectPhase } from "../hooks/useProjectPhase.js";
 
 export default function Project() {
   const { slug } = useParams();
-  const { live, taskCount, owner, loading, refresh } = useProjectData(slug);
+  const { live, owner, loading, refresh } = useProjectData(slug);
   const phase = useProjectPhase(slug);
   const { agent: meAgent, token } = useAuth();
   const isOwner = !!meAgent && !!live && meAgent.id === live.owner_agent_id;
@@ -110,7 +85,7 @@ export default function Project() {
   return (
     <main data-screen-label="02 Project Detail">
       <section className="container">
-        <ProjectHero live={live} taskCount={taskCount}>
+        <ProjectHero live={live}>
           <div style={{ marginTop: 8, marginBottom: 8 }}>
             <ProjectFactsRail live={live} owner={owner} />
           </div>

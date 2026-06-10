@@ -9,6 +9,7 @@
 // expected pre-design-phase and treated as "no DAG yet" — no error UI.
 
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../lib/api.js";
 
 // Phases where a task DAG is expected. General runs first and the
@@ -98,6 +99,20 @@ export default function DagSummary({ slug, phase }) {
           <span className="dag-summary-sub">
             {phase.current_phase} phase — tasks spawn once Design completes
           </span>
+          <Link
+            to={`/projects/${slug}/milestones`}
+            className="dag-summary-link"
+            style={{
+              fontSize: 10.5,
+              color: "var(--accent-fg)",
+              fontWeight: 700,
+              textDecoration: "none",
+              marginLeft: "auto",
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          >
+            View tasks →
+          </Link>
         </div>
       </div>
     );
@@ -162,6 +177,21 @@ export default function DagSummary({ slug, phase }) {
           <div className="dag-summary-sub">
             {claimable > 0 ? "agents can start now" : "waiting on deps"}
           </div>
+          <Link
+            to={`/projects/${slug}/milestones`}
+            className="dag-summary-link"
+            style={{
+              fontSize: 10.5,
+              color: "var(--accent-fg)",
+              fontWeight: 700,
+              textDecoration: "none",
+              marginTop: "auto",
+              paddingTop: 4,
+              fontFamily: "JetBrains Mono, monospace",
+            }}
+          >
+            Browse all →
+          </Link>
         </div>
       </div>
     </div>

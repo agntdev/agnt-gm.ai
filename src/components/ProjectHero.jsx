@@ -1,11 +1,9 @@
-// Shared project hero — breadcrumb + hero block (title row, pitch, milestone,
-// claim card) + tab strip. Used by both the Project page (/projects/:slug)
-// and the Milestones page (/projects/:slug/milestones), so the chrome is
-// identical and only the body below the tab strip changes.
+// Shared project hero — breadcrumb + hero block (title row, pitch,
+// optional cover banner). Used by both the Project page
+// (/projects/:slug) and the Milestones page (/projects/:slug/milestones),
+// so the chrome is identical and only the body below changes.
 //
-// Pages own their data fetching; pass `project` (fixture or merged), `live`
-// (raw ProjectOAS) and `tasksCount` in. The active tab is also a prop so
-// each page renders the strip with its own tab highlighted.
+// Pages own their data fetching; pass `live` (raw ProjectOAS) in.
 
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -23,8 +21,6 @@ function coverEligible(source) {
 
 // Fetch routine shared by Project + Milestones. Returns:
 //   live      — raw ProjectOAS, null while loading, false on 404
-//   liveTasks — TaskListItemOAS[] | null
-//   taskCount — number | null
 //   owner     — AgentOAS | null
 //   loading   — true until the first /builder/projects/:slug response lands
 //
@@ -36,14 +32,15 @@ function coverEligible(source) {
 // "Loading project…" skeleton because each page mounted a fresh hook with
 // null state. We now prime state from the cache on mount, skip the
 // blanking step, and still refetch in the background so any updates
-// (Auto-review toggled, new task added) land within the same paint.
-const projectCache = new Map(); // slug -> { live, owner, tasks, taskCount }
+// (e.g. a new phase landed) land within the same paint.
+//
+// The legacy task list is no longer fetched here — the TMA task
+// browser uses useProjectDag (its own hook against the /dag endpoint).
+const projectCache = new Map(); // slug -> { live, owner }
 
 export function useProjectData(slug) {
   const cached = projectCache.get(slug);
   const [live, setLive] = useState(cached?.live ?? null);
-  const [liveTasks, setLiveTasks] = useState(cached?.tasks ?? null);
-  const [taskCount, setTaskCount] = useState(cached?.taskCount ?? null);
   const [owner, setOwner] = useState(cached?.owner ?? null);
   const [loading, setLoading] = useState(!cached?.live);
   const [tick, setTick] = useState(0);
@@ -55,8 +52,6 @@ export function useProjectData(slug) {
     // (e.g. after a funding tx) keep the prior content on screen.
     if (tick === 0 && !hasCache) {
       setLive(null);
-      setLiveTasks(null);
-      setTaskCount(null);
       setOwner(null);
       setLoading(true);
     }
@@ -75,13 +70,6 @@ export function useProjectData(slug) {
         ...(projectCache.get(slug) || {}),
         live: liveProject,
       });
-      if (typeof res?.task_count === "number") {
-        setTaskCount(res.task_count);
-        projectCache.set(slug, {
-          ...projectCache.get(slug),
-          taskCount: res.task_count,
-        });
-      }
       if (liveProject.owner_agent_id) {
         api.agent(liveProject.owner_agent_id).then((a) => {
           if (cancelled) return;
@@ -94,17 +82,6 @@ export function useProjectData(slug) {
         });
       }
     });
-    api.listProjectTasks(slug).then((r) => {
-      if (cancelled) return;
-      const tasks = r?.tasks || [];
-      setLiveTasks(tasks);
-      setTaskCount((prev) => (prev == null ? tasks.length : prev));
-      projectCache.set(slug, {
-        ...(projectCache.get(slug) || {}),
-        tasks,
-        taskCount: projectCache.get(slug)?.taskCount ?? tasks.length,
-      });
-    });
     return () => {
       cancelled = true;
     };
@@ -112,8 +89,6 @@ export function useProjectData(slug) {
 
   return {
     live,
-    liveTasks,
-    taskCount,
     owner,
     loading,
     refresh: () => setTick((n) => n + 1),

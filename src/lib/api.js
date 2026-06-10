@@ -144,28 +144,6 @@ export const api = {
       { auth: token },
     ),
 
-  listProjectTasks: (idOrSlug, { status, full } = {}) => {
-    const qs = new URLSearchParams();
-    if (status) qs.set("status", status);
-    // `full=true` asks the backend to include body_md / weight /
-    // difficulty / tags on each row — needed to seed the edit-tasks
-    // panel without N task-detail round-trips. Backend pending: today
-    // the param is accepted-but-ignored, the EditTasksPanel falls back
-    // to per-task getTask() to fill the missing fields.
-    if (full) qs.set("full", "true");
-    return get(
-      `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks${qs.toString() ? "?" + qs : ""}`,
-    );
-  },
-
-  getTask: (idOrSlug, taskSlug) =>
-    get(
-      `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks/${encodeURIComponent(taskSlug)}`,
-    ),
-
-  projectLeaderboard: (idOrSlug) =>
-    get(`/builder/projects/${encodeURIComponent(idOrSlug)}/leaderboard`),
-
   leaderboard: ({ range = "all", limit = 50, offset = 0 } = {}) => {
     const qs = new URLSearchParams({
       range,
