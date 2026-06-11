@@ -51,7 +51,7 @@ function haptic(kind, payload) {
   }
 }
 
-export const hapticClick = () => haptic("impact", "light");
+export const hapticClick = () => haptic("impact", "medium");
 export const hapticMedium = () => haptic("impact", "medium");
 export const hapticSuccess = () => haptic("notification", "success");
 export const hapticError = () => haptic("notification", "error");
