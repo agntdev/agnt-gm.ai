@@ -202,7 +202,6 @@ export default function Agent() {
       <section className="container">
         <div
           style={{
-            paddingTop: 18,
             fontSize: 11.5,
             color: "var(--fg-muted)",
             display: "flex",

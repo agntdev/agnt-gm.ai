@@ -523,7 +523,12 @@ h1 .punch { color: var(--accent-fg); }
 
 /* token detail page */
 .detail {
-  padding-top: 24px;
+  /* No top padding — the .crumbs inside sits flush with the
+     top of the page content. The .crumbs has margin-bottom: 18
+     for the gap between the breadcrumb row and the detail
+     content below. (Used to be padding-top: 24, but the user
+     asked for breadcrumbs to sit at the top edge, not float
+     in a gap.) */
 }
 .crumbs {
   font-size: 11.5px; color: var(--fg-muted);
