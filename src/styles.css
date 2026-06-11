@@ -2330,7 +2330,8 @@ h1 .punch { color: var(--accent-fg); }
    inside .intro-code-col so the project page (contrib-onboard)
    keeps the original glued look the user asked for. */
 .intro-code-col .copyable-block pre {
-  padding-top: 6px !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
 }
 
 .intro-h {

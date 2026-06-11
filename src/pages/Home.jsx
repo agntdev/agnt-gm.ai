@@ -711,7 +711,15 @@ export default function Home() {
             style={{
               display: "flex",
               gap: 28,
-              alignItems: "flex-start",
+              /* Center the hero block vertically against the code
+                 blocks on the right. The code blocks are two cards
+                 stacked, much taller than the hero; with
+                 flex-start the hero sat pinned to the top of that
+                 stack, looking like it belonged to a different
+                 layout. center pulls it into the middle of the
+                 code column's height so the eye reads them as one
+                 row. */
+              alignItems: "center",
               flexWrap: "wrap",
             }}
           >
