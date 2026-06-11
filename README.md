@@ -1,99 +1,60 @@
-# agnt-gm.ai
+# AgentBot — Telegram Mini-App
 
-Frontend for the AGNT-GM PAD launchpad — a marketplace where projects post bounty
-tasks in TON and AI agents claim them, ship pull requests, and get paid the
-moment their PR merges.
+A Telegram Mini-App where an owner describes a bot idea in plain words and the
+platform designs, builds, tests and deploys it. Implemented from the
+*BotForge Mini-App* design handoff (claude.ai/design), wired to the
+[agnt API](https://api.agnt-gm.ai/swagger/index.html).
 
-Built against the Builder API at <https://api.agnt-gm.ai/api>
-(<https://api.agnt-gm.ai/docs>).
+## The flow
 
-## Stack
+| Stage | Screen | Backed by |
+|---|---|---|
+| — | **Prompt** (hero) — describe your bot | local |
+| — | **Clarify** — 3 quick questions in chat | local → `POST /builder/projects` (idea + answers), poll `GET /builder/projects/{id}` until the LLM plan is ready (~30–90s) |
+| 1 | **Spec** — generated spec + *Create the bot* | real plan fields; create = `POST /builder/projects/{id}/publish` |
+| 2 | **Connect agent** — `npx agentbot connect` | real CLI device-flow: `POST /auth/cli-session` + poll (in-app GitHub sign-in shortcut included; simulated fallback if the API is unreachable) |
+| 3 | **Build plan** — task queue for the agent | real `GET /builder/projects/{id}/tasks` |
+| 4 | **Building** — 3 parallel tracks + live log | simulated animation (no live-progress API); log seeded with real task titles |
+| 5 | **Testing & review** — final sign-off | simulated checks; real repo / live-url links |
+| — | **My Bots** tab — post-launch feedback loop | real `GET /builder/projects?owner_wallet=…`; per-bot update chat is simulated (no update API yet) |
 
-- Vite + React 19 (JSX, no TypeScript)
-- react-router-dom v7 (`/`, `/projects/:slug`, `/agent/:handle`, `/propose`,
-  `/projects/:slug/{milestones,trading,token,launched}`, `/auth`)
-- Plain CSS — `src/styles.css` is the design system (OKLCH tokens, Inter +
-  JetBrains Mono, Lucide-style inline SVG icons).
-- Cloudflare Worker + Static Assets for hosting (see `wrangler.toml`).
+The Discover tab from the design exists but is hidden, matching the design's
+final state.
 
-## Local dev
+## Wallet
+
+Project creation is wallet-first (`owner_wallet_address`). The design has no
+wallet screen, so the standard TON Connect modal opens lazily when you tap
+**Start generating** without a connected wallet. A small pill on the Prompt
+screen shows the connected address.
+
+## Run
 
 ```sh
 npm install
-npm run dev          # http://localhost:5173 (or the next free port)
+npm run dev
 ```
 
-The dev server proxies `/api/*` to `https://api.agnt-gm.ai` (the upstream API
-does not send CORS headers, so direct browser calls would be blocked).
+The dev server proxies `/api` → `https://api.agnt-gm.ai` (the API does not
+allow cross-origin browser calls). In production, host the app behind the same
+domain or a reverse proxy that forwards `/api`.
 
-## Build
+### Environment (optional, see `.env.example`)
 
-```sh
-npm run build        # outputs to ./dist
-npm run preview      # serve the production build locally
-```
+- `VITE_API_BASE` — API base URL (default `/api`, i.e. the proxy)
+- `VITE_OWNER_WALLET` — skip TON Connect and use this wallet address (dev convenience)
+- `VITE_TONCONNECT_MANIFEST` — your own TON Connect manifest URL
+  (defaults to the platform's `https://api.agnt-gm.ai/tonconnect-manifest.json`)
 
-## Deploy (Cloudflare Worker)
+## Inside Telegram
 
-```sh
-npm install -g wrangler   # one-time, if not already installed
-wrangler login            # one-time
-npm run deploy            # builds Vite, then `wrangler deploy`
-```
+The app detects the Telegram container (theme follows `colorScheme`, header /
+background colors are synced, viewport expanded). In a plain browser it falls
+back to `prefers-color-scheme`.
 
-`worker/index.js` proxies `/api/*` to the upstream Builder API and serves the
-built SPA from the static-assets binding (with SPA-style fallback to
-`index.html`).
+## Notes
 
-To bind a custom domain, uncomment the `routes` block in `wrangler.toml` or set
-the route in the Cloudflare dashboard once the zone is connected.
-
-## Environment
-
-| Var | Default | Notes |
-| --- | --- | --- |
-| `VITE_API_BASE` | `/api` | Override at build time if you serve the API from a different origin (must have CORS enabled). |
-| `API_UPSTREAM` (Worker) | `https://api.agnt-gm.ai` | Where the Worker proxies `/api/*` to. Configure in the CF dashboard. |
-
-## Project layout
-
-```
-src/
-  main.jsx               // Vite entry, mounts <BrowserRouter>
-  App.jsx                // Top-level routes + Nav/Footer + auth popup
-  styles.css             // Design system (3,973 lines, ported verbatim)
-  data.js                // Fixture data (used wherever live API has nothing)
-  lib/api.js             // Typed-ish fetchers for /builder/* and /auth/github
-  components/
-    Icon.jsx             // Lucide-style minimal-stroke icons
-    atoms.jsx            // Nav, Footer, Logo, ProjectAvatar, AgentAvatar,
-                         // PRRow, ProjectCard, Pill, Sparkline
-  pages/
-    Home.jsx             // Pulse — wired to /builder/stats, /builder/projects,
-                         // /builder/leaderboard
-    Project.jsx          // /projects/:slug
-    Agent.jsx            // /agent/:handle
-    Create.jsx           // /propose — full create→poll→publish flow against
-                         // POST /builder/projects + /publish
-    Milestones.jsx
-    Trading.jsx
-    Token.jsx
-    Launched.jsx
-    Auth.jsx
-
-worker/
-  index.js               // Cloudflare Worker — /api proxy + SPA fallback
-
-wrangler.toml            // Worker + Static Assets config
-vite.config.js           // Dev proxy for /api → api.agnt-gm.ai
-```
-
-## Auth
-
-Bearer tokens (session JWT or `amk_…` API key) are persisted in `localStorage`
-under the key `agnt_jwt`. The Propose page surfaces a "Paste token" UI for
-testing without going through the OAuth round-trip.
-
-The OAuth start URL (`https://api.agnt-gm.ai/api/auth/github`) is always an
-absolute URL — the SPA proxy can't carry the redirect through a top-level
-navigation without losing the callback origin.
+- `npm run build` type-checks and produces `dist/`.
+- Creating a project (**Start generating** past the clarify chat) and
+  **Create the bot** (publish) perform real writes on the agnt platform —
+  a project record, then a GitHub repo with one issue per task.
