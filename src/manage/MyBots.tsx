@@ -146,9 +146,10 @@ function EmptyAction({ T, icon, label, sub, onClick }: {
 // ── the update conversation — the project's REAL chat feed ────
 // showIdentity: inside Telegram our mocked header is hidden (Telegram draws
 // its own chrome), so the bot identity moves into the chat body.
-export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onOption }: {
+export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onOption, onConnectAgent }: {
   T: Theme; bot: MyBot; messages: ChatMessage[]; thinking: boolean;
   loading?: boolean; showIdentity?: boolean; onOption?: (label: string) => void;
+  onConnectAgent?: () => void;
 }) {
   return (
     <div style={{ padding: '16px 14px 18px', display: 'flex', flexDirection: 'column', gap: 10, minHeight: '100%' }}>
@@ -169,6 +170,23 @@ export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onO
         <Mark T={T} size={17} radius={5} />
         <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint, fontWeight: 500 }}>Build agent · updates ship live</span>
       </div>
+
+      {/* tasks are open — let the owner (re)connect a coding agent anytime */}
+      {onConnectAgent && (
+        <button onClick={onConnectAgent} style={{
+          ...btnReset, display: 'flex', alignItems: 'center', gap: 11, padding: 12, textAlign: 'left',
+          borderRadius: T.cardRadius, background: T.cardBg, border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
+        }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <TGIcon name="bolt" size={18} color={T.accent} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.text }}>Connect an agent</div>
+            <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>Put your Claude or Codex on this bot's tasks</div>
+          </div>
+          <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />
+        </button>
+      )}
 
       {loading && messages.length === 0 && (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>

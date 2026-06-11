@@ -87,16 +87,25 @@ export function activeOptions(messages: ChatMessage[]): { msgId: number; options
   return null;
 }
 
-// one system log line (build started, deploys, version bumps…)
-function SystemLog({ T, text }: { T: Theme; text: string }) {
+// one system log line (build started, deploys, version bumps…).
+// The backend sends no severity field, so derive it from the content/data:
+// failures get the red treatment, everything else reads as progress.
+function systemSeverity(m: ChatMessage): 'ok' | 'fail' {
+  const probe = `${m.content || ''} ${JSON.stringify(m.data ?? '')}`.toLowerCase();
+  return /fail|error|crash|broken|🔴|❌|⛔|✗/.test(probe) ? 'fail' : 'ok';
+}
+
+function SystemLog({ T, msg }: { T: Theme; msg: ChatMessage }) {
+  const fail = systemSeverity(msg) === 'fail';
+  const fg = fail ? T.red : T.green;
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-start', animation: 'tgbubble .32s cubic-bezier(.2,.8,.2,1)' }}>
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 13,
-        background: T.greenSoft, maxWidth: '88%',
+        background: fail ? T.redSoft : T.greenSoft, maxWidth: '88%',
       }}>
-        <TGIcon name="check" size={15} color={T.green} stroke={2.6} />
-        <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.green, lineHeight: '17px' }}>{text}</span>
+        <TGIcon name={fail ? 'close' : 'check'} size={15} color={fg} stroke={2.6} />
+        <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: fg, lineHeight: '17px' }}>{msg.content}</span>
       </div>
     </div>
   );
@@ -111,7 +120,7 @@ export function ChatThread({ T, messages, thinking, onOption, pendingNote }: {
   return (
     <>
       {messages.map(m => {
-        if (m.role === 'system') return <SystemLog key={m.id} T={T} text={m.content} />;
+        if (m.role === 'system') return <SystemLog key={m.id} T={T} msg={m} />;
         const own = m.role === 'owner';
         return (
           <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

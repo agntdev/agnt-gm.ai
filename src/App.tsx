@@ -280,8 +280,9 @@ export default function App() {
     localStorage.setItem(PIPELINE_KEY, JSON.stringify(snap));
   }, [project?.id, id, idea, botCreated, botUsername, connected, agentName]);
 
-  // resume an in-progress bot from My Bots at the step it was closed on
-  const resumeBuild = async (projectId: string) => {
+  // resume an in-progress bot from My Bots at the step it was closed on.
+  // target forces a step — e.g. "Connect agent" from a live bot's chat.
+  const resumeBuild = async (projectId: string, target?: StepId) => {
     setDir(1); setTab('build');
     const d = await getProject(projectId).catch(() => null);
     if (!d) return;
@@ -294,7 +295,13 @@ export default function App() {
     if (inFlight) { setGen('generating'); pollPlan(p.id); }
     else setGen('ready');
 
-    if (p.status === 'draft') {
+    if (target) {
+      setIdea(snap?.projectId === p.id ? snap.idea : p.name);
+      if (snap && snap.projectId === p.id) { setConnected(snap.connected); setAgentName(snap.agentName); }
+      const bot = await getProjectBot(p.id).catch(() => null);
+      if (bot?.bot_username) { setBotUsername(bot.bot_username); setBotCreated(true); setBotInit({}); }
+      goTo(STEPS.indexOf(target), 1);
+    } else if (p.status === 'draft') {
       // still clarifying — the chat history reloads from the server
       setIdea(snap?.projectId === p.id ? snap.idea : p.name);
       goTo(STEPS.indexOf('clarify'), 1);
@@ -541,7 +548,10 @@ export default function App() {
   const body = tab === 'manage'
     ? (activeBot
       ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking}
-          showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)} />
+          showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)}
+          onConnectAgent={activeBot.status === 'live'
+            ? () => { setManageBot(null); void resumeBuild(activeBot.id, 'agent'); }
+            : undefined} />
       : <MyBotsList T={T} bots={myBots} loading={botsLoading} authed={tgAuthed}
           onOpen={(bid) => {
             const b = myBots.find(x => x.id === bid);

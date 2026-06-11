@@ -20,6 +20,8 @@ export interface Theme {
   userBubbleText: string;
   green: string;
   greenSoft: string;
+  red: string;
+  redSoft: string;
   amber: string;
   shadow: string;
   font: string;
@@ -60,6 +62,8 @@ export function tgTheme(mode: 'light' | 'dark', accent = '#229ED9'): Theme {
     userBubbleText: '#ffffff',
     green: dark ? '#5cc98c' : '#21a05a',
     greenSoft: dark ? 'rgba(92,201,140,0.16)' : 'rgba(33,160,90,0.1)',
+    red: dark ? '#ef8273' : '#d6492f',
+    redSoft: dark ? 'rgba(239,130,115,0.16)' : 'rgba(214,73,47,0.1)',
     amber: dark ? '#e9b15c' : '#c98a1e',
     shadow: dark ? '0 1px 2px rgba(0,0,0,0.4)' : '0 1px 2px rgba(15,22,32,0.05), 0 1px 12px rgba(15,22,32,0.04)',
     font: '-apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif',
