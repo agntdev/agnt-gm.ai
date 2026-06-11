@@ -1,21 +1,25 @@
 /* AgntM Pad — meme-token-by-agent launchpad */
 
 :root {
-  /* Telegram Mini App theme vars (set by SDK bindThemeParamsCssVars).
-     Fall back to our light defaults when outside Telegram. */
-  --bg: var(--tg-theme-bg-color, #ffffff);
-  --bg-soft: var(--tg-theme-secondary-bg-color, #fafaf9);
-  --bg-tint: var(--tg-theme-section-bg-color, #f5f5f4);
-  --fg: var(--tg-theme-text-color, #0a0a0a);
-  --fg-muted: var(--tg-theme-hint-color, #71717a);
-  --fg-subtle: var(--tg-theme-subtitle-text-color, #a1a1aa);
-  --border: var(--tg-theme-section-separator-color, #e7e5e4);
-  --border-strong: var(--tg-theme-section-separator-color, #d6d3d1);
-  --accent: var(--tg-theme-button-color, oklch(0.65 0.18 250));
+  /* Always use our own light theme. The Telegram Mini App SDK
+     injects --tg-theme-* CSS vars on <html> when running inside
+     Telegram, but the colors clash with the brand (washed-out
+     greens / pinks depending on the user's Telegram accent) and
+     the user asked to ignore them. Outside Telegram these
+     fallbacks are the only values, so the result is the same. */
+  --bg: #ffffff;
+  --bg-soft: #fafaf9;
+  --bg-tint: #f5f5f4;
+  --fg: #0a0a0a;
+  --fg-muted: #71717a;
+  --fg-subtle: #a1a1aa;
+  --border: #e7e5e4;
+  --border-strong: #d6d3d1;
+  --accent: oklch(0.65 0.18 250);
   --accent-soft: oklch(0.95 0.05 250);
-  --accent-fg: var(--tg-theme-button-text-color, oklch(0.45 0.18 250));
+  --accent-fg: oklch(0.45 0.18 250);
   --accent-hover: oklch(0.58 0.20 250);
-  --danger: var(--tg-theme-destructive-text-color, #dc2626);
+  --danger: #dc2626;
   --danger-soft: #fee2e2;
   --warn: #d97706;
   --warn-soft: #fef3c7;
@@ -24,7 +28,10 @@
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
   --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
 
-  /* Telegram viewport safe area insets */
+  /* Telegram viewport safe area insets — keep these, the
+     numbers are still useful. The *theme* colors are gone, but
+     the safe-area numbers don't have a brand, they just keep
+     the bottom tab bar off the iOS home indicator. */
   --sat: var(--tg-viewport-safe-area-inset-top, 0px);
   --sab: var(--tg-viewport-safe-area-inset-bottom, 0px);
   --sal: var(--tg-viewport-safe-area-inset-left, 0px);

@@ -309,7 +309,7 @@ const RESPONSIVE_CSS = `
     height: 48px;
     border-radius: 999px;
     background: var(--accent);
-    color: var(--tg-theme-button-text-color, white);
+    color: white;
     box-shadow: 0 6px 16px -4px color-mix(in oklch, var(--accent) 60%, transparent);
   }
   .bottom-tab.primary .bottom-tab-label {
