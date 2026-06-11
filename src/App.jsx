@@ -1355,12 +1355,21 @@ export default function App() {
   // the SDK bridges. If the WebApp object isn't there we're
   // not in TMA and isTMA() short-circuits the rest.
   useEffect(() => {
-    if (!isTMA()) return;
-    const platform = window.Telegram?.WebApp?.platform;
-    console.log("[fullscreen] check", { platform, inTma: true });
-    if (platform === "android" || platform === "ios") {
-      const result = viewport.requestFullscreen.ifAvailable();
-      console.log("[fullscreen] requested", { result });
+    // Log at the very top so we can see in eruda whether the
+    // useEffect even fired. The isTMA() gate below short-
+    // circuits in dev (no Telegram), and we want to confirm
+    // the useEffect ran at all in TMA before blaming the gate.
+    const platformRaw = window.Telegram?.WebApp?.platform;
+    const inTma = isTMA();
+    console.log("[fullscreen] fired", { inTma, platformRaw });
+    if (!inTma) return;
+    if (platformRaw === "android" || platformRaw === "ios") {
+      try {
+        const result = viewport.requestFullscreen.ifAvailable();
+        console.log("[fullscreen] requested", { result });
+      } catch (e) {
+        console.log("[fullscreen] threw", { message: e?.message });
+      }
     }
   }, []);
 
