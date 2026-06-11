@@ -75,6 +75,15 @@ const RESPONSIVE_CSS = `
   }
   [data-tg] .app { padding-bottom: calc(56px + var(--sab, 0px)); }
 
+  /* Fullscreen mode on Android: the Telegram header (Close
+     button, app icon, menu) stays overlaid on top of the
+     Mini App, but the viewport reports the full screen height.
+     Without this padding the hero and any fixed-top elements
+     slide under the Telegram chrome. --csat is
+     contentSafeAreaInsetTop, which Telegram populates with the
+     header height when fullscreen is active. */
+  [data-tg].is-fullscreen .app { padding-top: var(--csat, 0px); }
+
   .bottom-tabbar-inner {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr 1fr;
@@ -1279,6 +1288,17 @@ export default function App() {
     if (isFullscreen) viewport.exitFullscreen.ifAvailable();
     else viewport.requestFullscreen.ifAvailable();
   };
+
+  // Reflect fullscreen state on <html> as .is-fullscreen so CSS
+  // can push page content below the Telegram header (which
+  // overlays the app in fullscreen mode on Android). The CSS
+  // uses contentSafeAreaInsetTop (--csat) for the offset — the
+  // SDK reports the Telegram header height there when the
+  // viewport enters fullscreen.
+  useEffect(() => {
+    if (!isTMA()) return;
+    document.documentElement.classList.toggle("is-fullscreen", !!isFullscreen);
+  }, [isFullscreen]);
 
   return (
     <div className="app">
