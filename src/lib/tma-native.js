@@ -30,6 +30,17 @@ import {
  * So a try/catch here would be a no-op.
  */
 function haptic(kind, payload) {
+  // Debug: log every call so we can see in eruda whether the
+  // call site is even being reached, and which path the SDK
+  // takes. Eruda keeps the log across navigations, so a single
+  // page load + multiple button taps is enough to diagnose.
+  if (typeof window !== "undefined") {
+    const supported = (() => {
+      try { return !!hapticFeedback.isSupported(); } catch { return null; }
+    })();
+    const inTma = sdkIsTMA();
+    console.log("[haptic]", { kind, payload, inTma, supported });
+  }
   if (kind === "impact") {
     hapticFeedback.impactOccurred.ifAvailable(payload || "light");
   } else if (kind === "notification") {

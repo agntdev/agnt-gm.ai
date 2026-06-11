@@ -1176,17 +1176,23 @@ const RESPONSIVE_CSS = `
 
 export default function App() {
   // ── Initialize the Telegram SDK + mount components ──
-  // init() is synchronous — it returns a cleanup function, NOT
-  // a Promise. After init the SDK is unblocked. Some components
-  // (miniApp, viewport) need to be .mount()'d; hapticFeedback
-  // does NOT (it has no mount method — it has isSupported as
-  // a signal, the rest are direct calls). All .ifAvailable()
+  // init() is wrapped in throwifyFpFn — it THROWS on failure
+  // (LaunchParamsRetrieveError when not in TMA). So we wrap
+  // in try/catch and only proceed if init succeeded. After
+  // init, some components (miniApp, viewport) need to be
+  // .mount()'d; hapticFeedback does NOT. All .ifAvailable()
   // wrappers no-op outside TMA, so the call chain is safe on
-  // the dev server too.
-  init();
-  if (isTMA()) {
-    miniApp.mount.ifAvailable();
-    viewport.mount.ifAvailable();
+  // the dev server too. isTMA() short-circuits everything when
+  // we are not inside Telegram.
+  try {
+    init();
+    if (isTMA()) {
+      miniApp.mount.ifAvailable();
+      viewport.mount.ifAvailable();
+    }
+  } catch {
+    // Not in TMA (or old client) — the rest of the app runs
+    // as a normal web app.
   }
 
   const { pathname } = useLocation();
@@ -1200,6 +1206,35 @@ export default function App() {
   // to offClick. (The SDK matches listeners by reference, so a new
   // arrow in cleanup would silently leave the old listener attached.)
   const backClickRef = useRef(null);
+
+  // ── Eruda — mobile dev console ──
+  // Loads the in-browser devtools panel (https://eruda.liriliri.io)
+  // when running inside TMA on phones, so the user can see
+  // console.log output and runtime errors without a USB cable.
+  // Skipped on web. CDN bundle to keep it out of the production
+  // JS bundle. Initialized as a 240x320 floating panel in the
+  // bottom-right so it doesn't cover the bottom tab bar.
+  useEffect(() => {
+    if (!isTMA()) return;
+    if (typeof window === "undefined") return;
+    if (window.eruda) return;
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/eruda@3.4.3/eruda.min.js";
+    s.async = true;
+    s.onload = () => {
+      try {
+        window.eruda.init({
+          position: { x: 20, y: 200 },
+          tool: ["console", "elements", "network", "info"],
+        });
+        console.log("[eruda] ready");
+      } catch (e) {
+        console.log("[eruda] init failed", e);
+      }
+    };
+    s.onerror = () => console.log("[eruda] script load failed");
+    document.body.appendChild(s);
+  }, []);
   useEffect(() => {
     if (!isTMA()) return;
     if (pathname === "/" || isAuthRoute) {
