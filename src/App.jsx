@@ -1156,6 +1156,33 @@ const RESPONSIVE_CSS = `
        at narrow widths (default 24px 28px → cuts ~56px from row width). */
     .create-form-card { padding: 18px 16px !important; }
   }
+
+  /* TMA debug button: fullscreen toggle. Top-right corner, above
+     the bottom tab bar (z-index 60) and above the rest of the page
+     (default 0). Semi-transparent so it doesn't look like a real
+     UI element — the user wanted this to preview the fullscreen
+     layout, not as a production feature. The label flips between
+     "full" and "exit" via the React useSignal subscription. */
+  .tgfs-btn {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 100;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: rgba(255, 255, 255, 0.85);
+    color: var(--fg);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .tgfs-btn:active { opacity: 0.7; }
 `;
 
 export default function App() {
@@ -1241,6 +1268,18 @@ export default function App() {
     document.documentElement.classList.toggle("is-dark", !!isDark);
   }, [isDark]);
 
+  // ── Debug: toggle fullscreen (TMA only) ──
+  // Floating button so we can preview how the page lays out in
+  // fullscreen mode without leaving the app. Wired to
+  // viewport.isFullscreen signal so the label reflects the
+  // actual state. Bot API 8.0+; the .ifAvailable() wrapper
+  // makes it a no-op on older clients.
+  const isFullscreen = useSignal(viewport.isFullscreen);
+  const toggleFullscreen = () => {
+    if (isFullscreen) viewport.exitFullscreen.ifAvailable();
+    else viewport.requestFullscreen.ifAvailable();
+  };
+
   return (
     <div className="app">
       <style>{RESPONSIVE_CSS}</style>
@@ -1279,6 +1318,22 @@ export default function App() {
           content (e.g. a long payout table) never sits under the
           fixed bottom tab bar. The CSS only applies padding when
           .bottom-tabbar is actually displayed. */}
+
+      {/* TMA-only debug: floating fullscreen toggle. Top-right
+          so it doesn't fight the bottom tab bar's FAB. Rendered
+          as a sibling of the page content so it floats above
+          everything. Only mounts inside TMA; the .tgfs-btn
+          styles gate visibility, but isTMA() short-circuits
+          the signal subscription too. */}
+      {isTMA() && (
+        <button
+          className="tgfs-btn"
+          onClick={toggleFullscreen}
+          title="Toggle Telegram fullscreen (debug)"
+        >
+          {isFullscreen ? "⤓ exit" : "⤢ full"}
+        </button>
+      )}
     </div>
   );
 }
