@@ -1357,8 +1357,10 @@ export default function App() {
   useEffect(() => {
     if (!isTMA()) return;
     const platform = window.Telegram?.WebApp?.platform;
+    console.log("[fullscreen] check", { platform, inTma: true });
     if (platform === "android" || platform === "ios") {
-      viewport.requestFullscreen.ifAvailable();
+      const result = viewport.requestFullscreen.ifAvailable();
+      console.log("[fullscreen] requested", { result });
     }
   }, []);
 

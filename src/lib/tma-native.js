@@ -34,19 +34,20 @@ function haptic(kind, payload) {
   // call site is even being reached, and which path the SDK
   // takes. Eruda keeps the log across navigations, so a single
   // page load + multiple button taps is enough to diagnose.
+  let result;
+  if (kind === "impact") {
+    result = hapticFeedback.impactOccurred.ifAvailable(payload || "light");
+  } else if (kind === "notification") {
+    result = hapticFeedback.notificationOccurred.ifAvailable(payload || "success");
+  } else if (kind === "selection") {
+    result = hapticFeedback.selectionChanged.ifAvailable();
+  }
   if (typeof window !== "undefined") {
     const supported = (() => {
       try { return !!hapticFeedback.isSupported(); } catch { return null; }
     })();
     const inTma = sdkIsTMA();
-    console.log("[haptic]", { kind, payload, inTma, supported });
-  }
-  if (kind === "impact") {
-    hapticFeedback.impactOccurred.ifAvailable(payload || "light");
-  } else if (kind === "notification") {
-    hapticFeedback.notificationOccurred.ifAvailable(payload || "success");
-  } else if (kind === "selection") {
-    hapticFeedback.selectionChanged.ifAvailable();
+    console.log("[haptic]", { kind, payload, inTma, supported, result });
   }
 }
 
