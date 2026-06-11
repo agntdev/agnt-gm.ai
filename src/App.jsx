@@ -1175,14 +1175,14 @@ const RESPONSIVE_CSS = `
 `;
 
 export default function App() {
-  // First-line diagnostic: if the App component is rendering,
-  // this log appears. If it doesn't, something in the module
-  // failed to load and the useEffect wouldn't run either.
+  // First-line diagnostic: prints once on every App render so
+  // we can see in eruda that the component mounted and what
+  // TMA signals the SDK reports. Cheap (a single object log)
+  // so it's safe to keep in production.
   if (typeof window !== "undefined") {
     console.log("[app] render", {
       hasTg: !!window.Telegram,
       hasWebApp: !!window.Telegram?.WebApp,
-      platform: window.Telegram?.WebApp?.platform,
     });
   }
 
@@ -1366,28 +1366,23 @@ export default function App() {
   // the SDK bridges. If the WebApp object isn't there we're
   // not in TMA and isTMA() short-circuits the rest.
   useEffect(() => {
-    // Read the platform from the URL query params. Telegram
-    // includes `tgWebAppPlatform=android|ios|tdesktop|...` in
-    // the Mini App URL on every launch. The
-    // window.Telegram.WebApp.platform field that we tried
-    // first was undefined on this user's TMA — probably the
-    // SDK init order made the property unavailable when the
-    // useEffect ran. The URL is always set by Telegram itself.
-    const params = new URLSearchParams(window.location.search);
-    const platformFromUrl = params.get("tgWebAppPlatform");
-    const platformFromWebApp = window.Telegram?.WebApp?.platform;
-    const platform = platformFromUrl || platformFromWebApp;
-    const inTma = isTMA();
-    console.log("[fullscreen] fired", { inTma, platformFromUrl, platformFromWebApp });
-    if (!inTma) return;
-    if (platform === "android" || platform === "ios") {
-      try {
-        const result = viewport.requestFullscreen.ifAvailable();
-        console.log("[fullscreen] requested", { result });
-      } catch (e) {
-        console.log("[fullscreen] threw", { message: e?.message });
-      }
-    }
+    // Auto-request fullscreen on mobile TMA. Telegram TMAs look
+    // best fullscreen on phones (no Telegram header, more
+    // vertical space). Desktop Telegram keeps the Mini App as
+    // a normal side panel — fullscreen there would just hide
+    // Telegram's window chrome.
+    //
+    // Detect phone via navigator.userAgent, not WebApp.platform
+    // — the latter was undefined on this user's TMA (init order
+    // issue in the SDK, possibly specific to dev environments).
+    // UA is a reliable proxy: 'Android' / 'iPhone' / 'iPad' /
+    // 'iPod' strings are never in Telegram Desktop UAs. Bot
+    // API 8.0+; the .ifAvailable() wrapper makes it a no-op on
+    // older clients.
+    const ua = navigator.userAgent;
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+    if (!isTMA() || !isMobile) return;
+    viewport.requestFullscreen.ifAvailable();
   }, []);
 
   return (
