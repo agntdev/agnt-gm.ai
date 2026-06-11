@@ -1175,6 +1175,17 @@ const RESPONSIVE_CSS = `
 `;
 
 export default function App() {
+  // First-line diagnostic: if the App component is rendering,
+  // this log appears. If it doesn't, something in the module
+  // failed to load and the useEffect wouldn't run either.
+  if (typeof window !== "undefined") {
+    console.log("[app] render", {
+      hasTg: !!window.Telegram,
+      hasWebApp: !!window.Telegram?.WebApp,
+      platform: window.Telegram?.WebApp?.platform,
+    });
+  }
+
   // ── Initialize the Telegram SDK + mount components ──
   // init() is wrapped in throwifyFpFn — it THROWS on failure
   // (LaunchParamsRetrieveError when not in TMA). So we wrap
@@ -1355,15 +1366,21 @@ export default function App() {
   // the SDK bridges. If the WebApp object isn't there we're
   // not in TMA and isTMA() short-circuits the rest.
   useEffect(() => {
-    // Log at the very top so we can see in eruda whether the
-    // useEffect even fired. The isTMA() gate below short-
-    // circuits in dev (no Telegram), and we want to confirm
-    // the useEffect ran at all in TMA before blaming the gate.
-    const platformRaw = window.Telegram?.WebApp?.platform;
+    // Read the platform from the URL query params. Telegram
+    // includes `tgWebAppPlatform=android|ios|tdesktop|...` in
+    // the Mini App URL on every launch. The
+    // window.Telegram.WebApp.platform field that we tried
+    // first was undefined on this user's TMA — probably the
+    // SDK init order made the property unavailable when the
+    // useEffect ran. The URL is always set by Telegram itself.
+    const params = new URLSearchParams(window.location.search);
+    const platformFromUrl = params.get("tgWebAppPlatform");
+    const platformFromWebApp = window.Telegram?.WebApp?.platform;
+    const platform = platformFromUrl || platformFromWebApp;
     const inTma = isTMA();
-    console.log("[fullscreen] fired", { inTma, platformRaw });
+    console.log("[fullscreen] fired", { inTma, platformFromUrl, platformFromWebApp });
     if (!inTma) return;
-    if (platformRaw === "android" || platformRaw === "ios") {
+    if (platform === "android" || platform === "ios") {
       try {
         const result = viewport.requestFullscreen.ifAvailable();
         console.log("[fullscreen] requested", { result });
