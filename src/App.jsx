@@ -1193,19 +1193,23 @@ export default function App() {
   useEffect(() => {
     if (!isTMA()) return;
     const root = document.documentElement.style;
-    root.setProperty("--sat", `${safeTop() || 0}px`);
-    root.setProperty("--sab", `${safeBottom() || 0}px`);
-    root.setProperty("--sal", `${safeLeft() || 0}px`);
-    root.setProperty("--sar", `${safeRight() || 0}px`);
-    root.setProperty("--csat", `${contentSafeTop() || 0}px`);
-    root.setProperty("--csab", `${contentSafeBottom() || 0}px`);
+    // useSignal from @tma.js/sdk-react returns the current VALUE
+    // (a number), not a Signal object — so read it as a primitive,
+    // never call it. Calling safeTop() throws "safeTop is not a
+    // function" because useSignal already unwrapped the signal.
+    root.setProperty("--sat", `${safeTop || 0}px`);
+    root.setProperty("--sab", `${safeBottom || 0}px`);
+    root.setProperty("--sal", `${safeLeft || 0}px`);
+    root.setProperty("--sar", `${safeRight || 0}px`);
+    root.setProperty("--csat", `${contentSafeTop || 0}px`);
+    root.setProperty("--csab", `${contentSafeBottom || 0}px`);
   }, [safeTop, safeBottom, safeLeft, safeRight, contentSafeTop, contentSafeBottom]);
 
   // ── Telegram dark scheme → .is-dark on <html> ──
   const isDark = useSignal(miniApp.isDark);
   useEffect(() => {
     if (!isTMA()) return;
-    document.documentElement.classList.toggle("is-dark", !!isDark());
+    document.documentElement.classList.toggle("is-dark", !!isDark);
   }, [isDark]);
 
   return (
