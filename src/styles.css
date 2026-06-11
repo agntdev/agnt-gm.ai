@@ -35,6 +35,41 @@
      hardcoding colors per palette. */
   --skel-base: #e7e5e4;
   --skel-hi: #f5f5f4;
+}
+
+/* Dark palette. Triggered by .is-dark on <html>, set by
+   App.jsx from either the TMA's miniApp.isDark signal (when
+   the user has Telegram in dark mode) or the browser's
+   prefers-color-scheme media query (web). No manual toggle —
+   the user changes their phone or OS setting and the app
+   follows. Inverted neutrals (almost-black background, near-
+   white text), accent nudged lighter for contrast on dark,
+   danger/warn softened so they don't burn on a dark
+   background. */
+.is-dark {
+  --bg: #0a0a0a;
+  --bg-soft: #141414;
+  --bg-tint: #1f1f1f;
+  --fg: #fafaf9;
+  --fg-muted: #a1a1aa;
+  --fg-subtle: #71717a;
+  --border: #2a2a2a;
+  --border-strong: #3a3a3a;
+  --accent: oklch(0.72 0.14 250);
+  --accent-soft: oklch(0.22 0.08 250);
+  --accent-fg: oklch(0.85 0.10 250);
+  --accent-hover: oklch(0.78 0.16 250);
+  --danger: #ef4444;
+  --danger-soft: #2a1414;
+  --warn: #fbbf24;
+  --warn-soft: #2a1f0a;
+  --skel-base: #1f1f1f;
+  --skel-hi: #2a2a2a;
+  /* In dark mode the shadows are invisible against a near-
+     black bg, so kill them. The hover-card lift on the
+     project grid uses --shadow too. */
+  --shadow-sm: none;
+  --shadow: none;
 
   /* Telegram viewport safe area insets — keep these, the
      numbers are still useful. The *theme* colors are gone, but

@@ -1332,11 +1332,28 @@ export default function App() {
     root.setProperty("--csab", `${contentSafeBottom || 0}px`);
   }, [safeTop, safeBottom, safeLeft, safeRight, contentSafeTop, contentSafeBottom]);
 
-  // ── Telegram dark scheme → .is-dark on <html> ──
+  // ── Dark mode follows the active theme source ──
+  // TMA: Telegram's miniApp.isDark signal (user can change
+  // their Telegram theme and the app follows). Web: the
+  // browser's prefers-color-scheme media query (user can
+  // change their OS theme and the app follows). No manual
+  // toggle — the user controls dark mode at the OS/Telegram
+  // level, the app just listens.
+  //
+  // We track both sources and re-apply the .is-dark class on
+  // <html> whenever either changes. The media query listener
+  // is the key for web users: it fires when the OS theme
+  // flips at runtime (sunset, automation, dock undocked).
   const isDark = useSignal(miniApp.isDark);
   useEffect(() => {
-    if (!isTMA()) return;
-    document.documentElement.classList.toggle("is-dark", !!isDark);
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const dark = isTMA() ? !!isDark : mq.matches;
+      document.documentElement.classList.toggle("is-dark", dark);
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
   }, [isDark]);
 
   // ── Fullscreen state → CSS class ──
