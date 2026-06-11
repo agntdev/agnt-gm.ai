@@ -1356,9 +1356,17 @@ export default function App() {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const wa = window.Telegram?.WebApp;
     const apply = () => {
-      const dark = isTMA()
-        ? !!(isDark || wa?.colorScheme === "dark")
-        : mq.matches;
+      // Source of truth: prefers-color-scheme. The TMA webview
+      // inherits the OS theme, so the media query is reliable
+      // in TMA too. The Telegram SDK's miniApp.isDark and the
+      // raw WebApp.colorScheme were both unavailable on this
+      // user's TMA (WebApp object stripped or SDK signal not
+      // mounted), so we ignore them and just trust the OS
+      // theme. Telegram's per-app theme override can't be read
+      // without the WebApp object — when it's available, the
+      // media query reflects it anyway because the webview
+      // matches the resolved theme.
+      const dark = mq.matches;
       document.documentElement.classList.toggle("is-dark", dark);
       // Debug: dump every source we have so we can see in
       // eruda exactly what the TMA is reporting.
@@ -1372,14 +1380,6 @@ export default function App() {
     };
     apply();
     mq.addEventListener("change", apply);
-    if (isTMA() && wa?.onEvent) {
-      const handler = () => apply();
-      wa.onEvent("themeChanged", handler);
-      return () => {
-        mq.removeEventListener("change", apply);
-        wa.offEvent?.("themeChanged", handler);
-      };
-    }
     return () => mq.removeEventListener("change", apply);
   }, [isDark]);
 
