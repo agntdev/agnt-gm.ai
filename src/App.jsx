@@ -1360,6 +1360,15 @@ export default function App() {
         ? !!(isDark || wa?.colorScheme === "dark")
         : mq.matches;
       document.documentElement.classList.toggle("is-dark", dark);
+      // Debug: dump every source we have so we can see in
+      // eruda exactly what the TMA is reporting.
+      console.log("[darkmode]", {
+        isTma: isTMA(),
+        sdkIsDark: isDark,
+        webAppColorScheme: wa?.colorScheme,
+        resolved: dark,
+        mqMatches: mq.matches,
+      });
     };
     apply();
     mq.addEventListener("change", apply);
