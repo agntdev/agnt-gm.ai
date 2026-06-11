@@ -20,19 +20,22 @@ import {
  * (light = button press, medium = tab change, heavy = destructive
  * action) or a notification type (success / error / warning) for
  * the outcome of an action. No-op outside Telegram.
+ *
+ * We don't pre-check sdkIsTMA() because the SDK already does
+ * that internally — every method is wrapped in WithChecks which
+ * returns an Either<Error, void> instead of throwing. The check
+ * chain inside the SDK is: in TMA? → SDK init'd? → version
+ * supports this method? → component mounted (or no mount
+ * required)? Each failure returns a clean Either, never throws.
+ * So a try/catch here would be a no-op.
  */
 function haptic(kind, payload) {
-  if (!sdkIsTMA()) return;
-  try {
-    if (kind === "impact") {
-      hapticFeedback.impactOccurred.ifAvailable(payload || "light");
-    } else if (kind === "notification") {
-      hapticFeedback.notificationOccurred.ifAvailable(payload || "success");
-    } else if (kind === "selection") {
-      hapticFeedback.selectionChanged.ifAvailable();
-    }
-  } catch {
-    // Old clients + web: silent no-op.
+  if (kind === "impact") {
+    hapticFeedback.impactOccurred.ifAvailable(payload || "light");
+  } else if (kind === "notification") {
+    hapticFeedback.notificationOccurred.ifAvailable(payload || "success");
+  } else if (kind === "selection") {
+    hapticFeedback.selectionChanged.ifAvailable();
   }
 }
 

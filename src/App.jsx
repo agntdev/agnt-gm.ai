@@ -9,9 +9,9 @@ import {
   backButton,
   viewport,
   miniApp,
+  useLaunchParams,
   useSignal,
 } from "@tma.js/sdk-react";
-import { hapticFeedback } from "@tma.js/sdk";
 import Home from "./pages/Home.jsx";
 import Project from "./pages/Project.jsx";
 import Agent from "./pages/Agent.jsx";
@@ -1178,20 +1178,16 @@ const RESPONSIVE_CSS = `
 export default function App() {
   // ── Initialize the Telegram SDK + mount components ──
   // init() is synchronous — it returns a cleanup function, NOT
-  // a Promise (the type sig is `() => VoidFunction`). After
-  // init, the SDK is unblocked but components like
-  // hapticFeedback are not yet mounted, so their methods
-  // throw "component was not mounted" silently. We mount the
-  // three components we actually use: miniApp (setHeaderColor
-  // / setBgColor / setBottomBarColor), viewport (expand /
-  // requestFullscreen / safe-area signals), hapticFeedback
-  // (impactOccurred / notificationOccurred). All wrapped in
-  // .ifAvailable() so they're no-ops outside TMA.
+  // a Promise. After init the SDK is unblocked. Some components
+  // (miniApp, viewport) need to be .mount()'d; hapticFeedback
+  // does NOT (it has no mount method — it has isSupported as
+  // a signal, the rest are direct calls). All .ifAvailable()
+  // wrappers no-op outside TMA, so the call chain is safe on
+  // the dev server too.
   init();
   if (isTMA()) {
     miniApp.mount.ifAvailable();
     viewport.mount.ifAvailable();
-    hapticFeedback.mount.ifAvailable();
   }
 
   const { pathname } = useLocation();
@@ -1313,18 +1309,22 @@ export default function App() {
 
   // ── Auto-request fullscreen on mobile TMA ──
   // Telegram TMAs look best fullscreen on phones (no Telegram
-  // header, more vertical space). Desktop Telegram keeps the
-  // Mini App as a normal side panel — fullscreen there would
-  // just hide Telegram's window chrome. We detect "mobile" by
-  // the viewport width at mount (the Telegram window doesn't
-  // resize while the user is in the app). Bot API 8.0+; the
+  // header, more vertical space). Desktop Telegram (tdesktop,
+  // macos, web, weba) keeps the Mini App as a normal side
+  // panel — fullscreen there would just hide Telegram's window
+  // chrome. We detect "phone" via the launch params' platform
+  // string ('android' or 'ios'), not by viewport width —
+  // Telegram desktop's webview is narrow too (~500-600px) so
+  // a width check would incorrectly fire. Bot API 8.0+; the
   // .ifAvailable() wrapper makes it a no-op on older clients.
+  const launchParams = useLaunchParams();
   useEffect(() => {
     if (!isTMA()) return;
-    if (window.innerWidth <= 768) {
+    const platform = launchParams?.tgWebAppPlatform;
+    if (platform === "android" || platform === "ios") {
       viewport.requestFullscreen.ifAvailable();
     }
-  }, []);
+  }, [launchParams]);
 
   return (
     <div className="app">
