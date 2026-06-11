@@ -1175,7 +1175,7 @@ export function CopyableBlock({
         borderRadius: 10,
         background: "var(--bg-soft)",
         cursor: "pointer",
-        padding: compact ? "10px 12px 12px" : 0,
+        padding: compact ? "12px 14px 16px" : 0,
       }}
     >
       {/* Compact mode: header row with a small styled number

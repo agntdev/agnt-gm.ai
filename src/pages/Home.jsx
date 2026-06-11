@@ -719,6 +719,7 @@ export default function Home() {
               <div className="intro-brand">
                 <span
                   aria-hidden="true"
+                  className="intro-brand-diamond"
                   style={{
                     display: "inline-grid",
                     placeItems: "center",

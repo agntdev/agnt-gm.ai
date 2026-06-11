@@ -18,6 +18,20 @@ import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
 import { useProjectPhase } from "../hooks/useProjectPhase.js";
 
+// Local helper — used to be re-exported from ProjectFactsRail.jsx
+// (deleted with the TMA refactor). Formats an ISO date as
+// "Mon DD, YYYY" or returns null for missing/invalid input.
+function fmtDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default function Project() {
   const { slug } = useParams();
   const { live, owner, loading, refresh } = useProjectData(slug);

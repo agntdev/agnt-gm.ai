@@ -2309,18 +2309,13 @@ h1 .punch { color: var(--accent-fg); }
   gap: 14px;
   margin-bottom: 12px;
 }
-.intro-brand .logo {
+.intro-brand-diamond {
   display: none;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  color: inherit;
-  flex-shrink: 0;
 }
 @media (max-width: 640px) {
-  .intro-brand .logo { display: inline-flex; }
+  .intro-brand-diamond { display: inline-grid; }
 }
-[data-tg] .intro-brand .logo { display: inline-flex; }
+[data-tg] .intro-brand-diamond { display: inline-grid; }
 
 .intro-h {
   font-size: clamp(26px, 3.2vw, 36px);
@@ -2357,12 +2352,12 @@ h1 .punch { color: var(--accent-fg); }
 }
 
 .intro-code-col {
-  flex: 0 0 340px;
-  min-width: 280px;
+  flex: 0 0 460px;
+  min-width: 360px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .intro-foot {
@@ -2416,6 +2411,21 @@ h1 .punch { color: var(--accent-fg); }
   .intro-stat:nth-child(-n+2) { border-bottom: 1px dashed var(--border); }
 }
 
+
+/* Desktop audit: the project card's mobile-only elements
+   (.project-card-row-pitch, .project-card-mobile-stats,
+   .project-card-mobile-earn) need to be hidden on desktop,
+   otherwise the pitch is shown TWICE — once by the mobile
+   element, once by the original .project-pitch in the body.
+   The @media (min-width: 641px) below is the single source of
+   truth for "this is mobile-only". */
+@media (min-width: 641px) {
+  .project-card-row-pitch,
+  .project-card-mobile-stats,
+  .project-card-mobile-earn {
+    display: none !important;
+  }
+}
 
 /* === Copyable block (install / agent-prompt) ===
    Whole block is clickable to copy. In compact mode there's a
