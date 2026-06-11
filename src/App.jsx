@@ -4,6 +4,7 @@ import { Nav, Footer } from "./components/atoms.jsx";
 import BottomTabBar from "./components/BottomTabBar.jsx";
 import { useAuth, githubLoginUrl } from "./lib/auth.js";
 import {
+  init,
   isTMA,
   backButton,
   viewport,
@@ -1174,6 +1175,15 @@ const RESPONSIVE_CSS = `
 `;
 
 export default function App() {
+  // ── Initialize the Telegram SDK once ──
+  // Without this, methods like hapticFeedback.impactOccurred()
+  // return early with "the SDK was not initialized" (the SDK
+  // throws a checked error that our tma-native.js try/catch
+  // silently swallows — so the user sees no haptic at all on
+  // their phone). init() is idempotent and a no-op outside
+  // TMA, so safe to call unconditionally.
+  init();
+
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const auth = useAuth();

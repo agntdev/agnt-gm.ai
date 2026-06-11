@@ -80,12 +80,12 @@ export default function Create() {
       <section className="container" style={{ paddingBottom: 48 }}>
         <div
           style={{
-            paddingTop: 18,
             fontSize: 11.5,
             color: "var(--fg-muted)",
             display: "flex",
             alignItems: "center",
             gap: 6,
+            marginBottom: 18,
           }}
         >
           <Link
@@ -97,7 +97,7 @@ export default function Create() {
               fontSize: "inherit",
             }}
           >
-            Pulse
+            AGNT
           </Link>
           <span>/</span>
           <span style={{ color: "var(--fg)", fontWeight: 700 }}>

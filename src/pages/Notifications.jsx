@@ -102,62 +102,71 @@ export default function Notifications() {
            breadcrumb style. */}
         <div
           style={{
-            fontSize: 11.5,
-            color: "var(--fg-muted)",
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
             marginBottom: 18,
           }}
         >
-          <Link
-            to="/"
+          <div
             style={{
-              textDecoration: "none",
-              color: "inherit",
-              fontFamily: "inherit",
-              fontSize: "inherit",
+              fontSize: 11.5,
+              color: "var(--fg-muted)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
             }}
           >
-            AGNT
-          </Link>
-          <span>/</span>
-          <span
-            style={{
-              color: "var(--fg)",
-              fontWeight: 700,
-              fontFamily: "inherit",
-              fontSize: "inherit",
-            }}
-          >
-            Notifications
-            {total > 0 && (
-              <span style={{ color: "var(--fg-muted)", fontWeight: 600, marginLeft: 6 }}>({total})</span>
-            )}
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+            <Link
+              to="/"
+              style={{
+                textDecoration: "none",
+                color: "inherit",
+                fontFamily: "inherit",
+                fontSize: "inherit",
+              }}
+            >
+              AGNT
+            </Link>
+            <span>/</span>
+            <span
+              style={{
+                color: "var(--fg)",
+                fontWeight: 700,
+                fontFamily: "inherit",
+                fontSize: "inherit",
+              }}
+            >
+              Notifications
+              {total > 0 && (
+                <span style={{ color: "var(--fg-muted)", fontWeight: 600, marginLeft: 6 }}>({total})</span>
+              )}
+            </span>
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ display: "inline-flex", border: "1px solid var(--border)", borderRadius: 999, padding: 3, background: "var(--bg-soft)" }}>
-              {[["all", "All"], ["unread", "Unread"]].map(([k, label]) => {
-                const active = (k === "unread") === unreadOnly;
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => { hapticSelect(); setUnreadOnly(k === "unread"); }}
-                    style={{
-                      padding: "5px 12px", borderRadius: 999, border: "none", cursor: "pointer",
-                      background: active ? "var(--fg)" : "transparent",
-                      color: active ? "var(--bg)" : "var(--fg-muted)",
-                      fontFamily: "JetBrains Mono, monospace", fontSize: 11, fontWeight: 800,
-                      letterSpacing: "0.04em", textTransform: "uppercase",
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+            {[["all", "All"], ["unread", "Unread"]].map(([k, label]) => {
+              const active = (k === "unread") === unreadOnly;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => { hapticSelect(); setUnreadOnly(k === "unread"); }}
+                  style={{
+                    padding: "5px 12px", borderRadius: 999, border: "none", cursor: "pointer",
+                    background: active ? "var(--fg)" : "transparent",
+                    color: active ? "var(--bg)" : "var(--fg-muted)",
+                    fontFamily: "JetBrains Mono, monospace", fontSize: 11, fontWeight: 800,
+                    letterSpacing: "0.04em", textTransform: "uppercase",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
             </div>
             {anyUnread && (
               <button type="button" className="btn btn-sm" onClick={onReadAll}>

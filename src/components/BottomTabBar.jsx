@@ -88,7 +88,7 @@ export default function BottomTabBar({ authed, agent }) {
       key: "me",
       to: mePath,
       label: "Me",
-      icon: "user",
+      icon: "users",
       active: pathname.startsWith("/agent"),
     },
   ];
