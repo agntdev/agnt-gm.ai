@@ -721,6 +721,12 @@ export default function Home() {
                  row. */
               alignItems: "center",
               flexWrap: "wrap",
+              /* Space between the code blocks (bottom of this
+                 flex) and the .intro-foot's `border-top: 1px
+                 dashed` separator below. Without this the bottom
+                 of the second copyable block is glued to the
+                 dashed line. */
+              paddingBottom: 12,
             }}
           >
             <div style={{ flex: 1, minWidth: 280 }}>

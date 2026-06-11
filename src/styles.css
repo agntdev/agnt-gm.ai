@@ -2322,7 +2322,7 @@ h1 .punch { color: var(--accent-fg); }
 }
 [data-tg] .intro-brand-diamond { display: inline-grid !important; }
 
-/* Main-page copyable blocks: add breathing room between the
+/* Main-page copyable blocks: small breathing room between the
    dashed header divider and the first line of text. Without
    this, `npx skills add ...` sits 1px under the dashed line
    — glued. The !important lifts the pre's padding above the
@@ -2330,8 +2330,8 @@ h1 .punch { color: var(--accent-fg); }
    inside .intro-code-col so the project page (contrib-onboard)
    keeps the original glued look the user asked for. */
 .intro-code-col .copyable-block pre {
-  padding-top: 10px !important;
-  padding-bottom: 10px !important;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
 }
 
 .intro-h {
@@ -2369,8 +2369,8 @@ h1 .punch { color: var(--accent-fg); }
 }
 
 .intro-code-col {
-  flex: 0 0 460px;
-  min-width: 360px;
+  flex: 0 0 400px;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   justify-content: center;
