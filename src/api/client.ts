@@ -1,7 +1,9 @@
 // api/client.ts — typed client for the agnt API (https://api.agnt-gm.ai).
-// In dev, /api is proxied by Vite (see vite.config.ts); override with VITE_API_BASE.
+// Dev goes through the Vite proxy (/api); production builds call the API
+// directly (CORS allows the deployed origins). Override with VITE_API_BASE.
 
-const BASE: string = (import.meta.env.VITE_API_BASE as string | undefined) || '/api';
+const BASE: string = (import.meta.env.VITE_API_BASE as string | undefined)
+  || (import.meta.env.DEV ? '/api' : 'https://api.agnt-gm.ai/api');
 
 export class ApiError extends Error {
   status: number;
