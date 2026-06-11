@@ -3,6 +3,7 @@ import { useTonAddress } from "@tonconnect/ui-react";
 import Icon from "./Icon.jsx";
 import { getToken } from "../lib/auth.js";
 import { useEffect, useState } from "react";
+import { hapticClick, hapticSelect } from "../lib/tma-native.js";
 
 /**
  * Bottom tab bar — the primary navigation surface on phones / TMA.
@@ -63,7 +64,7 @@ export default function BottomTabBar({ authed, agent }) {
     {
       key: "pulse",
       to: "/",
-      label: "Pulse",
+      label: "AGNT",
       icon: "layers",
       active: pathname === "/" || pathname.startsWith("/projects"),
     },
@@ -126,7 +127,7 @@ export default function BottomTabBar({ authed, agent }) {
                 key={t.key}
                 type="button"
                 className={className}
-                onClick={() => navigate(t.to)}
+                onClick={() => { hapticClick(); navigate(t.to); }}
                 aria-label={t.label}
               >
                 {content}
@@ -137,6 +138,7 @@ export default function BottomTabBar({ authed, agent }) {
             <Link
               key={t.key}
               to={t.to}
+              onClick={() => hapticSelect()}
               className={className}
               aria-label={t.label}
             >

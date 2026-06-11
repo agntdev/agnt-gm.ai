@@ -141,7 +141,7 @@ export default function ProjectHero({ live, children, isOwner = false, crumbsExt
             fontSize: "inherit",
           }}
         >
-          Pulse
+          AGNT
         </Link>
         <span>/</span>
         <Link

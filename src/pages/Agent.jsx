@@ -218,7 +218,7 @@ export default function Agent() {
               fontSize: "inherit",
             }}
           >
-            Pulse
+            AGNT
           </Link>
           <span>/</span>
           <span

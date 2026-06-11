@@ -13,7 +13,7 @@ import {
   notifRelativeTime,
   notifHref,
 } from "../lib/notifications.js";
-import { hapticClick, hapticSuccess, openExternal } from "../lib/tma-native.js";
+import { hapticClick, openExternal } from "../lib/tma-native.js";
 
 export { default as Icon } from "./Icon.jsx";
 
@@ -648,10 +648,16 @@ function NotificationsBell() {
   function toggle() {
     const next = !open;
     setOpen(next);
-    if (next) loadRecent();
+    if (next) {
+      hapticClick();
+      loadRecent();
+    } else {
+      hapticClick();
+    }
   }
 
   function onItemClick(n) {
+    hapticClick();
     const token = getToken();
     if (n.read_at == null && token) {
       api.markNotificationRead(n.id, token);
@@ -911,12 +917,17 @@ export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
       <div className="container nav-inner">
         <Logo />
         <div className="nav-links">
-          <Link className={`nav-link ${isHome ? "active" : ""}`} to="/">
-            <Icon name="layers" /> <span className="nav-resp-label">Pulse</span>
+          <Link
+            className={`nav-link ${isHome ? "active" : ""}`}
+            to="/"
+            onClick={() => hapticSelect()}
+          >
+            <Icon name="layers" /> <span className="nav-resp-label">AGNT</span>
           </Link>
           <Link
             className={`nav-link ${isCreate ? "active" : ""}`}
             to="/propose"
+            onClick={() => hapticClick()}
           >
             <Icon name="plus" />{" "}
             <span className="nav-resp-label">Propose project</span>
@@ -931,7 +942,7 @@ export function Nav({ authed = false, agent = null, onSignIn, onSignOut }) {
           ) : (
             <button
               className="btn btn-signin"
-              onClick={onSignIn}
+              onClick={() => { hapticClick(); onSignIn(); }}
               title="sign in with GitHub"
               type="button"
             >
@@ -1146,7 +1157,10 @@ export function CopyableBlock({
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-      hapticSuccess();
+      // Light impact (single short tap), not success notification
+      // (3 pulses) — the user said the success pulse on copy
+      // felt too long. Light is ~3x shorter.
+      hapticClick();
     } catch {
       const ta = document.getElementById(preId);
       if (ta) {
@@ -1154,7 +1168,7 @@ export function CopyableBlock({
         document.execCommand("copy");
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
-        hapticSuccess();
+        hapticClick();
       }
     }
   }

@@ -6,11 +6,12 @@
 // this page is the "see everything" view.
 
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "../components/atoms.jsx";
 import { api } from "../lib/api.js";
 import { useAuth, githubLoginUrl } from "../lib/auth.js";
 import { notifVisual, notifRelativeTime, notifHref } from "../lib/notifications.js";
+import { hapticSelect, hapticSuccess } from "../lib/tma-native.js";
 
 const PAGE = 50;
 
@@ -20,7 +21,7 @@ export default function Notifications() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [unreadOnly, setUnreadOnly] = useState(true);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -56,6 +57,7 @@ export default function Notifications() {
   }
 
   async function onReadAll() {
+    hapticSuccess();
     if (!token) return;
     setItems((list) => list.map((x) => ({ ...x, read_at: x.read_at || new Date().toISOString() })));
     await api.markAllNotificationsRead(token);
@@ -92,12 +94,49 @@ export default function Notifications() {
 
   return (
     <main data-screen-label="Notifications">
-      <section className="container" style={{ paddingTop: 28, paddingBottom: 60 }}>
+      <section className="container" style={{ paddingTop: 0, paddingBottom: 60 }}>
+        {/* Breadcrumb: matches the AGNT / <name> pattern used on
+           project and agent pages. Keeps the header consistent
+           with the rest of the app — the previous giant h1 +
+           inline count was the only page that didn't use the
+           breadcrumb style. */}
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--fg-muted)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginBottom: 18,
+          }}
+        >
+          <Link
+            to="/"
+            style={{
+              textDecoration: "none",
+              color: "inherit",
+              fontFamily: "inherit",
+              fontSize: "inherit",
+            }}
+          >
+            AGNT
+          </Link>
+          <span>/</span>
+          <span
+            style={{
+              color: "var(--fg)",
+              fontWeight: 700,
+              fontFamily: "inherit",
+              fontSize: "inherit",
+            }}
+          >
+            Notifications
+            {total > 0 && (
+              <span style={{ color: "var(--fg-muted)", fontWeight: 600, marginLeft: 6 }}>({total})</span>
+            )}
+          </span>
+        </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", margin: 0, display: "inline-flex", alignItems: "center", gap: 10 }}>
-            <Icon name="bell" size={20} /> Notifications
-            {total > 0 && <span style={{ fontSize: 13, color: "var(--fg-muted)", fontWeight: 600 }}>{total}</span>}
-          </h1>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ display: "inline-flex", border: "1px solid var(--border)", borderRadius: 999, padding: 3, background: "var(--bg-soft)" }}>
               {[["all", "All"], ["unread", "Unread"]].map(([k, label]) => {
@@ -106,7 +145,7 @@ export default function Notifications() {
                   <button
                     key={k}
                     type="button"
-                    onClick={() => setUnreadOnly(k === "unread")}
+                    onClick={() => { hapticSelect(); setUnreadOnly(k === "unread"); }}
                     style={{
                       padding: "5px 12px", borderRadius: 999, border: "none", cursor: "pointer",
                       background: active ? "var(--fg)" : "transparent",
