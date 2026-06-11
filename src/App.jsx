@@ -9,9 +9,9 @@ import {
   backButton,
   viewport,
   miniApp,
-  hapticFeedback,
   useSignal,
 } from "@tma.js/sdk-react";
+import { hapticFeedback } from "@tma.js/sdk";
 import Home from "./pages/Home.jsx";
 import Project from "./pages/Project.jsx";
 import Agent from "./pages/Agent.jsx";
@@ -1176,33 +1176,23 @@ const RESPONSIVE_CSS = `
 `;
 
 export default function App() {
-  // ── Initialize the Telegram SDK once ──
-  // init() unblocks the SDK but does NOT mount the components.
-  // Per the docs: "Before using specific components in your
-  // application, you must mount them. Not mounting components
-  // will cause their methods to throw errors." So we also
-  // mount miniApp (for setHeaderColor / setBgColor /
-  // setBottomBarColor), viewport (for expand / requestFullscreen
-  // / safe-area signals), and hapticFeedback (for
-  // impactOccurred / notificationOccurred). All .ifAvailable
-  // no-ops outside TMA. init() returns a promise — we don't
-  // wait for it because the components are usable as soon as
-  // init() resolves, and we'd rather render the app shell
-  // immediately.
+  // ── Initialize the Telegram SDK + mount components ──
+  // init() is synchronous — it returns a cleanup function, NOT
+  // a Promise (the type sig is `() => VoidFunction`). After
+  // init, the SDK is unblocked but components like
+  // hapticFeedback are not yet mounted, so their methods
+  // throw "component was not mounted" silently. We mount the
+  // three components we actually use: miniApp (setHeaderColor
+  // / setBgColor / setBottomBarColor), viewport (expand /
+  // requestFullscreen / safe-area signals), hapticFeedback
+  // (impactOccurred / notificationOccurred). All wrapped in
+  // .ifAvailable() so they're no-ops outside TMA.
   init();
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!isTMA()) return;
-    let cancelled = false;
-    init().then(() => {
-      if (cancelled) return;
-      miniApp.mount.ifAvailable();
-      viewport.mount.ifAvailable();
-      hapticFeedback.mount.ifAvailable();
-    });
-    return () => { cancelled = true; };
-  }, []);
+  if (isTMA()) {
+    miniApp.mount.ifAvailable();
+    viewport.mount.ifAvailable();
+    hapticFeedback.mount.ifAvailable();
+  }
 
   const { pathname } = useLocation();
   const navigate = useNavigate();
