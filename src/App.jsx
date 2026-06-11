@@ -1193,6 +1193,20 @@ export default function App() {
     if (!isTMA()) return;
     viewport.expand.ifAvailable();
     document.documentElement.setAttribute("data-tg", "");
+
+    // Match the Android system navigation bar to our app
+    // background. Telegram's bottom bar color is documented
+    // (Bot API 7.10+) as also "applied to the navigation bar
+    // on Android" — without this, the bottom tab bar ends in
+    // white but the gesture pill area below it renders in the
+    // default Android dark, creating a visible gray strip under
+    // the app. We send #ffffff to match --bg. The header gets
+    // the same color so the Telegram title bar above the app
+    // also matches. Safe to call on every route change: the
+    // SDK short-circuits if the color hasn't changed.
+    miniApp.setBgColor.ifAvailable("#ffffff");
+    miniApp.setBottomBarColor.ifAvailable("#ffffff");
+
     return () => document.documentElement.removeAttribute("data-tg");
   }, [pathname]);
 
