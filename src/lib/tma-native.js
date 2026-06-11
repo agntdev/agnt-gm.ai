@@ -10,8 +10,7 @@ import {
   hapticFeedback,
   isTMA as sdkIsTMA,
   openLink,
-  showAlert as tgShowAlert,
-  showConfirm as tgShowConfirm,
+  popup,
 } from "@tma.js/sdk-react";
 
 // ── Haptics ────────────────────────────────────────────────
@@ -72,7 +71,17 @@ export function openExternal(url, options) {
 export function tmaAlert(message) {
   if (sdkIsTMA()) {
     try {
-      tgShowAlert.ifAvailable(message);
+      // Telegram's popup API doesn't have a 1-arg alert shortcut;
+      // we build a single-OK dialog. The .ifAvailable() guard
+      // returns undefined on web and old clients — we fall
+      // through to window.alert.
+      popup.show
+        .ifAvailable({
+          title: "Notice",
+          message: String(message),
+          buttons: [{ id: "ok", type: "default", text: "OK" }],
+        })
+        .catch(() => {});
       return;
     } catch {
       // Fall through.
@@ -89,7 +98,15 @@ export function tmaAlert(message) {
 export async function tmaConfirm(message) {
   if (sdkIsTMA()) {
     try {
-      return await tgShowConfirm.ifAvailable(message);
+      const id = await popup.show.ifAvailable({
+        title: "Confirm",
+        message: String(message),
+        buttons: [
+          { id: "ok", type: "default", text: "OK" },
+          { id: "cancel", type: "cancel", text: "Cancel" },
+        ],
+      });
+      return id === "ok";
     } catch {
       // Fall through.
     }
