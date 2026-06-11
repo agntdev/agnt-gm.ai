@@ -79,10 +79,15 @@ const RESPONSIVE_CSS = `
      button, app icon, menu) stays overlaid on top of the
      Mini App, but the viewport reports the full screen height.
      Without this padding the hero and any fixed-top elements
-     slide under the Telegram chrome. --csat is
-     contentSafeAreaInsetTop, which Telegram populates with the
-     header height when fullscreen is active. */
-  [data-tg].is-fullscreen .app { padding-top: var(--csat, 0px); }
+     slide under the Telegram chrome.
+
+     contentSafeAreaInsetTop (--csat) reports 0 in fullscreen
+     mode on Android (the SDK considers the entire screen as
+     content). The actual Telegram header is ~60px tall, so
+     we hardcode 60px here. The debug button uses the same
+     value to position itself just below the header. */
+  [data-tg].is-fullscreen .app { padding-top: 60px; }
+  [data-tg].is-fullscreen .tgfs-btn { top: 70px; }
 
   .bottom-tabbar-inner {
     display: grid;
@@ -1292,9 +1297,9 @@ export default function App() {
   // Reflect fullscreen state on <html> as .is-fullscreen so CSS
   // can push page content below the Telegram header (which
   // overlays the app in fullscreen mode on Android). The CSS
-  // uses contentSafeAreaInsetTop (--csat) for the offset — the
-  // SDK reports the Telegram header height there when the
-  // viewport enters fullscreen.
+  // hardcodes 60px for the header offset because
+  // contentSafeAreaInsetTop reports 0 in fullscreen mode on
+  // Android (the SDK considers the entire screen as content).
   useEffect(() => {
     if (!isTMA()) return;
     document.documentElement.classList.toggle("is-fullscreen", !!isFullscreen);
