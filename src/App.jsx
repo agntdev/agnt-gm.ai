@@ -1344,15 +1344,33 @@ export default function App() {
   // <html> whenever either changes. The media query listener
   // is the key for web users: it fires when the OS theme
   // flips at runtime (sunset, automation, dock undocked).
+  //
+  // In TMA we also attach a direct `themeChanged` listener
+  // to the Telegram WebApp as a belt-and-suspenders. The SDK
+  // signal should update on its own, but in practice the
+  // .isDark signal sometimes doesn't fire on the first theme
+  // flip on certain Android clients, so we read the raw
+  // WebApp.colorScheme and apply it ourselves.
   const isDark = useSignal(miniApp.isDark);
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const wa = window.Telegram?.WebApp;
     const apply = () => {
-      const dark = isTMA() ? !!isDark : mq.matches;
+      const dark = isTMA()
+        ? !!(isDark || wa?.colorScheme === "dark")
+        : mq.matches;
       document.documentElement.classList.toggle("is-dark", dark);
     };
     apply();
     mq.addEventListener("change", apply);
+    if (isTMA() && wa?.onEvent) {
+      const handler = () => apply();
+      wa.onEvent("themeChanged", handler);
+      return () => {
+        mq.removeEventListener("change", apply);
+        wa.offEvent?.("themeChanged", handler);
+      };
+    }
     return () => mq.removeEventListener("change", apply);
   }, [isDark]);
 
