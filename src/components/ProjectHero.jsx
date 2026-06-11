@@ -125,7 +125,6 @@ export default function ProjectHero({ live, children, isOwner = false, crumbsExt
     <>
       <div
         style={{
-          paddingTop: 18,
           fontSize: 11.5,
           color: "var(--fg-muted)",
           display: "flex",
