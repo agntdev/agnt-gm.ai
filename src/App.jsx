@@ -9,7 +9,6 @@ import {
   backButton,
   viewport,
   miniApp,
-  useLaunchParams,
   useSignal,
 } from "@tma.js/sdk-react";
 import Home from "./pages/Home.jsx";
@@ -1312,19 +1311,21 @@ export default function App() {
   // header, more vertical space). Desktop Telegram (tdesktop,
   // macos, web, weba) keeps the Mini App as a normal side
   // panel — fullscreen there would just hide Telegram's window
-  // chrome. We detect "phone" via the launch params' platform
-  // string ('android' or 'ios'), not by viewport width —
-  // Telegram desktop's webview is narrow too (~500-600px) so
-  // a width check would incorrectly fire. Bot API 8.0+; the
-  // .ifAvailable() wrapper makes it a no-op on older clients.
-  const launchParams = useLaunchParams();
+  // chrome.
+  //
+  // We can't use useLaunchParams() because it throws when not
+  // running inside Telegram (LaunchParamsRetrieveError), which
+  // would crash the entire app in dev. Instead we read the
+  // platform string directly from window.Telegram.WebApp, which
+  // the SDK bridges. If the WebApp object isn't there we're
+  // not in TMA and isTMA() short-circuits the rest.
   useEffect(() => {
     if (!isTMA()) return;
-    const platform = launchParams?.tgWebAppPlatform;
+    const platform = window.Telegram?.WebApp?.platform;
     if (platform === "android" || platform === "ios") {
       viewport.requestFullscreen.ifAvailable();
     }
-  }, [launchParams]);
+  }, []);
 
   return (
     <div className="app">
