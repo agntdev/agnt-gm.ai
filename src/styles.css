@@ -28,6 +28,14 @@
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
   --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
 
+  /* Skeleton shimmer: a left-to-right gradient sweep across
+     placeholder boxes. Used by the loading states on Home and
+     Milestones. The --skel-base / --skel-hi pair lets the
+     skeleton adapt if we ever ship a dark mode without
+     hardcoding colors per palette. */
+  --skel-base: #e7e5e4;
+  --skel-hi: #f5f5f4;
+
   /* Telegram viewport safe area insets — keep these, the
      numbers are still useful. The *theme* colors are gone, but
      the safe-area numbers don't have a brand, they just keep
@@ -1258,6 +1266,122 @@ h1 .punch { color: var(--accent-fg); }
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 14px;
+}
+
+/* ── Skeleton loaders ──
+   Replaces "Loading projects from API…" on Home and
+   "Loading DAG…" on Milestones. Skeleton pieces are sized
+   to the real content (Chrome CDP-measured at 1148px desktop
+   and 430px mobile), so the layout doesn't shift when real
+   data lands. The shimmer is a left-to-right gradient sweep
+   over a 2-color base. */
+.skel {
+  position: relative;
+  background: var(--skel-base);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--skel-hi) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skel-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel::after { animation: none; display: none; }
+}
+
+/* Project card skeleton: matches the 355x350 desktop and
+   406x224 mobile card structure (Chrome-measured). The
+   hero-cover and project-body sections are kept as named
+   placeholders so the .skel-card exactly matches a real
+   card's footprint. */
+.skel-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.skel-card-hero {
+  height: 162px;
+  display: flex;
+  align-items: flex-end;
+  padding: 14px;
+  gap: 12px;
+}
+.skel-card-body {
+  padding: 14px 17px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.skel-card-stat {
+  height: 13px;
+  width: 40%;
+}
+.skel-card-stat-v {
+  height: 17px;
+  width: 30%;
+  margin-top: 2px;
+}
+.skel-card-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+/* Mobile card skeleton: 406x224 total, no hero cover (hidden
+   on phone), 3-col stats row, full-width earn footer. */
+@media (max-width: 640px) {
+  .skel-card-hero { display: none; }
+  .skel-card-body { padding: 14px 12px 0; }
+}
+
+/* Task row skeleton: matches .ms-task-row (404x143 mobile,
+   taller on desktop). One placeholder per visible region:
+   hash + status badge top-left, title middle, labels bottom. */
+.skel-task {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.skel-task-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.skel-task-title {
+  height: 17px;
+  width: 70%;
+}
+.skel-task-title-2 {
+  height: 17px;
+  width: 40%;
+}
+.skel-task-labels {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+.skel-task-label {
+  height: 17px;
+  width: 53px;
 }
 .project-card {
   border: 1px solid var(--border);

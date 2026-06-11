@@ -12,6 +12,7 @@ import {
   SummaryTiles,
 } from "../components/payoutWidgets.jsx";
 import { api } from "../lib/api.js";
+import { ProjectCardSkeletonGrid } from "../components/Skeletons.jsx";
 
 // Unified card hero — IDENTICAL layout for every project: status pill
 // top-right, identity (logo + name + ticker + repo) in the bottom bar,
@@ -856,15 +857,8 @@ export default function Home() {
           </div>
         </div>
         {projects === null ? (
-          <div
-            style={{
-              padding: "40px 0",
-              color: "var(--fg-muted)",
-              fontSize: 13,
-              textAlign: "center",
-            }}
-          >
-            Loading projects from API…
+          <div className="project-grid">
+            <ProjectCardSkeletonGrid count={6} />
           </div>
         ) : filtered.length === 0 ? (
           <div

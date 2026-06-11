@@ -13,6 +13,7 @@ import { Link, useParams } from "react-router-dom";
 import ProjectHero, { useProjectData } from "../components/ProjectHero.jsx";
 import PhasePipeline from "../components/PhasePipeline.jsx";
 import { useProjectDag } from "../hooks/useProjectDag.js";
+import { TaskRowSkeletonList } from "../components/Skeletons.jsx";
 import { useProjectPhase } from "../hooks/useProjectPhase.js";
 
 // task_kind → chip styling. Each kind has a distinct accent so the
@@ -276,16 +277,7 @@ export default function Milestones() {
             }}
           >
             {dag === null ? (
-              <div
-                style={{
-                  padding: 32,
-                  textAlign: "center",
-                  color: "var(--fg-muted)",
-                  fontSize: 13,
-                }}
-              >
-                Loading DAG…
-              </div>
+              <TaskRowSkeletonList count={5} />
             ) : sortedTasks.length === 0 ? (
               <div
                 style={{
