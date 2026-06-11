@@ -83,11 +83,12 @@ const RESPONSIVE_CSS = `
 
      contentSafeAreaInsetTop (--csat) reports 0 in fullscreen
      mode on Android (the SDK considers the entire screen as
-     content). The actual Telegram header is ~60px tall, so
-     we hardcode 60px here. The debug button uses the same
-     value to position itself just below the header. */
-  [data-tg].is-fullscreen .app { padding-top: 60px; }
-  [data-tg].is-fullscreen .tgfs-btn { top: 70px; }
+     content). The actual Telegram header is ~96px tall on a
+     412dp Android screen (status bar 24dp + Telegram header
+     56dp + spacing), so we hardcode 100px here for breathing
+     room. The debug button sits just below at top: 110px. */
+  [data-tg].is-fullscreen .app { padding-top: 100px; }
+  [data-tg].is-fullscreen .tgfs-btn { top: 110px; }
 
   .bottom-tabbar-inner {
     display: grid;
@@ -1241,10 +1242,21 @@ export default function App() {
     // on Android" — without this, the bottom tab bar ends in
     // white but the gesture pill area below it renders in the
     // default Android dark, creating a visible gray strip under
-    // the app. We send #ffffff to match --bg. The header gets
-    // the same color so the Telegram title bar above the app
-    // also matches. Safe to call on every route change: the
-    // SDK short-circuits if the color hasn't changed.
+    // the app. We send #ffffff to match --bg.
+
+    // The header color is also set so Telegram can pick a
+    // contrasting status bar text color. Per Bot API 8.0 docs:
+    // "Although the header is transparent in fullscreen mode,
+    // it is recommended that the Mini App sets the header color
+    // using the setHeaderColor method. This color helps
+    // determine a contrasting color for the status bar and
+    // other UI controls." Without this, the status bar icons
+    // and clock render in light text on our white background
+    // and disappear.
+
+    // Safe to call on every route change: the SDK short-
+    // circuits if the color hasn't changed.
+    miniApp.setHeaderColor.ifAvailable("#ffffff");
     miniApp.setBgColor.ifAvailable("#ffffff");
     miniApp.setBottomBarColor.ifAvailable("#ffffff");
 
