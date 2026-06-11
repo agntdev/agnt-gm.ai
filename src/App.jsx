@@ -759,6 +759,14 @@ const RESPONSIVE_CSS = `
      doesn't overflow the narrow column, and trim the code-block
      padding so the two side-by-side panels actually fit. */
   @media (max-width: 640px) {
+    /* On phones the user said the hero sat too far from the top
+       edge: the section adds 32px, the .intro-block adds another
+       24px. Total is 56px of empty space before the brand mark
+       shows up. Cut both down. The inline style attribute on the
+       section would normally win, so we use !important to force
+       it. */
+    .container { padding-top: 12px !important; }
+    .intro-block { padding-top: 8px !important; }
     .intro-h { margin: 0 0 8px !important; font-size: 24px !important; line-height: 1.05 !important; letter-spacing: -0.025em !important; }
     .intro-h-l2::after { display: none; }
     .intro-sub { margin: 0 0 12px !important; font-size: 12.5px !important; }
@@ -770,6 +778,13 @@ const RESPONSIVE_CSS = `
        280px right column won't fit beside a 360px viewport. */
     .intro-code-col { flex-basis: 100% !important; min-width: 0 !important; }
   }
+
+  /* Same trim for TMA — the section is the same one and the
+     user said the gap felt too big inside the mini app too.
+     [data-tg] applies regardless of viewport width, so a wide
+     desktop view embedded in TMA also gets the tighter spacing. */
+  [data-tg] .container { padding-top: 12px !important; }
+  [data-tg] .intro-block { padding-top: 8px !important; }
 
   /* Section heads on phones: keep the title + sort on one row,
      vertically centered. The sort trigger is a tiny icon-only
