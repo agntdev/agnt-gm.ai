@@ -1,0 +1,98 @@
+// Telegram Mini App native integrations that aren't wrapped by
+// @tma.js/sdk-react. Centralized here so call sites don't need
+// to know which Telegram SDK functions exist or how to no-op
+// outside TMA.
+//
+// Every function is a no-op when not running inside Telegram,
+// so the call sites can be wired unconditionally.
+
+import {
+  hapticFeedback,
+  isTMA as sdkIsTMA,
+  openLink,
+  showAlert as tgShowAlert,
+  showConfirm as tgShowConfirm,
+} from "@tma.js/sdk-react";
+
+// ── Haptics ────────────────────────────────────────────────
+
+/**
+ * Trigger a haptic tap. Pass a style for the kind of interaction
+ * (light = button press, medium = tab change, heavy = destructive
+ * action) or a notification type (success / error / warning) for
+ * the outcome of an action. No-op outside Telegram.
+ */
+function haptic(kind, payload) {
+  if (!sdkIsTMA()) return;
+  try {
+    if (kind === "impact") {
+      hapticFeedback.impactOccurred.ifAvailable(payload || "light");
+    } else if (kind === "notification") {
+      hapticFeedback.notificationOccurred.ifAvailable(payload || "success");
+    } else if (kind === "selection") {
+      hapticFeedback.selectionChanged.ifAvailable();
+    }
+  } catch {
+    // Old clients + web: silent no-op.
+  }
+}
+
+export const hapticClick = () => haptic("impact", "light");
+export const hapticMedium = () => haptic("impact", "medium");
+export const hapticSuccess = () => haptic("notification", "success");
+export const hapticError = () => haptic("notification", "error");
+export const hapticWarning = () => haptic("notification", "warning");
+export const hapticSelect = () => haptic("selection");
+
+// ── Open links ─────────────────────────────────────────────
+
+/**
+ * Open a URL in Telegram's preferred target (in-app browser, or
+ * external if the user prefers). Falls back to window.open on web
+ * so the call site doesn't need to know.
+ */
+export function openExternal(url, options) {
+  if (sdkIsTMA()) {
+    try {
+      openLink.ifAvailable(url, options);
+      return;
+    } catch {
+      // Fall through to window.open.
+    }
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+// ── Native dialogs ─────────────────────────────────────────
+
+/**
+ * Replace window.alert with Telegram's themed dialog. No-op to
+ * window.alert on web.
+ */
+export function tmaAlert(message) {
+  if (sdkIsTMA()) {
+    try {
+      tgShowAlert.ifAvailable(message);
+      return;
+    } catch {
+      // Fall through.
+    }
+  }
+  window.alert(message);
+}
+
+/**
+ * Replace window.confirm with Telegram's themed dialog. Returns
+ * a Promise<boolean> that resolves true on OK, false on Cancel.
+ * On web falls back to window.confirm.
+ */
+export async function tmaConfirm(message) {
+  if (sdkIsTMA()) {
+    try {
+      return await tgShowConfirm.ifAvailable(message);
+    } catch {
+      // Fall through.
+    }
+  }
+  return window.confirm(message);
+}

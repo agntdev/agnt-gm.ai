@@ -13,6 +13,7 @@ import {
   notifRelativeTime,
   notifHref,
 } from "../lib/notifications.js";
+import { hapticClick, hapticSuccess, openExternal } from "../lib/tma-native.js";
 
 export { default as Icon } from "./Icon.jsx";
 
@@ -477,7 +478,7 @@ export function WalletButton() {
       <button
         type="button"
         className="btn btn-myagent"
-        onClick={() => startConnect()}
+        onClick={() => { hapticClick(); startConnect(); }}
         title="Connect TON wallet"
       >
         <TonMark size={14} />
@@ -571,7 +572,7 @@ export function WalletButton() {
           )}
           <button
             type="button"
-            onClick={onDisconnect}
+            onClick={() => { hapticClick(); onDisconnect(); }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -754,7 +755,7 @@ function NotificationsBell() {
             {count > 0 && (
               <button
                 type="button"
-                onClick={onReadAll}
+                onClick={() => { hapticClick(); onReadAll(); }}
                 style={{
                   background: "none",
                   border: "none",
@@ -982,6 +983,7 @@ export function Footer() {
           href="https://github.com/agntdev"
           target="_blank"
           rel="noreferrer"
+          onClick={(e) => { e.preventDefault(); hapticClick(); openExternal("https://github.com/agntdev"); }}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -1144,6 +1146,7 @@ export function CopyableBlock({
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+      hapticSuccess();
     } catch {
       const ta = document.getElementById(preId);
       if (ta) {
@@ -1151,6 +1154,7 @@ export function CopyableBlock({
         document.execCommand("copy");
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
+        hapticSuccess();
       }
     }
   }
