@@ -2302,7 +2302,12 @@ h1 .punch { color: var(--accent-fg); }
    with the two-line headline. Shown only on mobile + TMA where
    the top header (which has the real logo) is hidden. On desktop
    the header already carries the brand mark, so the slogan stands
-   alone — no need to repeat the diamond next to it. */
+   alone — no need to repeat the diamond next to it.
+
+   !important here because the inline JSX style sets
+   `display: inline-grid` on the span, and inline styles win
+   over a plain class rule. The !important is the cleanest way
+   to override without restructuring the JSX. */
 .intro-brand {
   display: flex;
   align-items: center;
@@ -2310,12 +2315,23 @@ h1 .punch { color: var(--accent-fg); }
   margin-bottom: 12px;
 }
 .intro-brand-diamond {
-  display: none;
+  display: none !important;
 }
 @media (max-width: 640px) {
-  .intro-brand-diamond { display: inline-grid; }
+  .intro-brand-diamond { display: inline-grid !important; }
 }
-[data-tg] .intro-brand-diamond { display: inline-grid; }
+[data-tg] .intro-brand-diamond { display: inline-grid !important; }
+
+/* Main-page copyable blocks: add breathing room between the
+   dashed header divider and the first line of text. Without
+   this, `npx skills add ...` sits 1px under the dashed line
+   — glued. The !important lifts the pre's padding above the
+   inline `padding: 0` on the <pre> in the JSX. Only applies
+   inside .intro-code-col so the project page (contrib-onboard)
+   keeps the original glued look the user asked for. */
+.intro-code-col .copyable-block pre {
+  padding-top: 6px !important;
+}
 
 .intro-h {
   font-size: clamp(26px, 3.2vw, 36px);
