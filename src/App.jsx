@@ -9,6 +9,7 @@ import {
   backButton,
   viewport,
   miniApp,
+  hapticFeedback,
   useSignal,
 } from "@tma.js/sdk-react";
 import Home from "./pages/Home.jsx";
@@ -1176,13 +1177,32 @@ const RESPONSIVE_CSS = `
 
 export default function App() {
   // ── Initialize the Telegram SDK once ──
-  // Without this, methods like hapticFeedback.impactOccurred()
-  // return early with "the SDK was not initialized" (the SDK
-  // throws a checked error that our tma-native.js try/catch
-  // silently swallows — so the user sees no haptic at all on
-  // their phone). init() is idempotent and a no-op outside
-  // TMA, so safe to call unconditionally.
+  // init() unblocks the SDK but does NOT mount the components.
+  // Per the docs: "Before using specific components in your
+  // application, you must mount them. Not mounting components
+  // will cause their methods to throw errors." So we also
+  // mount miniApp (for setHeaderColor / setBgColor /
+  // setBottomBarColor), viewport (for expand / requestFullscreen
+  // / safe-area signals), and hapticFeedback (for
+  // impactOccurred / notificationOccurred). All .ifAvailable
+  // no-ops outside TMA. init() returns a promise — we don't
+  // wait for it because the components are usable as soon as
+  // init() resolves, and we'd rather render the app shell
+  // immediately.
   init();
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isTMA()) return;
+    let cancelled = false;
+    init().then(() => {
+      if (cancelled) return;
+      miniApp.mount.ifAvailable();
+      viewport.mount.ifAvailable();
+      hapticFeedback.mount.ifAvailable();
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const { pathname } = useLocation();
   const navigate = useNavigate();

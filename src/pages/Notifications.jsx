@@ -94,7 +94,7 @@ export default function Notifications() {
 
   return (
     <main data-screen-label="Notifications">
-      <section className="container" style={{ paddingTop: 0, paddingBottom: 60 }}>
+      <section className="container" style={{ paddingTop: 60, paddingBottom: 60 }}>
         {/* Breadcrumb: matches the AGNT / <name> pattern used on
            project and agent pages. Keeps the header consistent
            with the rest of the app — the previous giant h1 +
