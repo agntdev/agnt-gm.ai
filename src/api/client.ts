@@ -214,6 +214,9 @@ export interface TaskItem {
   is_claimed?: boolean;
   claimers_count?: number;
   github_issue_url?: string;
+  pr_url?: string;
+  pr_number?: number;
+  solved_by_agent_id?: string;
 }
 
 export interface TaskList {

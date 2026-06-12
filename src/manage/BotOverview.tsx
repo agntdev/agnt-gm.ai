@@ -23,6 +23,28 @@ function relTime(iso?: string): string {
 
 const isFail = (m: ChatMessage) => /fail|error|crash|🔴|❌|✗/i.test(m.content);
 
+// latest test results — structured (data.kind=test) or parsed from a system
+// message like "38/38 passing · 94% cov"; null until CI results exist.
+function latestTests(sys: ChatMessage[]): { passed: number; total: number; coverage?: number } | null {
+  for (let i = sys.length - 1; i >= 0; i--) {
+    const m = sys[i];
+    const d = m.data as { kind?: string; passed?: number; failed?: number; coverage_pct?: number } | undefined;
+    if (d?.kind === 'test' && typeof d.passed === 'number') {
+      return { passed: d.passed, total: d.passed + (d.failed || 0), coverage: d.coverage_pct };
+    }
+    const t = /(\d+)\s*\/\s*(\d+)\s*(?:tests?|cases?|passing)/i.exec(m.content);
+    if (t) {
+      const cov = /(\d+)\s*%\s*cov/i.exec(m.content);
+      return { passed: +t[1], total: +t[2], coverage: cov ? +cov[1] : undefined };
+    }
+  }
+  return null;
+}
+
+const TASK_DOT: Record<string, 'green' | 'accent' | 'hint'> = {
+  done: 'green', in_progress: 'accent', open: 'hint',
+};
+
 export function BotOverview({ T, bot, messages, onConnectAgent }: {
   T: Theme; bot: MyBot; messages: ChatMessage[]; onConnectAgent: () => void;
 }) {
@@ -111,6 +133,74 @@ export function BotOverview({ T, bot, messages, onConnectAgent }: {
           onClick={() => botUsername && openTgLink(`https://t.me/${botUsername}`)} />
         <ActionBtn T={T} icon="link" label="Share" disabled={!botUsername}
           onClick={() => botUsername && openTgLink(`https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${botUsername}`)}&text=${encodeURIComponent(`Try my bot @${botUsername}`)}`)} />
+      </div>
+
+      {/* tasks — full queue with live statuses, PR links when present */}
+      <div>
+        <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>
+          Tasks
+        </div>
+        <Card T={T} pad={0}>
+          {tasks.length === 0 && (
+            <div style={{ padding: 14, fontFamily: T.font, fontSize: 13.5, color: T.hint }}>
+              No tasks yet — they appear once the plan is approved.
+            </div>
+          )}
+          {tasks.map((t, i) => {
+            const tone = TASK_DOT[t.status] || 'hint';
+            const color = tone === 'green' ? T.green : tone === 'accent' ? T.accent : T.hint;
+            return (
+              <button key={t.id || t.slug}
+                onClick={t.pr_url ? () => openTgLink(t.pr_url!) : undefined}
+                style={{
+                  ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11,
+                  padding: '11px 14px', borderTop: i ? `0.5px solid ${T.sep}` : 'none',
+                  cursor: t.pr_url ? 'pointer' : 'default',
+                }}>
+                {t.status === 'done'
+                  ? <div style={{ width: 20, height: 20, borderRadius: 999, background: T.greenSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <TGIcon name="check" size={13} color={T.green} stroke={2.6} />
+                    </div>
+                  : <Dot color={color} size={8} pulse={t.status === 'in_progress'} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.text, lineHeight: '18px' }}>{t.title}</div>
+                  <div style={{ fontFamily: T.font, fontSize: 11.5, color: t.status === 'done' ? T.green : T.hint, marginTop: 1 }}>
+                    {t.status === 'done' ? 'done' : t.status === 'in_progress' ? `building${t.claimers_count ? ` · ${t.claimers_count} agent${t.claimers_count > 1 ? 's' : ''}` : ''}` : 'queued'}
+                    {t.pr_url ? ' · PR ↗' : ''}
+                  </div>
+                </div>
+                <Pill T={T} tone={t.difficulty === 'easy' ? 'green' : 'accent'} style={{ height: 20, fontSize: 10.5, padding: '0 7px' }}>
+                  {t.difficulty || 'medium'}
+                </Pill>
+              </button>
+            );
+          })}
+        </Card>
+      </div>
+
+      {/* tests — real when CI results land; honest placeholder until then */}
+      <div>
+        <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>
+          Tests
+        </div>
+        {(() => {
+          const tr = latestTests(sys);
+          if (!tr) return (
+            <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+              <TGIcon name="beaker" size={19} color={T.hint} stroke={1.8} />
+              <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.hint, lineHeight: '18px' }}>
+                No test results yet — they appear when CI runs land on the build.
+              </span>
+            </Card>
+          );
+          const allPass = tr.passed >= tr.total;
+          return (
+            <div style={{ display: 'flex', gap: 10 }}>
+              <StatTile T={T} value={`${tr.passed}/${tr.total}`} label="Tests passing" good={allPass} />
+              <StatTile T={T} value={tr.coverage != null ? `${tr.coverage}%` : '—'} label="Coverage" />
+            </div>
+          );
+        })()}
       </div>
 
       {/* recent activity — latest build/deploy events */}
