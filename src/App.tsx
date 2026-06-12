@@ -525,7 +525,7 @@ export default function App() {
       ) : null;
       case 'agent': return (
         <AgentScreen T={T} connected={connected} agentName={agentName} project={project}
-          onConnected={(name) => { setAgentName(name || 'Claude'); setConnected(true); }} />
+          onConnected={(client) => { setAgentName((client || 'Claude').split('/')[0]); setConnected(true); }} />
       );
       case 'tasks': return (
         <TasksScreen T={T} tasks={tasks} loading={tasksLoading}

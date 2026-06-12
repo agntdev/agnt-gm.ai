@@ -1,28 +1,26 @@
-// Agent — Stage 2: bring the owner's agent online.
-// 1) Install the agnt skills into the user's coding agent (Claude/Codex):
-//      npx skills add agntdev/skills --all
-// 2) Copy the FIRST PROMPT into the agent. It carries the connect ID + code
-//    from a real CLI session (POST /auth/cli-session) — the agent opens the
-//    login link, the owner confirms the code, and our poll flips to connected.
+// Agent — Stage 2: bring the owner's agent online via the agent-link flow.
+// The mini-app mints a one-time connect code (POST /builder/projects/{id}/
+// agent-link); the first prompt tells the agent to run `agnt connect <code>`,
+// which exchanges it for a delegate key server-side — no browser, no OAuth.
+// We poll GET .../agent-link until status=connected.
 import { useEffect, useRef, useState } from 'react';
 import { Theme, btnReset } from '../theme';
-import { createCliSession, pollCliSession, CliSession, Project } from '../api/client';
+import { mintAgentLink, getAgentLink, Project } from '../api/client';
 import { TGIcon, Card, Pill, Dot, Spinner, Stepper } from '../ui';
 
 const INSTALL_CMD = 'npx skills add agntdev/skills --all';
 
-function firstPrompt(project: Project | null, s: CliSession): string {
+function firstPrompt(project: Project | null, code: string): string {
   const slug = project?.slug || 'my-project';
   return [
     `Use the agnt-cli-builder skill to build my Telegram bot on agnt-gm.ai.`,
     ``,
-    `Project: ${project?.name || slug} (${slug})${project ? ` · id ${project.id}` : ''}`,
-    `Connect ID: ${s.session_id}`,
-    `Code: ${s.verification_code || '—'}`,
+    `Project: ${project?.name || slug} (${slug})`,
+    `Connect code: ${code}`,
     ``,
     `1) If the agnt skills are missing, install them: ${INSTALL_CMD}`,
-    `2) Connect my account: open ${s.login_url} — I'll confirm the code above.`,
-    `3) Once I approve the build plan, run \`agnt task list ${slug}\` and build the tasks one by one as the skill instructs.`,
+    `2) Run: agnt connect ${code}`,
+    `3) Then run \`agnt task list ${slug}\` and build the tasks one by one as the skill instructs.`,
   ].join('\n');
 }
 
@@ -30,51 +28,50 @@ export function AgentScreen({ T, connected, agentName, project, onConnected }: {
   T: Theme; connected: boolean; agentName: string | null; project: Project | null;
   onConnected: (agentName: string | null) => void;
 }) {
-  const [session, setSession] = useState<CliSession | null>(null);
+  const [code, setCode] = useState<string | null>(null);
   const stopped = useRef(false);
 
   useEffect(() => {
-    if (connected) return;
+    if (connected || !project) return;
     stopped.current = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let remintTimer: ReturnType<typeof setTimeout> | undefined;
 
-    (async () => {
+    const mint = async () => {
       try {
-        const s = await createCliSession('agentbot-miniapp/0.1.0 (telegram)');
+        const c = await mintAgentLink(project.id);
         if (stopped.current) return;
-        setSession(s);
-
-        const poll = async () => {
-          if (stopped.current) return;
-          try {
-            const r = await pollCliSession(s.session_id);
-            if (stopped.current) return;
-            if (r.status === 'ready') {
-              onConnected(r.agent?.display_name || r.agent?.github_username || null);
-              return;
-            }
-            if (r.status === 'expired') {
-              // session lapsed — issue a fresh one so the prompt stays valid
-              const ns = await createCliSession('agentbot-miniapp/0.1.0 (telegram)').catch(() => null);
-              if (!stopped.current && ns) setSession(ns);
-              pollTimer = setTimeout(poll, 2000);
-              return;
-            }
-            pollTimer = setTimeout(poll, 2000);
-          } catch {
-            pollTimer = setTimeout(poll, 4000);
-          }
-        };
-        pollTimer = setTimeout(poll, 2000);
+        setCode(c.code);
+        // codes are one-time and short-lived — refresh shortly before expiry
+        const ttl = (c.expires_in ?? 600) * 1000;
+        remintTimer = setTimeout(mint, Math.max(30_000, ttl - 20_000));
       } catch {
-        // API unreachable — let the flow stay walkable
-        setTimeout(() => { if (!stopped.current) onConnected(null); }, 3500);
+        remintTimer = setTimeout(mint, 5000); // transient — retry
       }
-    })();
+    };
 
-    return () => { stopped.current = true; if (pollTimer) clearTimeout(pollTimer); };
+    const poll = async () => {
+      if (stopped.current) return;
+      try {
+        const s = await getAgentLink(project.id);
+        if (stopped.current) return;
+        if (s.status === 'connected') {
+          onConnected(s.connected_client || null);
+          return;
+        }
+      } catch { /* transient — keep polling */ }
+      pollTimer = setTimeout(poll, 2000);
+    };
+
+    void mint();
+    pollTimer = setTimeout(poll, 2000);
+    return () => {
+      stopped.current = true;
+      if (pollTimer) clearTimeout(pollTimer);
+      if (remintTimer) clearTimeout(remintTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected]);
+  }, [connected, project?.id]);
 
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -85,18 +82,20 @@ export function AgentScreen({ T, connected, agentName, project, onConnected }: {
         Bring your agent online
       </div>
       <div style={{ fontFamily: T.font, fontSize: 14.5, color: T.sub, lineHeight: '21px', padding: '0 2px', marginTop: -6 }}>
-        Paste this prompt into your Claude or Codex agent — it installs our skills and carries the connect ID your agent uses to link up. No extra cost.
+        Paste this prompt into your Claude or Codex agent — the connect code inside links it to this bot. One command, no sign-in. No extra cost.
       </div>
 
-      {/* the first prompt — skills install is inside it */}
+      {/* the first prompt — connect code inside */}
       <div>
-        <StepLabel T={T} text="Paste this first prompt into your agent" />
-        {session ? (
-          <CopyCard T={T} text={firstPrompt(project, session)} mono small />
+        <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>
+          Paste this first prompt into your agent
+        </div>
+        {code ? (
+          <CopyCard T={T} text={firstPrompt(project, code)} mono small />
         ) : (
           <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Spinner color={T.accent} size={15} />
-            <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.sub }}>Generating your connect ID…</span>
+            <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.sub }}>Generating your connect code…</span>
           </Card>
         )}
       </div>
@@ -108,9 +107,9 @@ export function AgentScreen({ T, connected, agentName, project, onConnected }: {
           <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>
             {connected ? 'Agent connected' : 'Waiting for your agent…'}
           </div>
-          {!connected && session?.verification_code && (
+          {!connected && code && (
             <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>
-              Confirm code <span style={{ fontFamily: T.mono, fontWeight: 600 }}>{session.verification_code}</span> when asked
+              Connect code <span style={{ fontFamily: T.mono, fontWeight: 600 }}>{code}</span> · valid 10 min, auto-refreshes
             </div>
           )}
         </div>
@@ -118,14 +117,6 @@ export function AgentScreen({ T, connected, agentName, project, onConnected }: {
           ? <Pill T={T} tone="green">{agentName || 'Agent ready'}</Pill>
           : <TGIcon name="clock" size={19} color={T.amber} stroke={1.9} />}
       </Card>
-    </div>
-  );
-}
-
-function StepLabel({ T, text }: { T: Theme; text: string }) {
-  return (
-    <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>
-      {text}
     </div>
   );
 }

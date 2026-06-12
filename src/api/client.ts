@@ -228,6 +228,29 @@ export function listProjectTasks(idOrSlug: string): Promise<TaskList> {
   return request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks`);
 }
 
+// ── Agent link: one-time connect code → delegate key (CLI side) ──
+// Mint is owner-scoped; the CLI exchanges the code via /auth/agent-link/claim.
+// The mini-app only mints and polls — the code IS the credential.
+
+export interface AgentLinkCode {
+  code: string;
+  expires_in?: number;
+}
+
+export interface AgentLinkStatus {
+  status: 'pending' | 'connected';
+  connected_client?: string;
+  connected_at?: string;
+}
+
+export function mintAgentLink(projectId: string): Promise<AgentLinkCode> {
+  return request('POST', `/builder/projects/${encodeURIComponent(projectId)}/agent-link`);
+}
+
+export function getAgentLink(projectId: string): Promise<AgentLinkStatus> {
+  return request('GET', `/builder/projects/${encodeURIComponent(projectId)}/agent-link`);
+}
+
 // ── CLI auth session (device-flow: connect the owner's agent) ─
 
 export interface CliSession {
