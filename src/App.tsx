@@ -24,6 +24,7 @@ import { TasksScreen } from './screens/Tasks';
 import { DevScreen, devStats } from './screens/Dev';
 import { TestingScreen } from './screens/Testing';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
+import { BotOverview } from './manage/BotOverview';
 
 const STEPS = ['prompt', 'clarify', 'spec', 'agent', 'tasks', 'dev', 'testing'] as const;
 type StepId = typeof STEPS[number];
@@ -166,6 +167,7 @@ export default function App() {
   const [myBots, setMyBots] = useState<MyBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(false);
   const [manageBot, setManageBot] = useState<string | null>(null);
+  const [manageView, setManageView] = useState<'overview' | 'chat'>('overview');
   const [draft, setDraft] = useState('');
 
   const id: StepId = STEPS[step];
@@ -480,7 +482,11 @@ export default function App() {
     if (id === 'prompt') return null;
     return back;
   })();
-  const closeChat = () => { setManageBot(null); setDir(-1); };
+  const closeChat = () => {
+    setDir(-1);
+    if (manageView === 'chat') setManageView('overview');
+    else setManageBot(null);
+  };
   const backAction: (() => void) | null = tab === 'manage' ? (activeBot ? closeChat : null) : onBack;
 
   // Telegram's own header already exists inside the mini-app — drive its
@@ -534,16 +540,16 @@ export default function App() {
   // ── body per tab ──
   const body = tab === 'manage'
     ? (activeBot
-      ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking}
-          showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)}
-          onConnectAgent={activeBot.status === 'live'
-            ? () => { setManageBot(null); void resumeBuild(activeBot.id, 'agent'); }
-            : undefined} />
+      ? (manageView === 'chat'
+        ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking}
+            showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)} />
+        : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
+            onConnectAgent={() => { setManageBot(null); void resumeBuild(activeBot.id, 'agent'); }} />)
       : <MyBotsList T={T} bots={myBots} loading={botsLoading} authed={tgAuthed}
           onOpen={(bid) => {
             const b = myBots.find(x => x.id === bid);
             if (b?.inProgress) void resumeBuild(bid); // back to the step it was closed on
-            else { setManageBot(bid); setDir(1); }
+            else { setManageBot(bid); setManageView('overview'); setDir(1); }
           }}
           onBuildFirst={() => { setDir(1); setTab('build'); }} />)
     : screen;
@@ -554,14 +560,18 @@ export default function App() {
   const drafting = id === 'clarify' && project?.status === 'draft' && gen !== 'error'
     && !clarifyChat.messages.some(m => m.role === 'system'); // system msg = brief locked, even before the status poll catches up
   const footer = tab === 'manage'
-    ? (activeBot ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false} /> : null)
+    ? (activeBot
+      ? (manageView === 'chat'
+        ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false} />
+        : <MainButton T={T} label="Request an update" icon="bolt" onClick={() => { setDir(1); setManageView('chat'); }} />)
+      : null)
     : drafting
     ? <Composer T={T} draft={chatDraft} onChange={setChatDraft}
         onSend={() => { const t = chatDraft.trim(); if (t) { clarifyChat.send(t); setChatDraft(''); } }}
         disabled={false} placeholder="Type your answer…" />
     : (mainBtn ? <MainButton T={T} {...mainBtn} /> : null);
 
-  const animKey = tab === 'manage' ? `m-${manageBot || 'list'}` : `b-${step}`;
+  const animKey = tab === 'manage' ? `m-${manageBot || 'list'}-${manageView}` : `b-${step}`;
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.pageBg, transition: 'background .3s' }}>
