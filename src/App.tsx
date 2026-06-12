@@ -10,7 +10,7 @@ import {
 } from './telegram';
 import {
   ApiError, Project, TaskItem, Deployment,
-  startChat, getProject, publishProject, fetchProjectTasks, listDeployments, DagInfo,
+  startChat, getProject, publishProject, fetchProjectTasks, listDeployments, DagInfo, deleteProject,
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
 } from './api/client';
@@ -37,6 +37,12 @@ const STAGE_SUB: Record<StepId, string> = {
 
 const THEME_KEY = 'agentbot-theme';
 const PIPELINE_KEY = 'agentbot-pipeline';
+const HIDDEN_KEY = 'agentbot-hidden'; // deleted-bot ids (local fallback until the API has DELETE)
+
+function loadHidden(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]') as string[]); }
+  catch { return new Set(); }
+}
 
 // pipeline snapshot persisted across mini-app closes, keyed to the project
 interface PipelineSnap {
@@ -169,6 +175,7 @@ export default function App() {
   const [botsLoading, setBotsLoading] = useState(false);
   const [manageBot, setManageBot] = useState<string | null>(null);
   const [manageView, setManageView] = useState<'overview' | 'chat'>('overview');
+  const [hiddenBots, setHiddenBots] = useState<Set<string>>(loadHidden);
   const [draft, setDraft] = useState('');
 
   const id: StepId = STEPS[step];
@@ -399,7 +406,7 @@ export default function App() {
     try {
       const list = await listProjectsByAgent(tgAgentId);
       // deployed bots AND in-progress builds (tapping the latter resumes the pipeline)
-      const mine = (list.projects || []).filter(p => p.status !== 'rejected' && p.status !== 'failed');
+      const mine = (list.projects || []).filter(p => p.status !== 'rejected' && p.status !== 'failed' && !hiddenBots.has(p.id));
       setMyBots(prev => mine.map(p => {
         const existing = prev.find(b => b.id === p.id);
         const fresh = botFromProject(p);
@@ -422,6 +429,18 @@ export default function App() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [tab, manageBot, manageChat.messages.length, manageChat.thinking]);
+
+  // delete: real DELETE when the API grows it; local hide as the fallback
+  const deleteBot = async (botId: string) => {
+    try { await deleteProject(botId); } catch { /* endpoint not shipped yet — hide locally */ }
+    setHiddenBots(prev => {
+      const next = new Set(prev); next.add(botId);
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next]));
+      return next;
+    });
+    setMyBots(bs => bs.filter(b => b.id !== botId));
+    setManageBot(null); setDir(-1);
+  };
 
   const sendUpdate = () => {
     const text = draft.trim();
@@ -545,7 +564,8 @@ export default function App() {
         ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking}
             showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
-            onConnectAgent={() => { setManageBot(null); void resumeBuild(activeBot.id, 'agent'); }} />)
+            onConnectAgent={() => { setManageBot(null); void resumeBuild(activeBot.id, 'agent'); }}
+            onDelete={() => void deleteBot(activeBot.id)} />)
       : <MyBotsList T={T} bots={myBots} loading={botsLoading} authed={tgAuthed}
           onOpen={(bid) => {
             const b = myBots.find(x => x.id === bid);

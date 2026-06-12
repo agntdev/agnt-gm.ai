@@ -182,6 +182,12 @@ export async function getProjectBot(idOrSlug: string): Promise<ProjectBot | null
   }
 }
 
+// Not in the API yet — called optimistically; 404/405 → the app falls back
+// to hiding the bot locally, and upgrades automatically once this ships.
+export function deleteProject(idOrSlug: string): Promise<unknown> {
+  return request('DELETE', `/builder/projects/${encodeURIComponent(idOrSlug)}`);
+}
+
 export function listProjectsByAgent(agentId: string, limit = 50): Promise<ProjectList> {
   return request('GET', `/builder/projects?owner_agent_id=${encodeURIComponent(agentId)}&limit=${limit}`);
 }

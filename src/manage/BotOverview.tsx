@@ -83,9 +83,11 @@ function PhaseStrip({ T, dag }: { T: Theme; dag: DagInfo }) {
   );
 }
 
-export function BotOverview({ T, bot, messages, onConnectAgent }: {
+export function BotOverview({ T, bot, messages, onConnectAgent, onDelete }: {
   T: Theme; bot: MyBot; messages: ChatMessage[]; onConnectAgent: () => void;
+  onDelete: () => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [detail, setDetail] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [dag, setDag] = useState<DagInfo | null>(null);
@@ -315,6 +317,52 @@ export function BotOverview({ T, bot, messages, onConnectAgent }: {
           ))}
         </div>
       </div>
+
+      {/* delete — two-step inline confirm; the Telegram bot itself is the
+          owner's and must be removed via @BotFather separately */}
+      {!confirmDelete ? (
+        <button onClick={() => setConfirmDelete(true)} style={{
+          ...btnReset, alignSelf: 'center', marginTop: 4, padding: '9px 16px', borderRadius: 999,
+          color: T.red, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
+        }}>
+          Delete this bot
+        </button>
+      ) : (
+        <Card T={T} pad={14} style={{ border: `1px solid ${T.redSoft}` }}>
+          <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>
+            Delete {bot.name}?
+          </div>
+          <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '18px', marginTop: 5 }}>
+            Removes this project from your AgentBot list.
+          </div>
+          <div style={{
+            display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 10, padding: '9px 11px',
+            borderRadius: 10, background: T.dark ? 'rgba(255,255,255,0.04)' : 'rgba(15,22,32,0.04)',
+          }}>
+            <TGIcon name="shield" size={15} color={T.amber} stroke={1.9} />
+            <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.sub, lineHeight: '17px' }}>
+              The Telegram bot @{handle} keeps running — to delete it completely, open{' '}
+              <span onClick={() => openTgLink('https://t.me/BotFather')} style={{ color: T.accent, fontWeight: 600, cursor: 'pointer' }}>@BotFather</span>
+              {' '}and send <span style={{ fontFamily: T.mono }}>/deletebot</span>.
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+            <button onClick={() => setConfirmDelete(false)} style={{
+              ...btnReset, flex: 1, height: 42, borderRadius: 11,
+              background: T.dark ? 'rgba(255,255,255,0.06)' : '#f3f5f8',
+              color: T.text, fontFamily: T.font, fontSize: 14, fontWeight: 600,
+            }}>
+              Cancel
+            </button>
+            <button onClick={onDelete} style={{
+              ...btnReset, flex: 1, height: 42, borderRadius: 11,
+              background: T.red, color: '#fff', fontFamily: T.font, fontSize: 14, fontWeight: 600,
+            }}>
+              Delete
+            </button>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
