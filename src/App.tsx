@@ -10,7 +10,7 @@ import {
 } from './telegram';
 import {
   ApiError, Project, TaskItem, Deployment,
-  startChat, getProject, publishProject, listProjectTasks, listDeployments,
+  startChat, getProject, publishProject, fetchProjectTasks, listDeployments, DagInfo,
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
 } from './api/client';
@@ -159,6 +159,7 @@ export default function App() {
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tokenSymbol, setTokenSymbol] = useState<string | undefined>(undefined);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [dagInfo, setDagInfo] = useState<DagInfo | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [approving, setApproving] = useState(false); // Stage 3 → publish repo + issues
   const [approveError, setApproveError] = useState<string | null>(null);
@@ -360,8 +361,8 @@ export default function App() {
     if (id !== 'tasks' || !project || tasks.length > 0) return;
     let cancelled = false;
     setTasksLoading(true);
-    listProjectTasks(project.id)
-      .then(r => { if (!cancelled) { setTasks(r.tasks || []); setTokenSymbol(r.token_symbol); } })
+    fetchProjectTasks(project.id)
+      .then(r => { if (!cancelled) { setTasks(r.tasks); setTokenSymbol(r.token_symbol); setDagInfo(r.dag ?? null); } })
       .catch(() => {})
       .finally(() => { if (!cancelled) setTasksLoading(false); });
     return () => { cancelled = true; };
@@ -378,11 +379,11 @@ export default function App() {
     const tick = async () => {
       if (cancelled) return;
       const [t, d] = await Promise.all([
-        listProjectTasks(project.id).catch(() => null),
+        fetchProjectTasks(project.id).catch(() => null),
         listDeployments(project.id).catch(() => null),
       ]);
       if (cancelled) return;
-      if (t) { setTasks(t.tasks || []); setTokenSymbol(t.token_symbol); }
+      if (t) { setTasks(t.tasks); setTokenSymbol(t.token_symbol); setDagInfo(t.dag ?? null); }
       if (d) setDeployments(d.deployments || []);
       timer = setTimeout(tick, 5000);
     };
@@ -438,7 +439,7 @@ export default function App() {
     setApproving(false); setApproveError(null);
     setConnected(false); setAgentName(null);
     setTasks([]); setTasksLoading(false); setTokenSymbol(undefined);
-    setDeployments([]);
+    setDeployments([]); setDagInfo(null);
   };
   const restart = () => { resetPipeline(); localStorage.removeItem(PIPELINE_KEY); setIdea(''); setChanged(false); goTo(0, -1); };
   const editIdea = () => { resetPipeline(); localStorage.removeItem(PIPELINE_KEY); setChanged(true); goTo(0, -1); };
@@ -523,7 +524,7 @@ export default function App() {
         <TasksScreen T={T} tasks={tasks} loading={tasksLoading}
           agentName={agentName || 'Claude'} tokenSymbol={tokenSymbol} error={approveError} />
       );
-      case 'dev': return <DevScreen T={T} tasks={tasks} deployments={deployments}
+      case 'dev': return <DevScreen T={T} tasks={tasks} deployments={deployments} dag={dagInfo}
         log={clarifyChat.messages.filter(m => m.role === 'system')} />;
       case 'testing': return <TestingScreen T={T} project={project} />;
     }

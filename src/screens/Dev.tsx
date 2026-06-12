@@ -4,7 +4,7 @@
 // project chat's role=system messages as the live log.
 import { useEffect, useRef } from 'react';
 import { Theme } from '../theme';
-import { TaskItem, Deployment, ChatMessage } from '../api/client';
+import { TaskItem, Deployment, ChatMessage, DagInfo } from '../api/client';
 import { TGIcon, Card, Pill, Stepper, ProgressBar, Dot } from '../ui';
 
 export interface DevStats {
@@ -23,8 +23,8 @@ export function devStats(tasks: TaskItem[]): DevStats {
 
 const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 100) : 0);
 
-export function DevScreen({ T, tasks, deployments, log }: {
-  T: Theme; tasks: TaskItem[]; deployments: Deployment[]; log: ChatMessage[];
+export function DevScreen({ T, tasks, deployments, dag, log }: {
+  T: Theme; tasks: TaskItem[]; deployments: Deployment[]; dag?: DagInfo | null; log: ChatMessage[];
 }) {
   const s = devStats(tasks);
   const latestProd = deployments.find(d => d.kind !== 'preview');
@@ -64,8 +64,10 @@ export function DevScreen({ T, tasks, deployments, log }: {
       <Stepper T={T} steps={[0, 1, 2, 3, 4]} current={3} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Pill T={T} tone="accent">Stage 4 · Building</Pill>
-        <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>
-          {s.claimers > 0 || s.inProgress > 0 ? 'agents working — live' : 'live status'}
+        <span style={{ fontFamily: T.font, fontSize: 13, color: dag?.phase_status === 'failed' ? T.red : T.hint }}>
+          {dag?.current_phase
+            ? `${dag.current_phase} phase${dag.phase_status === 'failed' ? ' · fixing' : dag.phase_status ? ` · ${dag.phase_status}` : ''}`
+            : s.claimers > 0 || s.inProgress > 0 ? 'agents working — live' : 'live status'}
         </span>
       </div>
 

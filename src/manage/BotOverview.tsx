@@ -5,8 +5,8 @@
 import { useEffect, useState } from 'react';
 import { Theme, btnReset } from '../theme';
 import {
-  Project, TaskItem, ChatMessage, AgentLinkStatus,
-  getProject, listProjectTasks, getProjectBot, getAgentLink,
+  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment,
+  getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments,
 } from '../api/client';
 import { openTgLink } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile } from '../ui';
@@ -50,22 +50,26 @@ export function BotOverview({ T, bot, messages, onConnectAgent }: {
 }) {
   const [detail, setDetail] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [deploys, setDeploys] = useState<Deployment[]>([]);
   const [botUsername, setBotUsername] = useState<string | null>(null);
   const [link, setLink] = useState<AgentLinkStatus | null>(null);
+  const [commits7d, setCommits7d] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
-      const [d, t, b, l] = await Promise.all([
+      const [d, t, dep, b, l] = await Promise.all([
         getProject(bot.id).catch(() => null),
-        listProjectTasks(bot.id).catch(() => null),
+        fetchProjectTasks(bot.id).catch(() => null),
+        listDeployments(bot.id).catch(() => null),
         getProjectBot(bot.id).catch(() => null),
         getAgentLink(bot.id).catch(() => null),
       ]);
       if (cancelled) return;
       if (d) setDetail(d.project);
-      if (t) setTasks(t.tasks || []);
+      if (t) setTasks(t.tasks);
+      if (dep) setDeploys(dep.deployments || []);
       if (b?.bot_username) setBotUsername(b.bot_username);
       if (l) setLink(l);
       timer = setTimeout(tick, 12000);
@@ -74,10 +78,27 @@ export function BotOverview({ T, bot, messages, onConnectAgent }: {
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [bot.id]);
 
+  // commits over the last 7 days, straight from the public GitHub repo.
+  // Fetched once per repo (not on the 12s tick) — unauthenticated GitHub
+  // calls are rate-limited per client IP.
+  const repoUrl = detail?.github_repo_url;
+  useEffect(() => {
+    if (!repoUrl) return;
+    const m = /github\.com\/([^/]+)\/([^/#?]+)/.exec(repoUrl);
+    if (!m) return;
+    let cancelled = false;
+    const since = new Date(Date.now() - 7 * 86400_000).toISOString();
+    fetch(`https://api.github.com/repos/${m[1]}/${m[2]}/commits?since=${since}&per_page=100`)
+      .then(r => (r.ok ? r.json() : null))
+      .then((arr) => { if (!cancelled && Array.isArray(arr)) setCommits7d(arr.length); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [repoUrl]);
+
   const sys = messages.filter(m => m.role === 'system');
   const activity = [...sys].reverse().slice(0, 4);
   const done = tasks.filter(t => t.status === 'done').length;
-  const agents = detail?.active_agents ?? tasks.reduce((n, t) => n + (t.claimers_count || 0), 0);
+  const prodDeploys = deploys.filter(d => d.kind !== 'preview' && !d.failure_reason).length;
   const connected = link?.status === 'connected';
   const agentClient = (link?.connected_client || '').split('/')[0];
   const handle = botUsername || bot.handle;
@@ -120,11 +141,11 @@ export function BotOverview({ T, bot, messages, onConnectAgent }: {
         {!connected && <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />}
       </button>
 
-      {/* stats — real platform numbers */}
+      {/* stats — real platform + repo numbers */}
       <div style={{ display: 'flex', gap: 10 }}>
         <StatTile T={T} value={tasks.length ? `${done}/${tasks.length}` : '—'} label="Tasks done" good={tasks.length > 0 && done >= tasks.length} />
-        <StatTile T={T} value={String(agents)} label={agents === 1 ? 'Agent active' : 'Agents active'} />
-        <StatTile T={T} value={String(detail?.prs_merged_7d ?? 0)} label="PRs · 7d" />
+        <StatTile T={T} value={String(prodDeploys)} label={prodDeploys === 1 ? 'Deploy' : 'Deploys'} />
+        <StatTile T={T} value={commits7d != null ? String(commits7d) : '—'} label="Commits · 7d" />
       </div>
 
       {/* actions */}

@@ -231,6 +231,73 @@ export function listProjectTasks(idOrSlug: string): Promise<TaskList> {
   return request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks`);
 }
 
+// ── Task DAG (chat-created AGNTDEV projects) ──────────────────
+// These projects keep their work in a per-phase task graph; the legacy
+// /tasks list is empty for them. fetchProjectTasks() unifies the two.
+
+export interface DagTask {
+  slug: string;
+  title: string;
+  task_kind?: string; // foundation | feature | integration | doc | fix
+  phase?: string;
+  status: string; // open | in_progress | done
+  depends_on?: string[];
+  claimable?: boolean;
+  claimers?: unknown[];
+}
+
+export interface DagInfo {
+  current_phase?: string;
+  phase_status?: string;
+  next_action?: string;
+  next_action_reason?: string;
+}
+
+export interface ProjectDag extends DagInfo {
+  project_id: string;
+  project_slug: string;
+  tasks: DagTask[];
+}
+
+export function getProjectDag(idOrSlug: string): Promise<ProjectDag> {
+  return request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/dag`);
+}
+
+export interface UnifiedTasks {
+  tasks: TaskItem[];
+  token_symbol?: string;
+  dag?: DagInfo;
+}
+
+// DAG first (the real system for chat-created projects), legacy list as
+// the fallback for older bounty-style projects.
+export async function fetchProjectTasks(idOrSlug: string): Promise<UnifiedTasks> {
+  try {
+    const d = await getProjectDag(idOrSlug);
+    if (d.tasks?.length || d.current_phase) {
+      return {
+        tasks: (d.tasks || []).map(t => ({
+          id: t.slug,
+          slug: t.slug,
+          title: t.title,
+          status: t.status,
+          difficulty: t.task_kind, // shown as the row pill
+          claimers_count: t.claimers?.length || 0,
+          is_claimed: (t.claimers?.length || 0) > 0,
+        })),
+        dag: {
+          current_phase: d.current_phase,
+          phase_status: d.phase_status,
+          next_action: d.next_action,
+          next_action_reason: d.next_action_reason,
+        },
+      };
+    }
+  } catch { /* no DAG — legacy project */ }
+  const legacy = await listProjectTasks(idOrSlug);
+  return { tasks: legacy.tasks || [], token_symbol: legacy.token_symbol };
+}
+
 // ── Deployments (real deploy history; most recent first) ─────
 
 export interface Deployment {
