@@ -190,7 +190,7 @@ export function deleteProject(idOrSlug: string): Promise<unknown> {
 }
 
 // ── Build mode: who builds the tasks ──────────────────────────
-// 'platform' — the platform's agents build and ship PRs (GitHub App).
+// 'platform' — the platform's agents build and ship PRs.
 // 'local'    — the owner's connected agent does the work; platform only
 //              runs gates + deploys.
 // Not in the API yet — set optimistically (404 tolerated, mode kept locally).

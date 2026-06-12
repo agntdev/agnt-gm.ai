@@ -28,7 +28,7 @@ function firstPrompt(project: Project | null, code: string): string {
 export const MODE_META: Record<BuildMode, { title: string; desc: string; glyph: string }> = {
   platform: {
     title: 'Platform agent',
-    desc: 'We build everything — agents write code and ship PRs from our GitHub App. Zero setup.',
+    desc: 'We build everything — agents write code and ship PRs from our platform. Zero setup.',
     glyph: 'bolt',
   },
   local: {
@@ -144,7 +144,7 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, on
           <div>
             <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Nothing to set up</div>
             <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint, marginTop: 2, lineHeight: '18px' }}>
-              Platform agents pick up every task, write the code and open PRs from our GitHub App. You watch progress here and in the bot's chat.
+              Platform agents pick up every task, write the code and open PRs from our platform. You watch progress here and in the bot's chat.
             </div>
           </div>
         </Card>

@@ -201,7 +201,7 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.text }}>Platform agents on the job</div>
-                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>Code & PRs ship from our GitHub App</div>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>Code & PRs ship from our platform</div>
               </div>
             </div>
           ) : (
