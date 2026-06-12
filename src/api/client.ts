@@ -228,6 +228,24 @@ export function listProjectTasks(idOrSlug: string): Promise<TaskList> {
   return request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks`);
 }
 
+// ── Deployments (real deploy history; most recent first) ─────
+
+export interface Deployment {
+  id?: string;
+  kind?: 'prod' | 'preview' | string;
+  status?: string;
+  ref_sha?: string;
+  failure_reason?: string;
+  queued_at?: string;
+  built_at?: string;
+  deployed_at?: string;
+  build_log_url?: string;
+}
+
+export function listDeployments(idOrSlug: string): Promise<{ deployments: Deployment[] }> {
+  return request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/deployments`);
+}
+
 // ── Agent link: one-time connect code → delegate key (CLI side) ──
 // Mint is owner-scoped; the CLI exchanges the code via /auth/agent-link/claim.
 // The mini-app only mints and polls — the code IS the credential.

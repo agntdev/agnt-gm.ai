@@ -9,8 +9,8 @@ import {
   insideTelegram, backButtonOnClick, backButtonVisible, openTgLink,
 } from './telegram';
 import {
-  ApiError, Project, TaskItem,
-  startChat, getProject, publishProject, listProjectTasks,
+  ApiError, Project, TaskItem, Deployment,
+  startChat, getProject, publishProject, listProjectTasks, listDeployments,
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
 } from './api/client';
@@ -21,7 +21,7 @@ import { ClarifyScreen, GenPhase } from './screens/Clarify';
 import { SpecScreen } from './screens/Spec';
 import { AgentScreen } from './screens/Agent';
 import { TasksScreen } from './screens/Tasks';
-import { DevScreen, DevProgress, DevLogLine } from './screens/Dev';
+import { DevScreen, devStats } from './screens/Dev';
 import { TestingScreen } from './screens/Testing';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
 
@@ -157,8 +157,7 @@ export default function App() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tokenSymbol, setTokenSymbol] = useState<string | undefined>(undefined);
-  const [devProgress, setDevProgress] = useState<DevProgress>({ code: 0, deploy: 0, tests: 0 });
-  const [devLog, setDevLog] = useState<DevLogLine[]>([]);
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [approving, setApproving] = useState(false); // Stage 3 → publish repo + issues
   const [approveError, setApproveError] = useState<string | null>(null);
@@ -177,7 +176,7 @@ export default function App() {
   const back = () => goTo(Math.max(0, step - 1), -1);
 
   // ── the clarify chat (real, on the draft project) ──
-  const clarifyChat = useChat(project?.id ?? null, tab === 'build' && id === 'clarify');
+  const clarifyChat = useChat(project?.id ?? null, tab === 'build' && (id === 'clarify' || id === 'dev'));
   const manageChat = useChat(manageBot, tab === 'manage' && !!manageBot);
 
   // "Start generating": create the draft project from the idea and enter the chat
@@ -367,40 +366,28 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, project?.id]);
 
-  // ── Stage 4: build animation (simulated; log seeded with real task titles) ──
-  const devRef = useRef<DevProgress>({ code: 0, deploy: 0, tests: 0 });
-  const devDone = devProgress.code >= 100 && devProgress.deploy >= 100 && devProgress.tests >= 100;
+  // ── Stage 4: REAL build status — poll tasks + deploy history while watching ──
+  const stats = devStats(tasks);
+  const devDone = stats.total > 0 && stats.done >= stats.total;
   useEffect(() => {
-    if (id !== 'dev') return;
-    devRef.current = { code: 0, deploy: 0, tests: 0 };
-    setDevProgress({ code: 0, deploy: 0, tests: 0 });
-    setDevLog([{ tag: '[code]', t: 'scaffolding project…', c: '#9ecbff' }]);
-    const tt = tasks.map(t => t.title.toLowerCase());
-    const logged: Record<number, boolean> = {};
-    const milestones = [
-      { tr: 'code' as const, at: 30, tag: '[code]', t: tt[0] ? `task: ${tt[0]}` : 'registered 6 command handlers', c: '#9ecbff' },
-      { tr: 'deploy' as const, at: 20, tag: '[deploy]', t: 'provisioned EU-West node', c: '#b9f6ca' },
-      { tr: 'code' as const, at: 70, tag: '[code]', t: tt[1] ? `task: ${tt[1]}` : 'wired skills + memory store', c: '#9ecbff' },
-      { tr: 'deploy' as const, at: 60, tag: '[deploy]', t: 'container built · 41MB', c: '#b9f6ca' },
-      { tr: 'tests' as const, at: 40, tag: '[tests]', t: 'running 38 cases…', c: '#ffe0a3' },
-      { tr: 'code' as const, at: 100, tag: '[code]', t: '✓ build complete', c: '#b9f6ca' },
-      { tr: 'deploy' as const, at: 100, tag: '[deploy]', t: '✓ webhook live', c: '#b9f6ca' },
-      { tr: 'tests' as const, at: 100, tag: '[tests]', t: '✓ 38/38 passing · 94% cov', c: '#b9f6ca' },
-    ];
-    const iv = setInterval(() => {
-      const p = devRef.current;
-      p.code = Math.min(100, p.code + 5.5);
-      if (p.code > 30) p.deploy = Math.min(100, p.deploy + 4.2);
-      if (p.deploy > 35) p.tests = Math.min(100, p.tests + 4.8);
-      milestones.forEach((m, i) => {
-        if (!logged[i] && p[m.tr] >= m.at) { logged[i] = true; setDevLog(prev => [...prev, { tag: m.tag, t: m.t, c: m.c }]); }
-      });
-      setDevProgress({ ...p });
-      if (p.code >= 100 && p.deploy >= 100 && p.tests >= 100) clearInterval(iv);
-    }, 130);
-    return () => clearInterval(iv);
+    if (id !== 'dev' || !project) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      if (cancelled) return;
+      const [t, d] = await Promise.all([
+        listProjectTasks(project.id).catch(() => null),
+        listDeployments(project.id).catch(() => null),
+      ]);
+      if (cancelled) return;
+      if (t) { setTasks(t.tasks || []); setTokenSymbol(t.token_symbol); }
+      if (d) setDeployments(d.deployments || []);
+      timer = setTimeout(tick, 5000);
+    };
+    void tick();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, project?.id]);
 
   // ── My Bots: real deployed projects of this wallet ──
   const refreshMyBots = async () => {
@@ -449,7 +436,7 @@ export default function App() {
     setApproving(false); setApproveError(null);
     setConnected(false); setAgentName(null);
     setTasks([]); setTasksLoading(false); setTokenSymbol(undefined);
-    setDevProgress({ code: 0, deploy: 0, tests: 0 }); setDevLog([]);
+    setDeployments([]);
   };
   const restart = () => { resetPipeline(); localStorage.removeItem(PIPELINE_KEY); setIdea(''); setChanged(false); goTo(0, -1); };
   const editIdea = () => { resetPipeline(); localStorage.removeItem(PIPELINE_KEY); setChanged(true); goTo(0, -1); };
@@ -491,7 +478,6 @@ export default function App() {
   // ── back behavior (in-app header in the browser, native BackButton in Telegram) ──
   const onBack = ((): (() => void) | null => {
     if (id === 'prompt') return null;
-    if (id === 'dev' && !devDone) return null; // lock during build
     return back;
   })();
   const closeChat = () => { setManageBot(null); setDir(-1); };
@@ -531,7 +517,8 @@ export default function App() {
         <TasksScreen T={T} tasks={tasks} loading={tasksLoading}
           agentName={agentName || 'Claude'} tokenSymbol={tokenSymbol} error={approveError} />
       );
-      case 'dev': return <DevScreen T={T} progress={devProgress} log={devLog} />;
+      case 'dev': return <DevScreen T={T} tasks={tasks} deployments={deployments}
+        log={clarifyChat.messages.filter(m => m.role === 'system')} />;
       case 'testing': return <TestingScreen T={T} project={project} />;
     }
   })();
