@@ -96,8 +96,11 @@ export function openExternal(url: string): void {
   else window.open(url, '_blank', 'noopener');
 }
 
-// t.me links should stay inside Telegram (e.g. the manager-bot deep link)
+// t.me links stay inside Telegram (bot chats, the manager-bot deep link,
+// share sheets). openTelegramLink is the mini-app API for this; openLink is
+// the in-app fallback for older clients; window.open only outside Telegram.
 export function openTgLink(url: string): void {
-  if (insideTelegram && webApp?.openTelegramLink) webApp.openTelegramLink(url);
-  else window.open(url, '_blank', 'noopener');
+  if (insideTelegram && webApp?.openTelegramLink) { webApp.openTelegramLink(url); return; }
+  if (insideTelegram && webApp?.openLink) { webApp.openLink(url); return; }
+  window.open(url, '_blank', 'noopener');
 }

@@ -279,6 +279,33 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botInit, botUsername, project?.id]);
 
+  // ── hash routes: memorize the current page across refreshes ──
+  // #/ (build entry) · #/build/<projectId> · #/bots · #/bots/<id>[/chat]
+  const routeApplied = useRef(false);
+  useEffect(() => {
+    if (routeApplied.current) return;
+    routeApplied.current = true;
+    const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+    if (parts[0] === 'bots') {
+      setTab('manage');
+      if (parts[1]) {
+        setManageBot(parts[1]);
+        setManageView(parts[2] === 'chat' ? 'chat' : 'overview');
+      }
+    } else if (parts[0] === 'build' && parts[1]) {
+      void resumeBuild(parts[1]); // restores the exact step from snapshot/server
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!routeApplied.current) return;
+    const h = tab === 'manage'
+      ? (manageBot ? `#/bots/${manageBot}${manageView === 'chat' ? '/chat' : ''}` : '#/bots')
+      : project ? `#/build/${project.id}` : '#/';
+    history.replaceState(null, '', h);
+  }, [tab, manageBot, manageView, project?.id]);
+
   // ── persist the pipeline so closing the mini-app doesn't lose progress ──
   useEffect(() => {
     if (!project) return; // cleared explicitly on restart / edit-idea

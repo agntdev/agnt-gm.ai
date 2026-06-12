@@ -8,7 +8,7 @@ import {
   Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail,
 } from '../api/client';
-import { openTgLink } from '../telegram';
+import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
 import { MyBot } from './MyBots';
 
@@ -288,8 +288,8 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
                       if (!pr && !issue) return null;
                       return (
                         <div style={{ display: 'flex', gap: 8 }}>
-                          {pr && <LinkChip T={T} label="View PR" onClick={() => openTgLink(pr)} />}
-                          {issue && <LinkChip T={T} label="GitHub issue" onClick={() => openTgLink(issue)} />}
+                          {pr && <LinkChip T={T} label="View PR" onClick={() => openExternal(pr)} />}
+                          {issue && <LinkChip T={T} label="GitHub issue" onClick={() => openExternal(issue)} />}
                         </div>
                       );
                     })()}
