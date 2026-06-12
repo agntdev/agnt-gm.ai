@@ -565,6 +565,7 @@ export default function App() {
             showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
             onConnectAgent={() => { setManageBot(null); void resumeBuild(activeBot.id, 'agent'); }}
+            onOpenChat={() => { setDir(1); setManageView('chat'); }}
             onDelete={() => void deleteBot(activeBot.id)} />)
       : <MyBotsList T={T} bots={myBots} loading={botsLoading} authed={tgAuthed}
           onOpen={(bid) => {
@@ -581,10 +582,8 @@ export default function App() {
   const drafting = id === 'clarify' && project?.status === 'draft' && gen !== 'error'
     && !clarifyChat.messages.some(m => m.role === 'system'); // system msg = brief locked, even before the status poll catches up
   const footer = tab === 'manage'
-    ? (activeBot
-      ? (manageView === 'chat'
-        ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false} />
-        : <MainButton T={T} label="Request an update" icon="bolt" onClick={() => { setDir(1); setManageView('chat'); }} />)
+    ? (activeBot && manageView === 'chat'
+      ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false} />
       : null)
     : drafting
     ? <Composer T={T} draft={chatDraft} onChange={setChatDraft}

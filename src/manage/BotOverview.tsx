@@ -5,11 +5,11 @@
 import { useEffect, useState } from 'react';
 import { Theme, btnReset } from '../theme';
 import {
-  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo,
-  getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments,
+  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail,
+  getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail,
 } from '../api/client';
 import { openTgLink } from '../telegram';
-import { TGIcon, Card, Pill, Dot, BotTile } from '../ui';
+import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
 import { MyBot } from './MyBots';
 
 function relTime(iso?: string): string {
@@ -83,9 +83,9 @@ function PhaseStrip({ T, dag }: { T: Theme; dag: DagInfo }) {
   );
 }
 
-export function BotOverview({ T, bot, messages, onConnectAgent, onDelete }: {
+export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDelete }: {
   T: Theme; bot: MyBot; messages: ChatMessage[]; onConnectAgent: () => void;
-  onDelete: () => void;
+  onOpenChat: () => void; onDelete: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [detail, setDetail] = useState<Project | null>(null);
@@ -96,6 +96,18 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onDelete }: {
   const [link, setLink] = useState<AgentLinkStatus | null>(null);
   const [commits7d, setCommits7d] = useState<number | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
+  const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetail | 'loading' | 'none'>>({});
+
+  // tap a task → expand with the full title + body fetched from the API
+  const toggleTask = (slug: string) => {
+    setExpandedTask(prev => (prev === slug ? null : slug));
+    if (!taskDetails[slug]) {
+      setTaskDetails(prev => ({ ...prev, [slug]: 'loading' }));
+      getTaskDetail(bot.id, slug).then(d =>
+        setTaskDetails(prev => ({ ...prev, [slug]: d ?? 'none' })));
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -194,8 +206,7 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onDelete }: {
       <div style={{ display: 'flex', gap: 10 }}>
         <ActionBtn T={T} icon="open" label="Test bot" disabled={!botUsername}
           onClick={() => botUsername && openTgLink(`https://t.me/${botUsername}`)} />
-        <ActionBtn T={T} icon="link" label="Share" disabled={!botUsername}
-          onClick={() => botUsername && openTgLink(`https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${botUsername}`)}&text=${encodeURIComponent(`Try my bot @${botUsername}`)}`)} />
+        <ActionBtn T={T} icon="chat" label="Chat" onClick={onOpenChat} />
       </div>
 
       {/* tasks — compact: phase stepper + one-line rows, expandable */}
@@ -216,26 +227,75 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onDelete }: {
           {orderTasks(tasks).slice(0, showAllTasks ? undefined : 4).map((t, i) => {
             const tone = TASK_DOT[t.status] || 'hint';
             const color = tone === 'green' ? T.green : tone === 'accent' ? T.accent : T.hint;
+            const slug = t.slug || t.id;
+            const open = expandedTask === slug;
+            const detail = taskDetails[slug];
             return (
-              <button key={t.id || t.slug}
-                onClick={t.pr_url ? () => openTgLink(t.pr_url!) : undefined}
-                style={{
+              <div key={slug} style={{ borderTop: i || dag?.current_phase ? `0.5px solid ${T.sep}` : 'none' }}>
+                <button onClick={() => toggleTask(slug)} style={{
                   ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 14px', borderTop: i || dag?.current_phase ? `0.5px solid ${T.sep}` : 'none',
-                  cursor: t.pr_url ? 'pointer' : 'default', opacity: t.status === 'done' ? 0.72 : 1,
+                  padding: '10px 14px', opacity: !open && t.status === 'done' ? 0.72 : 1,
                 }}>
-                {t.status === 'done'
-                  ? <TGIcon name="check" size={15} color={T.green} stroke={2.6} />
-                  : <Dot color={color} size={7} pulse={t.status === 'in_progress'} />}
-                <span style={{
-                  flex: 1, fontFamily: T.font, fontSize: 13.5, color: T.text, lineHeight: '18px',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>{t.title.replace(/^Fix:\s*/i, '')}</span>
-                {t.pr_url && <TGIcon name="open" size={13} color={T.accent} stroke={2} />}
-                <Pill T={T} tone={t.status === 'done' ? 'neutral' : 'accent'} style={{ height: 19, fontSize: 10, padding: '0 7px' }}>
-                  {t.difficulty || 'task'}
-                </Pill>
-              </button>
+                  {t.status === 'done'
+                    ? <TGIcon name="check" size={15} color={T.green} stroke={2.6} />
+                    : <Dot color={color} size={7} pulse={t.status === 'in_progress'} />}
+                  <span style={{
+                    flex: 1, fontFamily: T.font, fontSize: 13.5, color: T.text, lineHeight: '18px',
+                    ...(open ? {} : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
+                  }}>{open ? t.title : t.title.replace(/^Fix:\s*/i, '')}</span>
+                  <Pill T={T} tone={t.status === 'done' ? 'neutral' : 'accent'} style={{ height: 19, fontSize: 10, padding: '0 7px' }}>
+                    {t.difficulty || 'task'}
+                  </Pill>
+                  <TGIcon name="chevDown" size={14} color={T.hint} stroke={2}
+                    {...(open ? {} : {})} />
+                </button>
+
+                {open && (
+                  <div style={{ padding: '0 14px 13px 39px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                    {/* meta line */}
+                    <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>
+                      {[t.phase && `${t.phase} phase`, t.status,
+                        (t.claimers_count || 0) > 0 && `${t.claimers_count} agent${t.claimers_count! > 1 ? 's' : ''} on it`,
+                        t.depends_on?.length ? `depends on ${t.depends_on.length}` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </div>
+
+                    {/* full description */}
+                    {detail === 'loading' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Spinner color={T.hint} size={13} />
+                        <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>Loading description…</span>
+                      </div>
+                    )}
+                    {detail && detail !== 'loading' && detail !== 'none' && detail.body_md && (
+                      <div style={{
+                        fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '19px',
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 180, overflowY: 'auto',
+                      }}>{detail.body_md}</div>
+                    )}
+                    {(detail === 'none' || (typeof detail === 'object' && !detail.body_md)) && !t.claim_reason && (
+                      <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>No further details for this task.</div>
+                    )}
+                    {t.claim_reason && t.status !== 'done' && (
+                      <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.amber, lineHeight: '17px' }}>{t.claim_reason}</div>
+                    )}
+
+                    {/* links */}
+                    {(() => {
+                      const d = detail && detail !== 'loading' && detail !== 'none' ? detail : null;
+                      const pr = t.pr_url || d?.pr_url;
+                      const issue = t.github_issue_url || d?.github_issue_url;
+                      if (!pr && !issue) return null;
+                      return (
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {pr && <LinkChip T={T} label="View PR" onClick={() => openTgLink(pr)} />}
+                          {issue && <LinkChip T={T} label="GitHub issue" onClick={() => openTgLink(issue)} />}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
             );
           })}
           {tasks.length > 4 && (
@@ -364,6 +424,19 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onDelete }: {
         </Card>
       )}
     </div>
+  );
+}
+
+function LinkChip({ T, label, onClick }: { T: Theme; label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{
+      ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px',
+      borderRadius: 9, background: T.accentSoft, color: T.accent,
+      fontFamily: T.font, fontSize: 12.5, fontWeight: 600,
+    }}>
+      <TGIcon name="open" size={13} color={T.accent} stroke={2} />
+      {label}
+    </button>
   );
 }
 

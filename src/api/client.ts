@@ -223,6 +223,31 @@ export interface TaskItem {
   pr_url?: string;
   pr_number?: number;
   solved_by_agent_id?: string;
+  // DAG extras (chat-created projects)
+  phase?: string;
+  depends_on?: string[];
+  claim_reason?: string;
+}
+
+export interface TaskDetail {
+  id?: string;
+  slug: string;
+  title: string;
+  body_md?: string;
+  github_issue_url?: string;
+  pr_url?: string;
+  status?: string;
+}
+
+// Full task body — works for both legacy and DAG tasks.
+export async function getTaskDetail(idOrSlug: string, taskSlug: string): Promise<TaskDetail | null> {
+  try {
+    const r = await request<{ task?: TaskDetail }>('GET',
+      `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks/${encodeURIComponent(taskSlug)}`);
+    return r.task ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export interface TaskList {
@@ -249,6 +274,7 @@ export interface DagTask {
   status: string; // open | in_progress | done
   depends_on?: string[];
   claimable?: boolean;
+  claim_reason?: string;
   claimers?: unknown[];
 }
 
@@ -290,6 +316,9 @@ export async function fetchProjectTasks(idOrSlug: string): Promise<UnifiedTasks>
           difficulty: t.task_kind, // shown as the row pill
           claimers_count: t.claimers?.length || 0,
           is_claimed: (t.claimers?.length || 0) > 0,
+          phase: t.phase,
+          depends_on: t.depends_on,
+          claim_reason: t.claimable === false ? t.claim_reason : undefined,
         })),
         dag: {
           current_phase: d.current_phase,
