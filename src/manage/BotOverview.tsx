@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Theme, btnReset } from '../theme';
 import {
-  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment,
+  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments,
 } from '../api/client';
 import { openTgLink } from '../telegram';
@@ -45,15 +45,55 @@ const TASK_DOT: Record<string, 'green' | 'accent' | 'hint'> = {
   done: 'green', in_progress: 'accent', open: 'hint',
 };
 
+// active work first, queued next, done last — the collapsed view shows
+// what matters now
+function orderTasks(tasks: TaskItem[]): TaskItem[] {
+  const rank: Record<string, number> = { in_progress: 0, open: 1, done: 2 };
+  return [...tasks].sort((a, b) => (rank[a.status] ?? 1) - (rank[b.status] ?? 1));
+}
+
+// the build pipeline's phases with the current one highlighted
+const PHASES = ['general', 'design', 'details', 'dev', 'tests'];
+
+function PhaseStrip({ T, dag }: { T: Theme; dag: DagInfo }) {
+  const idx = PHASES.indexOf(dag.current_phase || '');
+  const failed = dag.phase_status === 'failed';
+  return (
+    <div style={{ padding: '12px 14px 11px' }}>
+      <div style={{ display: 'flex', gap: 5 }}>
+        {PHASES.map((p, i) => (
+          <div key={p} style={{
+            flex: 1, height: 3, borderRadius: 2,
+            background: i < idx ? T.accent
+              : i === idx ? (failed ? T.red : T.accent)
+              : (T.dark ? 'rgba(255,255,255,0.1)' : 'rgba(15,22,32,0.08)'),
+            opacity: i < idx ? 0.55 : 1,
+          }} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
+        <span style={{ fontFamily: T.font, fontSize: 12, fontWeight: 600, color: failed ? T.red : T.accent }}>
+          {dag.current_phase} phase{failed ? ' · fixing issues' : dag.phase_status && dag.phase_status !== 'open' ? ` · ${dag.phase_status}` : ''}
+        </span>
+        {idx >= 0 && (
+          <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{idx + 1} of {PHASES.length}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function BotOverview({ T, bot, messages, onConnectAgent }: {
   T: Theme; bot: MyBot; messages: ChatMessage[]; onConnectAgent: () => void;
 }) {
   const [detail, setDetail] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [dag, setDag] = useState<DagInfo | null>(null);
   const [deploys, setDeploys] = useState<Deployment[]>([]);
   const [botUsername, setBotUsername] = useState<string | null>(null);
   const [link, setLink] = useState<AgentLinkStatus | null>(null);
   const [commits7d, setCommits7d] = useState<number | null>(null);
+  const [showAllTasks, setShowAllTasks] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +108,7 @@ export function BotOverview({ T, bot, messages, onConnectAgent }: {
       ]);
       if (cancelled) return;
       if (d) setDetail(d.project);
-      if (t) setTasks(t.tasks);
+      if (t) { setTasks(t.tasks); setDag(t.dag ?? null); }
       if (dep) setDeploys(dep.deployments || []);
       if (b?.bot_username) setBotUsername(b.bot_username);
       if (l) setLink(l);
@@ -156,46 +196,54 @@ export function BotOverview({ T, bot, messages, onConnectAgent }: {
           onClick={() => botUsername && openTgLink(`https://t.me/share/url?url=${encodeURIComponent(`https://t.me/${botUsername}`)}&text=${encodeURIComponent(`Try my bot @${botUsername}`)}`)} />
       </div>
 
-      {/* tasks — full queue with live statuses, PR links when present */}
+      {/* tasks — compact: phase stepper + one-line rows, expandable */}
       <div>
-        <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>
-          Tasks
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 4px 9px' }}>
+          <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3 }}>Tasks</span>
+          {tasks.length > 0 && (
+            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{done}/{tasks.length} done</span>
+          )}
         </div>
         <Card T={T} pad={0}>
+          {dag?.current_phase && <PhaseStrip T={T} dag={dag} />}
           {tasks.length === 0 && (
             <div style={{ padding: 14, fontFamily: T.font, fontSize: 13.5, color: T.hint }}>
               No tasks yet — they appear once the plan is approved.
             </div>
           )}
-          {tasks.map((t, i) => {
+          {orderTasks(tasks).slice(0, showAllTasks ? undefined : 4).map((t, i) => {
             const tone = TASK_DOT[t.status] || 'hint';
             const color = tone === 'green' ? T.green : tone === 'accent' ? T.accent : T.hint;
             return (
               <button key={t.id || t.slug}
                 onClick={t.pr_url ? () => openTgLink(t.pr_url!) : undefined}
                 style={{
-                  ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11,
-                  padding: '11px 14px', borderTop: i ? `0.5px solid ${T.sep}` : 'none',
-                  cursor: t.pr_url ? 'pointer' : 'default',
+                  ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 14px', borderTop: i || dag?.current_phase ? `0.5px solid ${T.sep}` : 'none',
+                  cursor: t.pr_url ? 'pointer' : 'default', opacity: t.status === 'done' ? 0.72 : 1,
                 }}>
                 {t.status === 'done'
-                  ? <div style={{ width: 20, height: 20, borderRadius: 999, background: T.greenSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <TGIcon name="check" size={13} color={T.green} stroke={2.6} />
-                    </div>
-                  : <Dot color={color} size={8} pulse={t.status === 'in_progress'} />}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.text, lineHeight: '18px' }}>{t.title}</div>
-                  <div style={{ fontFamily: T.font, fontSize: 11.5, color: t.status === 'done' ? T.green : T.hint, marginTop: 1 }}>
-                    {t.status === 'done' ? 'done' : t.status === 'in_progress' ? `building${t.claimers_count ? ` · ${t.claimers_count} agent${t.claimers_count > 1 ? 's' : ''}` : ''}` : 'queued'}
-                    {t.pr_url ? ' · PR ↗' : ''}
-                  </div>
-                </div>
-                <Pill T={T} tone={t.difficulty === 'easy' ? 'green' : 'accent'} style={{ height: 20, fontSize: 10.5, padding: '0 7px' }}>
-                  {t.difficulty || 'medium'}
+                  ? <TGIcon name="check" size={15} color={T.green} stroke={2.6} />
+                  : <Dot color={color} size={7} pulse={t.status === 'in_progress'} />}
+                <span style={{
+                  flex: 1, fontFamily: T.font, fontSize: 13.5, color: T.text, lineHeight: '18px',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>{t.title.replace(/^Fix:\s*/i, '')}</span>
+                {t.pr_url && <TGIcon name="open" size={13} color={T.accent} stroke={2} />}
+                <Pill T={T} tone={t.status === 'done' ? 'neutral' : 'accent'} style={{ height: 19, fontSize: 10, padding: '0 7px' }}>
+                  {t.difficulty || 'task'}
                 </Pill>
               </button>
             );
           })}
+          {tasks.length > 4 && (
+            <button onClick={() => setShowAllTasks(v => !v)} style={{
+              ...btnReset, width: '100%', padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`,
+              fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent, textAlign: 'center',
+            }}>
+              {showAllTasks ? 'Show less' : `Show all ${tasks.length} tasks`}
+            </button>
+          )}
         </Card>
       </div>
 
