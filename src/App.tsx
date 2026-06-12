@@ -11,6 +11,7 @@ import {
 import {
   ApiError, Project, TaskItem, Deployment,
   startChat, getProject, publishProject, fetchProjectTasks, listDeployments, DagInfo, deleteProject,
+  BuildMode, setBuildModeApi,
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
 } from './api/client';
@@ -38,6 +39,15 @@ const STAGE_SUB: Record<StepId, string> = {
 const THEME_KEY = 'agentbot-theme';
 const PIPELINE_KEY = 'agentbot-pipeline';
 const HIDDEN_KEY = 'agentbot-hidden'; // deleted-bot ids (local fallback until the API has DELETE)
+const MODE_KEY = 'agentbot-buildmode'; // per-project build mode (until the API carries build_mode)
+
+function loadModes(): Record<string, BuildMode> {
+  try { return JSON.parse(localStorage.getItem(MODE_KEY) || '{}'); } catch { return {}; }
+}
+function modeFor(p: { id: string; build_mode?: string } | null): BuildMode {
+  if (p?.build_mode) return p.build_mode === 'local_agent' ? 'local' : 'platform';
+  return (p && loadModes()[p.id]) || 'platform';
+}
 
 function loadHidden(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]') as string[]); }
@@ -160,6 +170,7 @@ export default function App() {
   const [botInit, setBotInit] = useState<BotInitiate | null>(null); // deep link issued, waiting for Telegram
   const [botUsername, setBotUsername] = useState<string | null>(null); // the real managed bot
   const [connected, setConnected] = useState(false);
+  const [buildMode, setBuildMode] = useState<BuildMode>('platform');
   const [agentName, setAgentName] = useState<string | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -200,6 +211,7 @@ export default function App() {
       const d = await getProject(r.project_id).catch(() => null);
       setProject(d?.project ?? ({ id: r.project_id, slug: '', name: 'New bot', status: r.status || 'draft' } as Project));
       setGen('generating');
+      setBuildMode('platform');
       pollPlan(r.project_id);
       goTo(STEPS.indexOf('clarify'), 1);
     } catch (e) {
@@ -233,6 +245,16 @@ export default function App() {
       setTimeout(tick, 3000);
     };
     setTimeout(tick, 3000);
+  };
+
+  // who builds: persisted per project; API informed when the endpoint exists
+  const chooseBuildMode = (m: BuildMode) => {
+    setBuildMode(m);
+    if (project) {
+      const all = loadModes(); all[project.id] = m;
+      localStorage.setItem(MODE_KEY, JSON.stringify(all));
+      setBuildModeApi(project.id, m).catch(() => { /* endpoint not shipped yet */ });
+    }
   };
 
   // ── Stage 1: "Create the bot" = managed-bot creation, nothing else ──
@@ -326,6 +348,7 @@ export default function App() {
     cancelPoll.current();
     resetPipeline();
     setProject(p);
+    setBuildMode(modeFor(p));
     const snap = loadSnap();
     const inFlight = p.status === 'draft' || p.status === 'validating';
     if (inFlight) { setGen('generating'); pollPlan(p.id); }
@@ -511,7 +534,9 @@ export default function App() {
         label: botCreated ? 'Connect agent' : botInit ? 'Waiting for your bot…' : 'Create the bot to continue',
         disabled: !botCreated, busy: !!botInit && !botCreated, onClick: next,
       };
-      case 'agent': return { label: connected ? 'Start building' : 'Connecting…', disabled: !connected, onClick: next };
+      case 'agent': return buildMode === 'platform'
+        ? { label: 'Start building', onClick: next }
+        : { label: connected ? 'Start building' : 'Connecting…', disabled: !connected, onClick: next };
       case 'tasks': return { label: approving ? 'Starting build…' : 'Approve plan & build', busy: approving, onClick: approvePlan };
       case 'dev': return { label: devDone ? 'Continue to review' : 'Building…', disabled: !devDone, busy: !devDone, onClick: next };
       case 'testing': return {
@@ -564,11 +589,12 @@ export default function App() {
       ) : null;
       case 'agent': return (
         <AgentScreen T={T} connected={connected} agentName={agentName} project={project}
+          mode={buildMode} onMode={chooseBuildMode}
           onConnected={(client) => { setAgentName((client || 'Claude').split('/')[0]); setConnected(true); }} />
       );
       case 'tasks': return (
         <TasksScreen T={T} tasks={tasks} loading={tasksLoading}
-          agentName={agentName || 'Claude'} tokenSymbol={tokenSymbol} error={approveError} />
+          agentName={buildMode === 'platform' ? 'Platform' : (agentName || 'Your')} tokenSymbol={tokenSymbol} error={approveError} />
       );
       case 'dev': return <DevScreen T={T} tasks={tasks} deployments={deployments} dag={dagInfo}
         log={clarifyChat.messages.filter(m => m.role === 'system')} />;
@@ -592,6 +618,12 @@ export default function App() {
             showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
             onConnectAgent={() => { setManageBot(null); void resumeBuild(activeBot.id, 'agent'); }}
+            onModeChange={(m) => {
+              const all = loadModes(); all[activeBot.id] = m;
+              localStorage.setItem(MODE_KEY, JSON.stringify(all));
+              setBuildModeApi(activeBot.id, m).catch(() => {});
+            }}
+            initialMode={modeFor({ id: activeBot.id })}
             onOpenChat={() => { setDir(1); setManageView('chat'); }}
             onDelete={() => void deleteBot(activeBot.id)} />)
       : <MyBotsList T={T} bots={myBots} loading={botsLoading} authed={tgAuthed}

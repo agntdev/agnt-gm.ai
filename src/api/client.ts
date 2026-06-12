@@ -70,6 +70,7 @@ export interface Project {
   owner_wallet_address?: string;
   created_at?: string;
   published_at?: string;
+  build_mode?: string; // 'local_agent' | 'platform_agent' once the API ships it
 }
 
 export interface ProjectCreated {
@@ -186,6 +187,19 @@ export async function getProjectBot(idOrSlug: string): Promise<ProjectBot | null
 // to hiding the bot locally, and upgrades automatically once this ships.
 export function deleteProject(idOrSlug: string): Promise<unknown> {
   return request('DELETE', `/builder/projects/${encodeURIComponent(idOrSlug)}`);
+}
+
+// ── Build mode: who builds the tasks ──────────────────────────
+// 'platform' — the platform's agents build and ship PRs (GitHub App).
+// 'local'    — the owner's connected agent does the work; platform only
+//              runs gates + deploys.
+// Not in the API yet — set optimistically (404 tolerated, mode kept locally).
+export type BuildMode = 'platform' | 'local';
+
+export function setBuildModeApi(idOrSlug: string, mode: BuildMode): Promise<unknown> {
+  return request('PUT', `/builder/projects/${encodeURIComponent(idOrSlug)}/build-mode`, {
+    mode: mode === 'local' ? 'local_agent' : 'platform_agent',
+  });
 }
 
 export function listProjectsByAgent(agentId: string, limit = 50): Promise<ProjectList> {

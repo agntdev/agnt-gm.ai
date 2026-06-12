@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Theme, btnReset } from '../theme';
 import {
-  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail,
+  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BuildMode,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
@@ -83,11 +83,14 @@ function PhaseStrip({ T, dag }: { T: Theme; dag: DagInfo }) {
   );
 }
 
-export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDelete }: {
+export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDelete, onModeChange, initialMode }: {
   T: Theme; bot: MyBot; messages: ChatMessage[]; onConnectAgent: () => void;
   onOpenChat: () => void; onDelete: () => void;
+  onModeChange: (m: BuildMode) => void; initialMode: BuildMode;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mode, setMode] = useState<BuildMode>(initialMode);
+  const switchMode = (m: BuildMode) => { setMode(m); onModeChange(m); };
   const [detail, setDetail] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [dag, setDag] = useState<DagInfo | null>(null);
@@ -171,29 +174,58 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
           : <Pill T={T} tone="neutral">{bot.statusLabel}</Pill>}
       </div>
 
-      {/* agent */}
-      <button onClick={connected ? undefined : onConnectAgent} style={{
-        ...btnReset, display: 'flex', alignItems: 'center', gap: 12, padding: 14, textAlign: 'left',
-        borderRadius: T.cardRadius, background: T.cardBg, border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
-        cursor: connected ? 'default' : 'pointer',
-      }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: 11, flexShrink: 0,
-          background: connected ? T.greenSoft : T.accentSoft,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <TGIcon name="link" size={18} color={connected ? T.green : T.accent} stroke={1.9} />
+      {/* builder — switch who builds anytime */}
+      <Card T={T} pad={0} style={{ overflow: 'hidden' }}>
+        <div style={{ display: 'flex', padding: 5, gap: 5 }}>
+          {(['platform', 'local'] as BuildMode[]).map(m => {
+            const sel = mode === m;
+            return (
+              <button key={m} onClick={() => switchMode(m)} style={{
+                ...btnReset, flex: 1, height: 36, borderRadius: 11,
+                background: sel ? T.accentSoft : 'transparent',
+                color: sel ? T.accent : T.hint,
+                fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
+                border: sel ? `1px solid ${T.accentBorder}` : '1px solid transparent',
+                transition: 'all .15s',
+              }}>
+                {m === 'platform' ? 'Platform builds' : 'Your agent builds'}
+              </button>
+            );
+          })}
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>
-            {connected ? `Agent · ${agentClient || 'connected'}` : 'No agent connected'}
-          </div>
-          <div style={{ fontFamily: T.font, fontSize: 12.5, color: connected ? T.green : T.hint, marginTop: 1 }}>
-            {connected ? 'Connected' : 'Tap to connect your Claude or Codex'}
-          </div>
+        <div style={{ borderTop: `0.5px solid ${T.sep}` }}>
+          {mode === 'platform' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px' }}>
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: T.greenSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <TGIcon name="bolt" size={16} color={T.green} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.text }}>Platform agents on the job</div>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>Code & PRs ship from our GitHub App</div>
+              </div>
+            </div>
+          ) : (
+            <button onClick={connected ? undefined : onConnectAgent} style={{
+              ...btnReset, width: '100%', textAlign: 'left',
+              display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px',
+              cursor: connected ? 'default' : 'pointer',
+            }}>
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: connected ? T.greenSoft : T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <TGIcon name="link" size={16} color={connected ? T.green : T.accent} stroke={1.9} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.text }}>
+                  {connected ? `Agent · ${agentClient || 'connected'}` : 'No agent connected'}
+                </div>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: connected ? T.green : T.hint, marginTop: 1 }}>
+                  {connected ? 'Connected — builds & pushes to the repo' : 'Tap to connect your Claude or Codex'}
+                </div>
+              </div>
+              {!connected && <TGIcon name="chevRight" size={16} color={T.hint} stroke={2} />}
+            </button>
+          )}
         </div>
-        {!connected && <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />}
-      </button>
+      </Card>
 
       {/* stats — real platform + repo numbers */}
       <div style={{ display: 'flex', gap: 10 }}>
