@@ -564,7 +564,8 @@ export default function App() {
   // ── footer (above the tab bar) ──
   // clarify-while-drafting uses the chat composer; once the brief is accepted
   // (status leaves draft) the MainButton takes over.
-  const drafting = id === 'clarify' && project?.status === 'draft' && gen !== 'error';
+  const drafting = id === 'clarify' && project?.status === 'draft' && gen !== 'error'
+    && !clarifyChat.messages.some(m => m.role === 'system'); // system msg = brief locked, even before the status poll catches up
   const footer = tab === 'manage'
     ? (activeBot ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false} /> : null)
     : drafting

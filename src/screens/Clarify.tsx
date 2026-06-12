@@ -25,7 +25,12 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
     if (sc) sc.scrollTop = sc.scrollHeight;
   });
 
-  const handedOff = status === 'validating' || gen === 'ready';
+  // handed off = the brief is locked and the pipeline owns the project now.
+  // Don't enumerate post-draft statuses (the backend grows new ones) — any
+  // status beyond 'draft' counts, and a system message ("idea locked in",
+  // build logs…) is a definitive signal even before the status poll catches up.
+  const lockedIn = messages.some(m => m.role === 'system');
+  const handedOff = (status !== null && status !== 'draft') || gen === 'ready' || lockedIn;
   // escape hatch: once the AI has asked at least one question, the owner can
   // hand every remaining decision to the platform instead of being interviewed
   const answeredOnce = messages.some(m => m.role === 'assistant') && messages.filter(m => m.role === 'owner').length >= 2;
@@ -34,7 +39,7 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
     <div ref={scrollRef} style={{ padding: '18px 16px 14px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: '100%' }}>
       <ChatThread T={T} messages={messages} thinking={thinking}
         onOption={handedOff ? undefined : onOption}
-        pendingNote={status === 'validating' && gen !== 'error' ? 'Brief accepted — generating your spec…' : null} />
+        pendingNote={handedOff && gen === 'generating' ? 'Brief accepted — generating your spec…' : null} />
 
       {!handedOff && !thinking && answeredOnce && gen !== 'error' && (
         <button
