@@ -659,7 +659,12 @@ export default function App() {
         {body}
       </div>
       {footer}
-      <TabBar T={T} tab={tab} onTab={(tb) => { setDir(1); setTab(tb); }} />
+      <TabBar T={T} tab={tab} onTab={(tb) => {
+        setDir(1);
+        // tapping My Bots pops to its root (the list), not the last-open bot
+        if (tb === 'manage') { setManageBot(null); setManageView('overview'); }
+        setTab(tb);
+      }} />
     </div>
   );
 }
