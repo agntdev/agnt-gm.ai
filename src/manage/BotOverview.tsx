@@ -253,7 +253,7 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
           {dag?.current_phase && <PhaseStrip T={T} dag={dag} />}
           {tasks.length === 0 && (
             <div style={{ padding: 14, fontFamily: T.font, fontSize: 13.5, color: T.hint }}>
-              No tasks yet — they appear once the plan is approved.
+              Build starting — your plan and tasks will appear here in a moment.
             </div>
           )}
           {orderTasks(tasks).slice(0, showAllTasks ? undefined : 4).map((t, i) => {

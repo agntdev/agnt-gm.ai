@@ -1,7 +1,9 @@
 // App.tsx — pipeline state machine + Telegram chrome wiring.
-// Flow: prompt → clarify (real owner↔AI chat on a draft project) → spec
-//       → agent (skills + first prompt) → tasks (real queue, publish on
-//       approve) → dev → testing.
+// Flow: prompt → clarify (owner↔AI chat on a draft project) → spec (create
+//       the managed bot) → agent (choose builder + connect). "Start building"
+//       publishes the repo and lands on the bot's overview, where the real
+//       build (phases, tasks, deploys, logs) is watched — no separate
+//       build/review pipeline.
 import { useEffect, useRef, useState } from 'react';
 import { tgTheme, Theme } from './theme';
 import {
@@ -9,8 +11,8 @@ import {
   insideTelegram, backButtonOnClick, backButtonVisible, openTgLink,
 } from './telegram';
 import {
-  ApiError, Project, TaskItem, Deployment,
-  startChat, getProject, publishProject, fetchProjectTasks, listDeployments, DagInfo, deleteProject,
+  ApiError, Project,
+  startChat, getProject, publishProject, deleteProject,
   BuildMode, setBuildModeApi,
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
@@ -21,19 +23,15 @@ import { PromptScreen } from './screens/Prompt';
 import { ClarifyScreen, GenPhase } from './screens/Clarify';
 import { SpecScreen } from './screens/Spec';
 import { AgentScreen } from './screens/Agent';
-import { TasksScreen } from './screens/Tasks';
-import { DevScreen, devStats } from './screens/Dev';
-import { TestingScreen } from './screens/Testing';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
 import { BotOverview } from './manage/BotOverview';
 
-const STEPS = ['prompt', 'clarify', 'spec', 'agent', 'tasks', 'dev', 'testing'] as const;
+const STEPS = ['prompt', 'clarify', 'spec', 'agent'] as const;
 type StepId = typeof STEPS[number];
 
 const STAGE_SUB: Record<StepId, string> = {
-  prompt: 'New bot', clarify: 'Tell me more', spec: 'Spec · 1 of 5',
-  agent: 'Connect · 2 of 5', tasks: 'Plan · 3 of 5', dev: 'Building · 4 of 5',
-  testing: 'Review · 5 of 5',
+  prompt: 'New bot', clarify: 'Tell me more',
+  spec: 'Spec · 1 of 2', agent: 'Connect · 2 of 2',
 };
 
 const THEME_KEY = 'agentbot-theme';
@@ -172,14 +170,8 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [buildMode, setBuildMode] = useState<BuildMode>('platform');
   const [agentName, setAgentName] = useState<string | null>(null);
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [tasksLoading, setTasksLoading] = useState(false);
-  const [tokenSymbol, setTokenSymbol] = useState<string | undefined>(undefined);
-  const [deployments, setDeployments] = useState<Deployment[]>([]);
-  const [dagInfo, setDagInfo] = useState<DagInfo | null>(null);
-  const [publishing, setPublishing] = useState(false);
-  const [approving, setApproving] = useState(false); // Stage 3 → publish repo + issues
-  const [approveError, setApproveError] = useState<string | null>(null);
+  const [building, setBuilding] = useState(false); // "Start building" → publish in flight
+  const [buildError, setBuildError] = useState<string | null>(null);
 
   // My Bots tab
   const [myBots, setMyBots] = useState<MyBot[]>([]);
@@ -196,8 +188,12 @@ export default function App() {
   const next = () => goTo(Math.min(STEPS.length - 1, step + 1), 1);
   const back = () => goTo(Math.max(0, step - 1), -1);
 
+  // a stale "couldn't start the build" error shouldn't linger when you leave
+  // (or re-enter) the agent step
+  useEffect(() => { if (id !== 'agent') setBuildError(null); }, [id]);
+
   // ── the clarify chat (real, on the draft project) ──
-  const clarifyChat = useChat(project?.id ?? null, tab === 'build' && (id === 'clarify' || id === 'dev'));
+  const clarifyChat = useChat(project?.id ?? null, tab === 'build' && id === 'clarify');
   const manageChat = useChat(manageBot, tab === 'manage' && !!manageBot);
 
   // "Start generating": create the draft project from the idea and enter the chat
@@ -261,7 +257,7 @@ export default function App() {
   // POST /bot/initiate reserves the username, then we immediately open the
   // manager-bot deep link — Telegram's own pre-filled bot-creation window.
   // The platform's poller captures the created bot; we poll /bot until it
-  // lands. (Publishing the repo happens later, at "Approve plan & build".)
+  // lands. (Publishing the repo happens at "Start building" on the agent step.)
   const createBot = async () => {
     if (!project || creatingBot || botCreated || botInit) return;
     setCreatingBot(true); setCreateError(null);
@@ -303,10 +299,13 @@ export default function App() {
 
   // ── hash routes: memorize the current page across refreshes ──
   // #/ (build entry) · #/build/<projectId> · #/bots · #/bots/<id>[/chat]
-  const routeApplied = useRef(false);
+  // routeReady gates the rewrite effect so an async restore (resumeBuild) can't
+  // be clobbered with an intermediate '#/' before the tab/project settle.
+  const restored = useRef(false);
+  const routeReady = useRef(false);
   useEffect(() => {
-    if (routeApplied.current) return;
-    routeApplied.current = true;
+    if (restored.current) return;
+    restored.current = true;
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
     if (parts[0] === 'bots') {
       setTab('manage');
@@ -314,14 +313,17 @@ export default function App() {
         setManageBot(parts[1]);
         setManageView(parts[2] === 'chat' ? 'chat' : 'overview');
       }
+      routeReady.current = true;
     } else if (parts[0] === 'build' && parts[1]) {
-      void resumeBuild(parts[1]); // restores the exact step from snapshot/server
+      void resumeBuild(parts[1]); // restores the step; sets routeReady when settled
+    } else {
+      routeReady.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!routeApplied.current) return;
+    if (!routeReady.current) return;
     const h = tab === 'manage'
       ? (manageBot ? `#/bots/${manageBot}${manageView === 'chat' ? '/chat' : ''}` : '#/bots')
       : project ? `#/build/${project.id}` : '#/';
@@ -338,17 +340,29 @@ export default function App() {
     localStorage.setItem(PIPELINE_KEY, JSON.stringify(snap));
   }, [project?.id, id, idea, botCreated, botUsername, connected, agentName]);
 
-  // resume an in-progress bot from My Bots at the step it was closed on.
-  // target forces a step — e.g. "Connect agent" from a live bot's chat.
+  // resume an in-progress bot from My Bots. A published bot opens its
+  // overview; an unfinished one re-enters the build pipeline at the right
+  // step. `target` forces a build step (e.g. "Connect agent" from the
+  // overview), bypassing the published→overview shortcut.
   const resumeBuild = async (projectId: string, target?: StepId) => {
-    setDir(1); setTab('build');
     const d = await getProject(projectId).catch(() => null);
     if (!d) return;
     const p = d.project;
+    const published = p.status === 'live' || p.status === 'completed' || p.status === 'publishing';
+    if (published && !target) {
+      cancelPoll.current();
+      setManageBot(p.id); setManageView('overview'); setDir(1); setTab('manage');
+      routeReady.current = true;
+      void refreshMyBots(p.id);
+      return;
+    }
+    // re-enter the build pipeline
+    setDir(1); setTab('build');
     cancelPoll.current();
     resetPipeline();
     setProject(p);
     setBuildMode(modeFor(p));
+    routeReady.current = true;
     const snap = loadSnap();
     const inFlight = p.status === 'draft' || p.status === 'validating';
     if (inFlight) { setGen('generating'); pollPlan(p.id); }
@@ -370,7 +384,7 @@ export default function App() {
       setBotUsername(snap.botUsername); setBotCreated(snap.botCreated || !!snap.botUsername);
       setConnected(snap.connected); setAgentName(snap.agentName);
       const idx = STEPS.indexOf(snap.step);
-      goTo(idx > 0 ? idx : 2, 1);
+      goTo(idx >= 0 ? idx : (snap.botUsername ? STEPS.indexOf('agent') : STEPS.indexOf('spec')), 1);
     } else {
       // no local snapshot — derive the furthest known step from the server
       setIdea(p.name);
@@ -386,82 +400,66 @@ export default function App() {
     }
   };
 
-  // ── Stage 3 approval: publish the project (GitHub repo + one issue per task) ──
-  const approvePlan = async () => {
-    if (!project || approving) return;
-    setApproving(true); setApproveError(null);
+  // ── "Start building": publish the repo, then land on the bot's overview ──
+  // Publishing creates the GitHub repo + the plan/tasks the platform (or the
+  // owner's agent) builds. Everything after is watched on the overview page.
+  const startBuild = async () => {
+    if (!project || building) return;
+    setBuilding(true); setBuildError(null);
+    setBuildModeApi(project.id, buildMode).catch(() => { /* endpoint not shipped yet */ });
     try {
-      if (project.status !== 'live' && project.status !== 'publishing') {
+      let pub: Project = project;
+      if (project.status !== 'live' && project.status !== 'publishing' && project.status !== 'completed') {
         try {
           const r = await publishProject(project.id);
-          if (r.project) setProject(r.project);
-          else setProject(p => p ? { ...p, status: 'live', github_repo_url: r.github_repo_url } : p);
+          pub = r.project ?? { ...project, status: 'live', github_repo_url: r.github_repo_url };
         } catch (e) {
-          // already published (or mid-publish)? re-check the real status
           const d = await getProject(project.id).catch(() => null);
-          if (d) setProject(d.project);
-          if (!d || (d.project.status !== 'live' && d.project.status !== 'publishing')) throw e;
+          if (d && (d.project.status === 'live' || d.project.status === 'publishing' || d.project.status === 'completed')) {
+            pub = d.project;
+          } else { throw e; }
         }
       }
-      next();
+      const pid = pub.id;
+      // surface the bot on the overview immediately (before the list refresh lands)
+      setMyBots(prev => prev.some(b => b.id === pid) ? prev : [botFromProject(pub), ...prev]);
+      // reset the build tab and jump to the bot's overview
+      resetPipeline();
+      localStorage.removeItem(PIPELINE_KEY);
+      setIdea(''); setChanged(false); setStep(0);
+      setManageBot(pid); setManageView('overview'); setDir(1); setTab('manage');
+      void refreshMyBots(pid);
     } catch (e) {
-      setApproveError(e instanceof ApiError
+      setBuildError(e instanceof ApiError
         ? `Couldn't start the build — ${e.message}${e.details ? ` (${e.details})` : ''}`
         : "Couldn't start the build — network error. Tap to retry.");
     } finally {
-      setApproving(false);
+      setBuilding(false);
     }
   };
 
-  // ── Stage 3: real task queue ──
-  useEffect(() => {
-    if (id !== 'tasks' || !project || tasks.length > 0) return;
-    let cancelled = false;
-    setTasksLoading(true);
-    fetchProjectTasks(project.id)
-      .then(r => { if (!cancelled) { setTasks(r.tasks); setTokenSymbol(r.token_symbol); setDagInfo(r.dag ?? null); } })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setTasksLoading(false); });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, project?.id]);
-
-  // ── Stage 4: REAL build status — poll tasks + deploy history while watching ──
-  const stats = devStats(tasks);
-  const devDone = stats.total > 0 && stats.done >= stats.total;
-  useEffect(() => {
-    if (id !== 'dev' || !project) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const tick = async () => {
-      if (cancelled) return;
-      const [t, d] = await Promise.all([
-        fetchProjectTasks(project.id).catch(() => null),
-        listDeployments(project.id).catch(() => null),
-      ]);
-      if (cancelled) return;
-      if (t) { setTasks(t.tasks); setTokenSymbol(t.token_symbol); setDagInfo(t.dag ?? null); }
-      if (d) setDeployments(d.deployments || []);
-      timer = setTimeout(tick, 5000);
-    };
-    void tick();
-    return () => { cancelled = true; if (timer) clearTimeout(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, project?.id]);
-
-  // ── My Bots: real deployed projects of this wallet ──
-  const refreshMyBots = async () => {
+  // ── My Bots: real deployed + in-progress projects of this owner ──
+  // keepId preserves a just-created bot through replication lag (the API list
+  // may not include it on the first refresh right after publish).
+  const refreshMyBots = async (keepId?: string) => {
     if (!tgAuthed || !tgAgentId) { setMyBots([]); return; }
     setBotsLoading(true);
     try {
       const list = await listProjectsByAgent(tgAgentId);
-      // deployed bots AND in-progress builds (tapping the latter resumes the pipeline)
       const mine = (list.projects || []).filter(p => p.status !== 'rejected' && p.status !== 'failed' && !hiddenBots.has(p.id));
-      setMyBots(prev => mine.map(p => {
-        const existing = prev.find(b => b.id === p.id);
-        const fresh = botFromProject(p);
-        return existing ? { ...existing, status: fresh.status, inProgress: fresh.inProgress, statusLabel: fresh.statusLabel, name: p.name } : fresh;
-      }));
+      setMyBots(prev => {
+        const mapped = mine.map(p => {
+          const existing = prev.find(b => b.id === p.id);
+          const fresh = botFromProject(p);
+          return existing ? { ...existing, status: fresh.status, inProgress: fresh.inProgress, statusLabel: fresh.statusLabel, name: p.name } : fresh;
+        });
+        const keep = keepId || manageBot;
+        if (keep && !mapped.some(b => b.id === keep)) {
+          const kept = prev.find(b => b.id === keep);
+          if (kept) return [kept, ...mapped];
+        }
+        return mapped;
+      });
     } catch { /* keep whatever we had */ }
     setBotsLoading(false);
   };
@@ -505,12 +503,9 @@ export default function App() {
     setProject(null); setTaskCount(null); setGen('idle'); setGenError(null); setChatDraft('');
     setBotCreated(false); setCreatingBot(false); setCreateError(null);
     setBotInit(null); setBotUsername(null);
-    setApproving(false); setApproveError(null);
+    setBuilding(false); setBuildError(null);
     setConnected(false); setAgentName(null);
-    setTasks([]); setTasksLoading(false); setTokenSymbol(undefined);
-    setDeployments([]); setDagInfo(null);
   };
-  const restart = () => { resetPipeline(); localStorage.removeItem(PIPELINE_KEY); setIdea(''); setChanged(false); goTo(0, -1); };
   const editIdea = () => { resetPipeline(); localStorage.removeItem(PIPELINE_KEY); setChanged(true); goTo(0, -1); };
 
   // ── MainButton config per step ──
@@ -534,18 +529,15 @@ export default function App() {
         label: botCreated ? 'Connect agent' : botInit ? 'Waiting for your bot…' : 'Create the bot to continue',
         disabled: !botCreated, busy: !!botInit && !botCreated, onClick: next,
       };
-      case 'agent': return buildMode === 'platform'
-        ? { label: 'Start building', onClick: next }
-        : { label: connected ? 'Start building' : 'Connecting…', disabled: !connected, onClick: next };
-      case 'tasks': return { label: approving ? 'Starting build…' : 'Approve plan & build', busy: approving, onClick: approvePlan };
-      case 'dev': return { label: devDone ? 'Continue to review' : 'Building…', disabled: !devDone, busy: !devDone, onClick: next };
-      case 'testing': return {
-        label: 'Approve & finish', busy: publishing,
-        onClick: () => {
-          setPublishing(true);
-          setTimeout(() => { setPublishing(false); restart(); void refreshMyBots(); }, 1400);
-        },
-      };
+      case 'agent': {
+        const ready = buildMode === 'platform' || connected;
+        return {
+          label: building ? 'Starting…' : ready ? 'Start building' : 'Connecting…',
+          disabled: !ready || building,
+          busy: building || (buildMode === 'local' && !connected),
+          onClick: () => void startBuild(),
+        };
+      }
     }
   })();
 
@@ -589,16 +581,9 @@ export default function App() {
       ) : null;
       case 'agent': return (
         <AgentScreen T={T} connected={connected} agentName={agentName} project={project}
-          mode={buildMode} onMode={chooseBuildMode}
+          mode={buildMode} onMode={chooseBuildMode} error={buildError}
           onConnected={(client) => { setAgentName((client || 'Claude').split('/')[0]); setConnected(true); }} />
       );
-      case 'tasks': return (
-        <TasksScreen T={T} tasks={tasks} loading={tasksLoading}
-          agentName={buildMode === 'platform' ? 'Platform' : (agentName || 'Your')} tokenSymbol={tokenSymbol} error={approveError} />
-      );
-      case 'dev': return <DevScreen T={T} tasks={tasks} deployments={deployments} dag={dagInfo}
-        log={clarifyChat.messages.filter(m => m.role === 'system')} />;
-      case 'testing': return <TestingScreen T={T} project={project} />;
     }
   })();
 
@@ -617,7 +602,7 @@ export default function App() {
         ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking}
             showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
-            onConnectAgent={() => { setManageBot(null); void resumeBuild(activeBot.id, 'agent'); }}
+            onConnectAgent={() => { void resumeBuild(activeBot.id, 'agent'); }}
             onModeChange={(m) => {
               const all = loadModes(); all[activeBot.id] = m;
               localStorage.setItem(MODE_KEY, JSON.stringify(all));

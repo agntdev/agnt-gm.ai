@@ -74,9 +74,9 @@ export function ModePicker({ T, mode, onMode }: { T: Theme; mode: BuildMode; onM
   );
 }
 
-export function AgentScreen({ T, connected, agentName, project, mode, onMode, onConnected }: {
+export function AgentScreen({ T, connected, agentName, project, mode, onMode, error, onConnected }: {
   T: Theme; connected: boolean; agentName: string | null; project: Project | null;
-  mode: BuildMode; onMode: (m: BuildMode) => void;
+  mode: BuildMode; onMode: (m: BuildMode) => void; error?: string | null;
   onConnected: (agentName: string | null) => void;
 }) {
   const [code, setCode] = useState<string | null>(null);
@@ -126,7 +126,7 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, on
 
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <Stepper T={T} steps={[0, 1, 2, 3, 4]} current={1} />
+      <Stepper T={T} steps={[0, 1]} current={1} />
       <Pill T={T} tone="accent" style={{ alignSelf: 'flex-start' }}>Stage 2 · Who builds it</Pill>
 
       <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.text, letterSpacing: -0.3, padding: '0 2px' }}>
@@ -183,6 +183,12 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, on
           : <TGIcon name="clock" size={19} color={T.amber} stroke={1.9} />}
       </Card>
         </>
+      )}
+
+      {error && (
+        <div style={{ fontFamily: T.font, fontSize: 13, color: T.amber, lineHeight: '18px', padding: '0 4px' }}>
+          {error}
+        </div>
       )}
     </div>
   );

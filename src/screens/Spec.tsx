@@ -36,7 +36,7 @@ export function SpecScreen({ T, project, taskCount, created, creating, createErr
 
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <Stepper T={T} steps={[0, 1, 2, 3, 4]} current={0} />
+      <Stepper T={T} steps={[0, 1]} current={0} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
         <Pill T={T} tone="accent">Stage 1 · General spec</Pill>
         <button onClick={onEdit} style={{ ...btnReset, color: T.accent, fontFamily: T.font, fontSize: 14, fontWeight: 500 }}>Edit idea</button>

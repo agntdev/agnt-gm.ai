@@ -29,7 +29,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export function botFromProject(p: Project): MyBot {
   const desc = p.short_description || p.goal_of_project || 'Your bot is deployed and running.';
-  const deployed = p.status === 'live' || p.status === 'completed';
+  const deployed = p.status === 'live' || p.status === 'completed' || p.status === 'publishing';
   return {
     id: p.id,
     name: p.name,
