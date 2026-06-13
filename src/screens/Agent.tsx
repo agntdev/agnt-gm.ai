@@ -20,7 +20,7 @@ function firstPrompt(project: Project | null, code: string): string {
     ``,
     `1) If the agnt skills are missing, install them: ${INSTALL_CMD}`,
     `2) Run: agnt connect ${code}`,
-    `3) Then run \`agnt task list ${slug}\` and build the tasks one by one as the skill instructs.`,
+    `3) Then run \`agnt tasks ${slug}\` and build the tasks one by one as the skill instructs.`,
   ].join('\n');
 }
 
