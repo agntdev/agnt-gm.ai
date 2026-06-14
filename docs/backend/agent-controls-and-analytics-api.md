@@ -1,12 +1,17 @@
-# Backend API request — bot controls, agent registry & analytics
+# Backend API request — bot controls, cloud agent & analytics
 
 **Hand this to the API agent.** These endpoints back the redesigned **bot overview**
-page in the mini-app. The frontend already calls them and degrades gracefully
-when they 404/405 (see `src/api/client.ts`), so you can ship them independently
-and in any order — the UI lights up automatically as each lands.
+page and its **"Add an agent"** sheet in the mini-app. The frontend already calls
+them and degrades gracefully when they 404/405 (see `src/api/client.ts`), so you
+can ship them independently and in any order.
 
 Base path: `/api/builder` (same auth as the rest of the builder API — owner
 derived from the Telegram session JWT). `{id}` is a project id or slug.
+
+The agent model is deliberately simple: a bot gets **one cloud agent** (we
+deploy and run it) **or a local agent** (the owner's Claude/Codex, connected
+with a code). The local path reuses the **existing** agent-link endpoints
+(`POST/GET .../agent-link`) — nothing new needed there. What's new is below.
 
 ---
 
@@ -35,76 +40,43 @@ Frontend: `setBotPaused()`, and `ProjectBot.paused` / `paused_at`.
 
 ---
 
-## 2. Local-agent registry + per-project assignment
+## 2. Cloud agent — deploy one (max one per bot)
 
-The "Manage" sheet ("Add an agent") lists the owner's **local agents** (their
-connected Claude/Codex CLIs across all projects) and lets them assign any one
-to a project to pick up its tasks. The connect-code flow
-(`POST .../agent-link`) still handles adding a *new* local agent.
-
-### 2a. The owner's local agents (account-scoped)
+The "Add an agent" sheet's **Cloud agent** option deploys a single managed agent
+that picks up and builds the project's tasks. **At most one cloud agent per
+bot** — the deploy call must reject a second one (409), and the UI should be
+able to tell whether one already exists.
 
 ```
-GET /api/builder/agents
-Response: { "agents": [
-  { "id": "agt_1", "name": "Claude (laptop)", "client": "claude",
-    "status": "online", "last_seen_at": "2026-06-14T09:39:00Z" }
-] }
-```
-`status`: `"online"` | `"offline"` (derive from a recent heartbeat / last
-delegate-key use). `client`: `"claude"` | `"codex"` | `"cursor"` | …
-
-### 2b. Agents assigned to a project
-
-```
-GET /api/builder/projects/{id}/agents
-Response: { "agents": [ { "id": "agt_1", ...same shape..., "assigned": true } ] }
+POST /api/builder/projects/{id}/cloud-agent
+Response: { "id": "ca_abc", "status": "deploying" }   // 202 also accepted
+          409 if a cloud agent is already deployed for this bot
 ```
 
-### 2c. Assign / unassign
-
+Status (so the overview can show "running" and the sheet can show "deployed"):
 ```
-POST   /api/builder/projects/{id}/agents/{agentId}/assign   -> 200 { "assigned": true }
-DELETE /api/builder/projects/{id}/agents/{agentId}          -> 200 { "assigned": false }
+GET /api/builder/projects/{id}/cloud-agent
+Response: { "deployed": true, "status": "running", "id": "ca_abc",
+            "deployed_at": "2026-06-14T09:41:00Z" }
+          // { "deployed": false } when none
 ```
-Assigning means that agent is authorized/expected to work this project's open
-tasks (same effect today's connected agent has, but selectable per project).
 
-Frontend: `listMyAgents()`, `listProjectAgents()`, `assignAgent()`,
-`unassignAgent()`, type `LocalAgent`. Until this ships, the sheet falls back to
-the single agent from `GET .../agent-link` — no invented agents are shown.
+Optional — let the owner remove it (frees the single slot):
+```
+DELETE /api/builder/projects/{id}/cloud-agent   -> 200 { "deployed": false }
+```
+
+Frontend: `runCloudAgent()` (the POST). On error the sheet shows "Couldn't
+deploy — tap to retry"; on success "Deployed — running" and the slot is locked.
+The deployed/running state is currently tracked client-side until the GET ships.
 
 ---
 
-## 3. One-time cloud agent run
+## 3. Deployed-bot analytics
 
-The sheet's **"Cloud agent · one-time"** option triggers a *single* platform
-build pass: the platform's agents pick up the project's open tasks once, ship
-PRs, then stop. This is distinct from always-on platform mode (`build-mode =
-platform_agent`).
-
-```
-POST /api/builder/projects/{id}/cloud-run
-Response: { "run_id": "run_abc", "status": "queued" }   // 202 also accepted
-```
-
-Optional (nice to have) — let the UI report progress:
-```
-GET /api/builder/projects/{id}/cloud-run/{runId}
-Response: { "run_id": "run_abc", "status": "running|done|failed",
-            "tasks_picked": 4, "prs_opened": 2 }
-```
-
-Frontend: `runCloudAgent()`, type `CloudRun`. On error the UI shows
-"Couldn't start — tap to retry"; on success "Run started — building & shipping PRs".
-
----
-
-## 4. Deployed-bot analytics
-
-The stat card currently shows real **build** stats (tasks/deploys/commits). The
-same 3-up card is wired to swap to **end-user** analytics for the deployed bot
-once this exists (matching the mock's "active users / today / vs. yest.").
+The overview stat card currently shows real **build** stats (tasks/deploys/
+commits). The same 3-up card swaps to **end-user** analytics for the deployed
+bot once this exists (matching the mock's "active users / today / vs. yest.").
 
 ```
 GET /api/builder/projects/{id}/analytics
@@ -126,6 +98,9 @@ showing real build stats (no fake numbers).
 - All endpoints are owner-scoped via the existing session JWT; 401/403 on
   non-owners.
 - The frontend treats **404 and 405** as "not shipped yet" and falls back
-  silently. Any other error (4xx/5xx) surfaces to the user, so return those
-  only for genuine failures.
+  silently. Return other 4xx/5xx only for genuine failures (e.g. **409** when a
+  second cloud agent is requested — that's expected and the UI handles it).
 - Keep response field names exactly as above — the typed client maps them 1:1.
+- **Local agents** need no new endpoints: the sheet's "Local agent" option mints
+  a one-time code via the existing `POST /api/builder/projects/{id}/agent-link`
+  and polls `GET .../agent-link` until the CLI claims it.

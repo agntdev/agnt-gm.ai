@@ -16,7 +16,7 @@ import {
   BuildMode, setBuildModeApi,
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
-  AgentLinkStatus, getAgentLink, setBotPaused,
+  setBotPaused,
 } from './api/client';
 import { useChat } from './chat/Chat';
 import { TGHeader, MainButton, TabBar, Tab } from './ui';
@@ -28,6 +28,7 @@ import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/M
 import { BotOverview } from './manage/BotOverview';
 import { ActivityPage } from './manage/Activity';
 import { AgentManager } from './manage/AgentManager';
+import { ConnectAgent } from './manage/ConnectAgent';
 
 const STEPS = ['prompt', 'clarify', 'spec', 'agent'] as const;
 type StepId = typeof STEPS[number];
@@ -58,6 +59,12 @@ function loadHidden(): Set<string> {
 const PAUSED_KEY = 'agentbot-paused'; // optimistic pause state per bot (until the API carries `paused`)
 function loadPaused(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(PAUSED_KEY) || '[]') as string[]); }
+  catch { return new Set(); }
+}
+
+const CLOUD_KEY = 'agentbot-cloud'; // bots with a cloud agent deployed (max one per bot)
+function loadCloud(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(CLOUD_KEY) || '[]') as string[]); }
   catch { return new Set(); }
 }
 
@@ -186,11 +193,11 @@ export default function App() {
   const [myBots, setMyBots] = useState<MyBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(false);
   const [manageBot, setManageBot] = useState<string | null>(null);
-  const [manageView, setManageView] = useState<'overview' | 'chat' | 'activity'>('overview');
+  const [manageView, setManageView] = useState<'overview' | 'chat' | 'activity' | 'connect'>('overview');
   const [hiddenBots, setHiddenBots] = useState<Set<string>>(loadHidden);
   const [pausedBots, setPausedBots] = useState<Set<string>>(loadPaused);
+  const [cloudBots, setCloudBots] = useState<Set<string>>(loadCloud);
   const [agentSheet, setAgentSheet] = useState(false); // "Add an agent" bottom sheet
-  const [sheetLink, setSheetLink] = useState<AgentLinkStatus | null>(null); // agent-link status for the sheet
   const [draft, setDraft] = useState('');
 
   const id: StepId = STEPS[step];
@@ -323,7 +330,7 @@ export default function App() {
       setTab('manage');
       if (parts[1]) {
         setManageBot(parts[1]);
-        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : 'overview');
+        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'connect' ? 'connect' : 'overview');
       }
       routeReady.current = true;
     } else if (parts[0] === 'build' && parts[1]) {
@@ -336,7 +343,7 @@ export default function App() {
 
   useEffect(() => {
     if (!routeReady.current) return;
-    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : '';
+    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'connect' ? '/connect' : '';
     const h = tab === 'manage'
       ? (manageBot ? `#/bots/${manageBot}${sub}` : '#/bots')
       : project ? `#/build/${project.id}` : '#/';
@@ -522,11 +529,13 @@ export default function App() {
     });
   };
 
-  // open the "Add an agent" sheet, loading the current agent-link status for it
-  const openAgentSheet = (botId: string) => {
-    setSheetLink(null);
-    setAgentSheet(true);
-    getAgentLink(botId).then(setSheetLink).catch(() => { /* registry fallback handles it */ });
+  // remember a deployed cloud agent so the sheet enforces max one per bot
+  const markCloudDeployed = (botId: string) => {
+    setCloudBots(prev => {
+      const next = new Set(prev); next.add(botId);
+      localStorage.setItem(CLOUD_KEY, JSON.stringify([...next]));
+      return next;
+    });
   };
 
   // ── restart / edit loops ──
@@ -624,8 +633,8 @@ export default function App() {
   const header = insideTelegram ? null : (tab === 'manage'
     ? (activeBot
       ? <TGHeader T={T}
-          title={manageView === 'activity' ? 'Activity' : activeBot.name}
-          subtitle={manageView === 'activity' ? '@' + activeBot.handle : '@' + activeBot.handle + ' · ' + activeBot.version}
+          title={manageView === 'activity' ? 'Activity' : manageView === 'connect' ? 'Connect agent' : activeBot.name}
+          subtitle={manageView === 'activity' || manageView === 'connect' ? '@' + activeBot.handle : '@' + activeBot.handle + ' · ' + activeBot.version}
           onBack={closeChat} />
       : <TGHeader T={T} title="My Bots" subtitle="Deployed on AgentBot" />)
     : <TGHeader T={T} title="AgentBot" subtitle={STAGE_SUB[id]} onBack={onBack} />);
@@ -638,10 +647,13 @@ export default function App() {
             showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)} />
         : manageView === 'activity'
         ? <ActivityPage T={T} bot={activeBot} events={manageChat.messages.filter(m => m.role === 'system')} />
+        : manageView === 'connect'
+        ? <ConnectAgent T={T} bot={activeBot} onConnected={() => { setDir(-1); setManageView('overview'); }} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
             onOpenChat={() => { setDir(1); setManageView('chat'); }}
             onViewActivity={() => { setDir(1); setManageView('activity'); }}
-            onManageAgents={() => openAgentSheet(activeBot.id)}
+            onManageAgents={() => setAgentSheet(true)}
+            cloudDeployed={cloudBots.has(activeBot.id)}
             paused={pausedBots.has(activeBot.id)}
             onTogglePause={() => togglePause(activeBot.id)}
             onDelete={() => void deleteBot(activeBot.id)} />)
@@ -705,15 +717,17 @@ export default function App() {
 
       {/* "Add an agent" sheet — overlays everything, closed by scrim/back */}
       {agentSheet && activeBot && (
-        <AgentManager T={T} project={{ id: activeBot.id, name: activeBot.name }} link={sheetLink}
+        <AgentManager T={T} project={{ id: activeBot.id, name: activeBot.name }}
+          cloudDeployed={cloudBots.has(activeBot.id)}
+          onCloudDeployed={() => markCloudDeployed(activeBot.id)}
           onConnectNew={() => {
             setAgentSheet(false); setDir(1);
-            // connecting a local agent ⇒ the build pipeline must enter LOCAL mode,
-            // or AgentScreen shows the platform card and never mints a connect code.
+            // local agent ⇒ mark the project LOCAL so the platform defers to it
             const all = loadModes(); all[activeBot.id] = 'local';
             localStorage.setItem(MODE_KEY, JSON.stringify(all));
             setBuildModeApi(activeBot.id, 'local').catch(() => { /* endpoint not shipped yet */ });
-            void resumeBuild(activeBot.id, 'agent');
+            // focused connect screen — just the code + CLI command
+            setManageView('connect');
           }}
           onClose={() => setAgentSheet(false)} />
       )}

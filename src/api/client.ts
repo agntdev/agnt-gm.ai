@@ -441,58 +441,15 @@ export function setBotPaused(idOrSlug: string, paused: boolean): Promise<unknown
   return request('PUT', `/builder/projects/${encodeURIComponent(idOrSlug)}/bot/pause`, { paused });
 }
 
-// ── Local-agent registry (owner-scoped) + per-project assignment ──
-// The "Add an agent" surface: the owner's connected local agents across all
-// their projects, any of which can be assigned to a project to pick up its
-// tasks. Not in the API yet — list 404/405 → [], assign/unassign optimistic.
-// Until it ships, the manage sheet falls back to the single connected agent
-// from getAgentLink() — no invented agents are shown.
-export interface LocalAgent {
-  id: string;
-  name?: string;
-  client?: string;            // 'claude' | 'codex' | …
-  status?: 'online' | 'offline' | string;
-  last_seen_at?: string;
-  assigned?: boolean;         // assigned to the queried project
-}
-
-export async function listMyAgents(): Promise<LocalAgent[]> {
-  try {
-    const r = await request<{ agents?: LocalAgent[] }>('GET', '/builder/agents');
-    return r.agents || [];
-  } catch (e) {
-    if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return [];
-    throw e;
-  }
-}
-
-export async function listProjectAgents(idOrSlug: string): Promise<LocalAgent[]> {
-  try {
-    const r = await request<{ agents?: LocalAgent[] }>('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/agents`);
-    return r.agents || [];
-  } catch (e) {
-    if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return [];
-    throw e;
-  }
-}
-
-export function assignAgent(idOrSlug: string, agentId: string): Promise<unknown> {
-  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/agents/${encodeURIComponent(agentId)}/assign`);
-}
-
-export function unassignAgent(idOrSlug: string, agentId: string): Promise<unknown> {
-  return request('DELETE', `/builder/projects/${encodeURIComponent(idOrSlug)}/agents/${encodeURIComponent(agentId)}`);
-}
-
-// ── One-time cloud agent run ──────────────────────────────────
-// Triggers a SINGLE platform build pass (picks up the open tasks once, ships
-// PRs, then stops) — distinct from always-on platform mode. Not in the API
-// yet — 404/405 tolerated (the UI reports "couldn't start" only on real errors).
+// ── Cloud agent (deploy one; max one per bot) ─────────────────
+// The "Add an agent" sheet's Cloud option deploys a single managed agent that
+// works the project's tasks. At most one per bot. Not in the API yet — the UI
+// reports "couldn't deploy" only on real errors.
 export interface CloudRun {
   run_id?: string;
   status?: string;
 }
 
 export function runCloudAgent(idOrSlug: string): Promise<CloudRun> {
-  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/cloud-run`);
+  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/cloud-agent`);
 }
