@@ -5,11 +5,37 @@ import { Theme, btnReset } from '../theme';
 import { TgUser } from '../telegram';
 import { TGIcon } from '../ui';
 
-export const IDEA_EXAMPLES = [
-  'A support bot for my Shopify store that answers order questions',
-  'Daily AI-news digest with a morning summary',
-  'A booking assistant for my barbershop',
-  'Crypto price alerts when a coin moves 5%',
+// Each example is a short button (title + blurb) that drops a rich, detailed
+// brief into the prompt box. That brief is what gets sent verbatim as the
+// first message to the builder AI — a fuller brief means a more
+// production-ready bot and fewer clarifying questions.
+export type IdeaExample = { title: string; blurb: string; prompt: string };
+
+export const IDEA_EXAMPLES: IdeaExample[] = [
+  {
+    title: 'TON price alerts',
+    blurb: 'Watchlist, threshold pings, morning summary, quiet hours',
+    prompt:
+      'I want a Telegram bot that watches Toncoin and TON jettons like USDT and GRAM and pings me the moment something important moves. Each person keeps their own private watchlist — add or remove coins with simple inline buttons — so the bot only follows what they actually care about. I want threshold alerts in plain language: tell me when TON drops below a price I set, or when anything jumps or falls more than 5% within an hour. Give me an on-demand "price now" check, plus an optional morning summary of where my coins stand. Add quiet hours so it never wakes me at night, and please don\'t spam — if a coin keeps wobbling around my threshold, send one clear alert, not fifty. Every message should say exactly what changed and by how much. If a price source hiccups, stay calm and retry instead of sending garbage. Handle typos and odd input gracefully, keep each person\'s settings private, and give me an owner view of who\'s using it and which alerts fire most.',
+  },
+  {
+    title: 'Daily AI news digest',
+    blurb: 'Curated morning AI news, summarized, deduped, on-demand',
+    prompt:
+      'I want a Telegram bot that greets me each morning with a clean, skimmable digest of the freshest AI and Telegram-bot news, so I never have to dig through a dozen sites myself. When someone first opens it, let them pick the topics and keywords they care about — model launches, funding rounds, new bots, research — and set the time their digest arrives. Each morning, send a short rundown: a punchy headline, two or three sentences on what happened, and a link to read more. If the same story shows up across several sources, merge it into one entry instead of repeating it. Add a "what\'s new" button for an on-demand pull between digests, and let readers tap to bookmark items they want to revisit. Make it easy to add or drop sources and mute topics that get noisy. Above all, it should never miss a day, quietly skip any source that\'s down rather than breaking, and keep things tight — a handful of strong items, not an endless wall of links.',
+  },
+  {
+    title: 'Trip expense splitter',
+    blurb: 'Shared expenses, fair splits, settle up in TON',
+    prompt:
+      'I want a Telegram bot that splits expenses for a group trip, so nobody has to chase friends for money or do the math by hand. I start a trip, add everyone who\'s in it, and then anyone can log an expense — who paid, how much, and what it was for — split evenly or by custom shares when only some of us were in on it. The bot keeps a running tally of who owes whom, simplified down to the fewest payments, and I can check the balance any time with a tap. When it\'s time to settle, let people pay each other back in TON straight from their wallet, then mark the debt cleared once it lands. Handle the awkward stuff gracefully: round amounts so balances always net to zero, never lose an expense someone logged, and cope with people joining or leaving partway through the trip. Always confirm before marking a debt settled, keep each group\'s amounts private to its members, and give the organizer a clean overview of the whole trip.',
+  },
+  {
+    title: 'Restaurant table booking',
+    blurb: 'Live slots, reminders, easy reschedule, refundable deposits',
+    prompt:
+      'I want a Telegram bot that takes table reservations for my restaurant, Durger King. A guest starts with a tap, picks a date, a time, and how many people are coming, and the bot only ever shows slots that are actually open — it checks real availability against my tables and never offers a time that\'s already full. Once they choose, it confirms the booking right away with a warm, clear message they can trust, then sends a gentle reminder a couple of hours before they\'re due. Guests can cancel or reschedule straight from inline buttons, no need to message me. For bigger parties, let me hold the table with a small refundable TON deposit that comes back when they arrive. On my side I need an owner view of all upcoming bookings, the day\'s table capacity, and a heads-up on no-shows, so we never double-book or get caught overbooked. Keep it forgiving when someone types something odd, private with guest details, and friendly at every step.',
+  },
 ];
 
 function autoGrow(el: HTMLTextAreaElement | null) {
@@ -109,13 +135,16 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
         {IDEA_EXAMPLES.map((ex, i) => (
-          <button key={i} onClick={() => setIdea(ex)} style={{
-            ...btnReset, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px',
+          <button key={i} onClick={() => setIdea(ex.prompt)} style={{
+            ...btnReset, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
             borderRadius: 13, background: T.dark ? 'rgba(255,255,255,0.04)' : '#ffffff',
             border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
           }}>
             <TGIcon name="spark" size={17} color={T.accent} />
-            <span style={{ fontFamily: T.font, fontSize: 14.5, color: T.text, lineHeight: '19px', flex: 1 }}>{ex}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text, lineHeight: '19px' }}>{ex.title}</span>
+              <span style={{ display: 'block', fontFamily: T.font, fontSize: 12.5, color: T.hint, lineHeight: '16px', marginTop: 2 }}>{ex.blurb}</span>
+            </span>
             <TGIcon name="arrowUp" size={15} color={T.hint} stroke={2} />
           </button>
         ))}
