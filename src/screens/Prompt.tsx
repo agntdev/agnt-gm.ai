@@ -118,9 +118,8 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
             fontFamily: T.font, fontSize: 16, lineHeight: '23px', color: T.text, padding: 0, minHeight: 70,
           }}
         />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 8 }}>
           <span style={{ fontFamily: T.mono, fontSize: 12, color: T.hint }}>{idea.trim().length} chars</span>
-          <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>Plain language is fine</span>
         </div>
       </div>
 
