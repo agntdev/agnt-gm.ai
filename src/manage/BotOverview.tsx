@@ -248,22 +248,22 @@ export function BotOverview({ T, bot, messages, onOpenChat, onDelete, onViewActi
         <Card T={T} pad={0}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
             <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TGIcon name={connected ? 'code' : cloudDeployed ? 'cloud' : 'plus'} size={19} color={T.accent} stroke={1.9} />
+              <TGIcon name={cloudDeployed ? 'cloud' : connected ? 'code' : 'plus'} size={19} color={T.accent} stroke={1.9} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>
-                {connected ? 'Local agent' : cloudDeployed ? 'Cloud agent' : 'Add an agent'}
+                {cloudDeployed ? 'Cloud agent' : connected ? 'Local agent' : 'Add an agent'}
               </div>
               <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {connected
-                  ? <><Dot color={T.green} size={6} /> {agentClient || 'Claude'} · online</>
-                  : cloudDeployed
-                    ? <><Dot color={T.green} size={6} /> running</>
+                {cloudDeployed
+                  ? <><Dot color={T.green} size={6} /> running</>
+                  : connected
+                    ? <><Dot color={T.green} size={6} /> {agentClient || 'Claude'} · online</>
                     : 'Cloud or local — your choice'}
               </div>
             </div>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.accent }}>
-              {connected || cloudDeployed ? 'Manage' : 'Add'} <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
+              {cloudDeployed || connected ? 'Manage' : 'Add'} <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
             </span>
           </div>
         </Card>

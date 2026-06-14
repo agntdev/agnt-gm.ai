@@ -648,7 +648,16 @@ export default function App() {
         : manageView === 'activity'
         ? <ActivityPage T={T} bot={activeBot} events={manageChat.messages.filter(m => m.role === 'system')} />
         : manageView === 'connect'
-        ? <ConnectAgent T={T} bot={activeBot} onConnected={() => { setDir(-1); setManageView('overview'); }} />
+        ? <ConnectAgent T={T} bot={activeBot} onConnected={() => {
+            // a local agent now owns the bot — it supersedes any cloud agent
+            setCloudBots(prev => {
+              if (!prev.has(activeBot.id)) return prev;
+              const next = new Set(prev); next.delete(activeBot.id);
+              localStorage.setItem(CLOUD_KEY, JSON.stringify([...next]));
+              return next;
+            });
+            setDir(-1); setManageView('overview');
+          }} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
             onOpenChat={() => { setDir(1); setManageView('chat'); }}
             onViewActivity={() => { setDir(1); setManageView('activity'); }}
