@@ -146,10 +146,10 @@ function EmptyAction({ T, icon, label, sub, onClick }: {
 // ── the update conversation — the project's REAL chat feed ────
 // showIdentity: inside Telegram our mocked header is hidden (Telegram draws
 // its own chrome), so the bot identity moves into the chat body.
-export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onOption, onConnectAgent }: {
+export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onOption, onConnectAgent, cloudAgent }: {
   T: Theme; bot: MyBot; messages: ChatMessage[]; thinking: boolean;
   loading?: boolean; showIdentity?: boolean; onOption?: (label: string) => void;
-  onConnectAgent?: () => void;
+  onConnectAgent?: () => void; cloudAgent?: boolean;
 }) {
   return (
     <div style={{ padding: '16px 14px 18px', display: 'flex', flexDirection: 'column', gap: 10, minHeight: '100%' }}>
@@ -168,7 +168,9 @@ export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onO
         background: T.dark ? 'rgba(255,255,255,0.05)' : 'rgba(15,22,32,0.04)', marginBottom: 2,
       }}>
         <Mark T={T} size={17} radius={5} />
-        <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint, fontWeight: 500 }}>Build agent · updates ship live</span>
+        <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint, fontWeight: 500 }}>
+          {cloudAgent ? 'Cloud agent · runs tasks & makes changes' : 'Build agent · updates ship live'}
+        </span>
       </div>
 
       {/* tasks are open — let the owner (re)connect a coding agent anytime */}
@@ -196,7 +198,9 @@ export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onO
 
       {!loading && messages.length === 0 && !thinking && (
         <Bubble T={T} from="bot">
-          <span style={{ whiteSpace: 'pre-line' }}>{`I'm live 🟢 ${bot.preview} Tell me anything you'd like to change and I'll ship it.`}</span>
+          <span style={{ whiteSpace: 'pre-line' }}>{cloudAgent
+            ? `I'm your cloud agent for ${bot.name}. Ask me to finish a task, change something, or run an action — I'll do it and report back.`
+            : `I'm live 🟢 ${bot.preview} Tell me anything you'd like to change and I'll ship it.`}</span>
         </Bubble>
       )}
 
