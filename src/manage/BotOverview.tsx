@@ -187,8 +187,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onDelete, onViewActi
     },
   ] : [
     { value: tasks.length ? `${done}/${tasks.length}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
-    { value: String(prodDeploys), label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
-    { value: commits7d != null ? String(commits7d) : '—', label: 'Commits · 7d' },
+    { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
+    { value: commits7d ? String(commits7d) : '—', label: 'Commits · 7d' },
   ];
 
   return (

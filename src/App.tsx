@@ -441,6 +441,10 @@ export default function App() {
         }
       }
       const pid = pub.id;
+      // a cloud (platform) build means the platform's cloud agent already owns
+      // this bot — register it so the overview shows "Cloud agent" instead of
+      // prompting "Add an agent" for a builder the owner already chose
+      if (buildMode === 'platform') markCloudDeployed(pid);
       // surface the bot on the overview immediately (before the list refresh lands)
       setMyBots(prev => prev.some(b => b.id === pid) ? prev : [botFromProject(pub), ...prev]);
       // reset the build tab and jump to the bot's overview

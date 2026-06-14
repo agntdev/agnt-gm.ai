@@ -27,7 +27,7 @@ export function firstPrompt(project: Project | null, code: string): string {
 // the two ways to build — pick at creation, switch anytime from the overview
 export const MODE_META: Record<BuildMode, { title: string; desc: string; glyph: string }> = {
   platform: {
-    title: 'Platform agent',
+    title: 'Cloud agent',
     desc: 'We build everything — agents write code and ship PRs from our platform. Zero setup.',
     glyph: 'bolt',
   },
@@ -144,7 +144,7 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
           <div>
             <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Nothing to set up</div>
             <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint, marginTop: 2, lineHeight: '18px' }}>
-              Platform agents pick up every task, write the code and open PRs from our platform. You watch progress here and in the bot's chat.
+              Cloud agents pick up every task, write the code and open PRs from our platform. You watch progress here and in the bot's chat.
             </div>
           </div>
         </Card>
