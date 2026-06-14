@@ -37,6 +37,9 @@ export function TGIcon({ name, size = 22, color = 'currentColor', stroke = 2 }: 
     chat: <path d="M5 5h14a1 1 0 011 1v9a1 1 0 01-1 1h-8.5L6 19.5V16H5a1 1 0 01-1-1V6a1 1 0 011-1z" {...p} />,
     send: <path d="M5 12l15-7-7 15-2.5-5.5L5 12z" {...p} />,
     wallet: <g {...p}><rect x="3" y="6" width="18" height="13" rx="3" /><path d="M16 12.5h2M3 9.5h18" /></g>,
+    pause: <g fill={color} stroke="none"><rect x="7" y="5" width="3.4" height="14" rx="1.2" /><rect x="13.6" y="5" width="3.4" height="14" rx="1.2" /></g>,
+    play: <path d="M8 5.5v13l11-6.5-11-6.5z" fill={color} stroke="none" />,
+    cloud: <path d="M7.5 18.5a4 4 0 01-.4-7.98 5.2 5.2 0 0110.06-1.3A3.75 3.75 0 0117 18.5H7.5z" {...p} />,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>

@@ -16,6 +16,7 @@ import {
   BuildMode, setBuildModeApi,
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
+  AgentLinkStatus, getAgentLink, setBotPaused,
 } from './api/client';
 import { useChat } from './chat/Chat';
 import { TGHeader, MainButton, TabBar, Tab } from './ui';
@@ -25,6 +26,8 @@ import { SpecScreen } from './screens/Spec';
 import { AgentScreen } from './screens/Agent';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
 import { BotOverview } from './manage/BotOverview';
+import { ActivityPage } from './manage/Activity';
+import { AgentManager } from './manage/AgentManager';
 
 const STEPS = ['prompt', 'clarify', 'spec', 'agent'] as const;
 type StepId = typeof STEPS[number];
@@ -49,6 +52,12 @@ function modeFor(p: { id: string; build_mode?: string } | null): BuildMode {
 
 function loadHidden(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]') as string[]); }
+  catch { return new Set(); }
+}
+
+const PAUSED_KEY = 'agentbot-paused'; // optimistic pause state per bot (until the API carries `paused`)
+function loadPaused(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(PAUSED_KEY) || '[]') as string[]); }
   catch { return new Set(); }
 }
 
@@ -177,8 +186,11 @@ export default function App() {
   const [myBots, setMyBots] = useState<MyBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(false);
   const [manageBot, setManageBot] = useState<string | null>(null);
-  const [manageView, setManageView] = useState<'overview' | 'chat'>('overview');
+  const [manageView, setManageView] = useState<'overview' | 'chat' | 'activity'>('overview');
   const [hiddenBots, setHiddenBots] = useState<Set<string>>(loadHidden);
+  const [pausedBots, setPausedBots] = useState<Set<string>>(loadPaused);
+  const [agentSheet, setAgentSheet] = useState(false); // "Add an agent" bottom sheet
+  const [sheetLink, setSheetLink] = useState<AgentLinkStatus | null>(null); // agent-link status for the sheet
   const [draft, setDraft] = useState('');
 
   const id: StepId = STEPS[step];
@@ -311,7 +323,7 @@ export default function App() {
       setTab('manage');
       if (parts[1]) {
         setManageBot(parts[1]);
-        setManageView(parts[2] === 'chat' ? 'chat' : 'overview');
+        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : 'overview');
       }
       routeReady.current = true;
     } else if (parts[0] === 'build' && parts[1]) {
@@ -324,8 +336,9 @@ export default function App() {
 
   useEffect(() => {
     if (!routeReady.current) return;
+    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : '';
     const h = tab === 'manage'
-      ? (manageBot ? `#/bots/${manageBot}${manageView === 'chat' ? '/chat' : ''}` : '#/bots')
+      ? (manageBot ? `#/bots/${manageBot}${sub}` : '#/bots')
       : project ? `#/build/${project.id}` : '#/';
     history.replaceState(null, '', h);
   }, [tab, manageBot, manageView, project?.id]);
@@ -497,6 +510,25 @@ export default function App() {
     manageChat.send(text); // real chat — deploy/version logs come back as system messages
   };
 
+  // pause / resume the managed bot — optimistic (real PUT when the API ships)
+  const togglePause = (botId: string) => {
+    setPausedBots(prev => {
+      const next = new Set(prev);
+      const willPause = !next.has(botId);
+      if (willPause) next.add(botId); else next.delete(botId);
+      localStorage.setItem(PAUSED_KEY, JSON.stringify([...next]));
+      setBotPaused(botId, willPause).catch(() => { /* endpoint not shipped yet */ });
+      return next;
+    });
+  };
+
+  // open the "Add an agent" sheet, loading the current agent-link status for it
+  const openAgentSheet = (botId: string) => {
+    setSheetLink(null);
+    setAgentSheet(true);
+    getAgentLink(botId).then(setSheetLink).catch(() => { /* registry fallback handles it */ });
+  };
+
   // ── restart / edit loops ──
   const resetPipeline = () => {
     cancelPoll.current();
@@ -548,7 +580,8 @@ export default function App() {
   })();
   const closeChat = () => {
     setDir(-1);
-    if (manageView === 'chat') setManageView('overview');
+    if (agentSheet) { setAgentSheet(false); return; }
+    if (manageView !== 'overview') setManageView('overview');
     else setManageBot(null);
   };
   const backAction: (() => void) | null = tab === 'manage' ? (activeBot ? closeChat : null) : onBack;
@@ -590,7 +623,9 @@ export default function App() {
   // ── header per tab (mocked chrome — browser only; Telegram draws its own) ──
   const header = insideTelegram ? null : (tab === 'manage'
     ? (activeBot
-      ? <TGHeader T={T} title={activeBot.name} subtitle={'@' + activeBot.handle + ' · ' + activeBot.version}
+      ? <TGHeader T={T}
+          title={manageView === 'activity' ? 'Activity' : activeBot.name}
+          subtitle={manageView === 'activity' ? '@' + activeBot.handle : '@' + activeBot.handle + ' · ' + activeBot.version}
           onBack={closeChat} />
       : <TGHeader T={T} title="My Bots" subtitle="Deployed on AgentBot" />)
     : <TGHeader T={T} title="AgentBot" subtitle={STAGE_SUB[id]} onBack={onBack} />);
@@ -601,15 +636,14 @@ export default function App() {
       ? (manageView === 'chat'
         ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking}
             showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)} />
+        : manageView === 'activity'
+        ? <ActivityPage T={T} bot={activeBot} events={manageChat.messages.filter(m => m.role === 'system')} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
-            onConnectAgent={() => { void resumeBuild(activeBot.id, 'agent'); }}
-            onModeChange={(m) => {
-              const all = loadModes(); all[activeBot.id] = m;
-              localStorage.setItem(MODE_KEY, JSON.stringify(all));
-              setBuildModeApi(activeBot.id, m).catch(() => {});
-            }}
-            initialMode={modeFor({ id: activeBot.id })}
             onOpenChat={() => { setDir(1); setManageView('chat'); }}
+            onViewActivity={() => { setDir(1); setManageView('activity'); }}
+            onManageAgents={() => openAgentSheet(activeBot.id)}
+            paused={pausedBots.has(activeBot.id)}
+            onTogglePause={() => togglePause(activeBot.id)}
             onDelete={() => void deleteBot(activeBot.id)} />)
       : <MyBotsList T={T} bots={myBots} loading={botsLoading} authed={tgAuthed}
           onOpen={(bid) => {
@@ -647,6 +681,8 @@ export default function App() {
         @keyframes tgline { from { opacity:0; transform: translateX(-4px); } to { opacity:1; transform:none; } }
         @keyframes tgpop { 0% { transform: scale(.5); opacity:0; } 100% { transform: scale(1); opacity:1; } }
         @keyframes scrIn { from { opacity:0; transform: translateX(var(--scr-dx)); } to { opacity:1; transform:none; } }
+        @keyframes tgfade { from { opacity:0; } to { opacity:1; } }
+        @keyframes tgsheet { from { transform: translateY(100%); } to { transform: none; } }
         textarea::placeholder { color: ${T.hint}; }
         ::-webkit-scrollbar { width: 0; height: 0; }
       `}</style>
@@ -661,10 +697,26 @@ export default function App() {
       {footer}
       <TabBar T={T} tab={tab} onTab={(tb) => {
         setDir(1);
+        setAgentSheet(false); // never leave the sheet hanging over another tab
         // tapping My Bots pops to its root (the list), not the last-open bot
         if (tb === 'manage') { setManageBot(null); setManageView('overview'); }
         setTab(tb);
       }} />
+
+      {/* "Add an agent" sheet — overlays everything, closed by scrim/back */}
+      {agentSheet && activeBot && (
+        <AgentManager T={T} project={{ id: activeBot.id, name: activeBot.name }} link={sheetLink}
+          onConnectNew={() => {
+            setAgentSheet(false); setDir(1);
+            // connecting a local agent ⇒ the build pipeline must enter LOCAL mode,
+            // or AgentScreen shows the platform card and never mints a connect code.
+            const all = loadModes(); all[activeBot.id] = 'local';
+            localStorage.setItem(MODE_KEY, JSON.stringify(all));
+            setBuildModeApi(activeBot.id, 'local').catch(() => { /* endpoint not shipped yet */ });
+            void resumeBuild(activeBot.id, 'agent');
+          }}
+          onClose={() => setAgentSheet(false)} />
+      )}
     </div>
   );
 }
