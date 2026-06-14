@@ -4,9 +4,9 @@
 // the CLI command, with a live waiting → connected status. Mints a code via
 // POST .../agent-link and polls GET .../agent-link until the CLI claims it.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Theme, btnReset } from '../theme';
+import { Theme } from '../theme';
 import { mintAgentLink, getAgentLink, getProject, Project } from '../api/client';
-import { TGIcon, Card, Pill, Dot, Spinner } from '../ui';
+import { TGIcon, Card, Dot, Spinner } from '../ui';
 import { firstPrompt, CopyCard, INSTALL_CMD } from '../screens/Agent';
 import { MyBot } from './MyBots';
 
@@ -21,9 +21,10 @@ function Label({ T, children }: { T: Theme; children: ReactNode }) {
 export function ConnectAgent({ T, bot, onConnected }: { T: Theme; bot: MyBot; onConnected: () => void }) {
   const [project, setProject] = useState<Project | null>(null);
   const [code, setCode] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [client, setClient] = useState<string | null>(null);
   const stopped = useRef(false);
+  // navigate straight back the moment the agent connects — no confirmation step
+  const onConnectedRef = useRef(onConnected);
+  onConnectedRef.current = onConnected;
 
   useEffect(() => {
     let cancelled = false;
@@ -54,11 +55,7 @@ export function ConnectAgent({ T, bot, onConnected }: { T: Theme; bot: MyBot; on
       try {
         const s = await getAgentLink(bot.id);
         if (stopped.current) return;
-        if (s.status === 'connected') {
-          setClient((s.connected_client || '').split('/')[0] || null);
-          setConnected(true);
-          return;
-        }
+        if (s.status === 'connected') { onConnectedRef.current(); return; }
       } catch { /* transient — keep polling */ }
       pollTimer = setTimeout(poll, 2000);
     };
@@ -106,32 +103,19 @@ export function ConnectAgent({ T, bot, onConnected }: { T: Theme; bot: MyBot; on
         </div>
       </div>
 
-      {/* status */}
+      {/* status — auto-returns to the overview the moment the agent connects */}
       <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Dot color={connected ? T.green : T.amber} size={9} pulse={!connected} />
+        <Dot color={T.amber} size={9} pulse />
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>
-            {connected ? 'Agent connected' : 'Waiting for your agent…'}
-          </div>
-          {!connected && code && (
+          <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Waiting for your agent…</div>
+          {code && (
             <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>
               Connect code <span style={{ fontFamily: T.mono, fontWeight: 600 }}>{code}</span> · valid 10 min, auto-refreshes
             </div>
           )}
         </div>
-        {connected
-          ? <Pill T={T} tone="green">{client || 'Ready'}</Pill>
-          : <TGIcon name="clock" size={19} color={T.amber} stroke={1.9} />}
+        <TGIcon name="clock" size={19} color={T.amber} stroke={1.9} />
       </Card>
-
-      {connected && (
-        <button onClick={onConnected} style={{
-          ...btnReset, width: '100%', height: 48, borderRadius: 13, background: T.accent, color: '#fff',
-          fontFamily: T.font, fontSize: 15.5, fontWeight: 600,
-        }}>
-          Done
-        </button>
-      )}
     </div>
   );
 }
