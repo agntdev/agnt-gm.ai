@@ -644,7 +644,8 @@ export default function App() {
     ? (activeBot
       ? (manageView === 'chat'
         ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking}
-            showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)} />
+            showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)}
+            cloudAgent={cloudBots.has(activeBot.id)} />
         : manageView === 'activity'
         ? <ActivityPage T={T} bot={activeBot} events={manageChat.messages.filter(m => m.role === 'system')} />
         : manageView === 'connect'
@@ -682,7 +683,8 @@ export default function App() {
     && !clarifyChat.messages.some(m => m.role === 'system'); // system msg = brief locked, even before the status poll catches up
   const footer = tab === 'manage'
     ? (activeBot && manageView === 'chat'
-      ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false} />
+      ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false}
+          placeholder={cloudBots.has(activeBot.id) ? 'Ask your cloud agent…' : undefined} />
       : null)
     : drafting
     ? <Composer T={T} draft={chatDraft} onChange={setChatDraft}

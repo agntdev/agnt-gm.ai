@@ -111,6 +111,44 @@ function SystemLog({ T, msg }: { T: Theme; msg: ChatMessage }) {
   );
 }
 
+// Cloud-agent tool call surfaced in the chat — the agent edited a task, ran a
+// build, deployed, etc. Distinct from a plain system log (accent-tinted) so the
+// owner can see what the agent did on their behalf. Backend contract:
+// data = { kind:'action', action, label, status?, target? }.
+interface ActionData {
+  kind?: string; action?: string; label?: string;
+  status?: 'running' | 'done' | 'failed' | string;
+  target?: { slug?: string; pr_url?: string; url?: string };
+}
+
+const ACTION_ICON: Record<string, string> = {
+  task_update: 'check', task_run: 'bolt', task_create: 'plus', retry_task: 'refresh',
+  build: 'bolt', deploy: 'arrowUp', pause: 'pause', resume: 'play', test: 'beaker',
+};
+
+function ActionLog({ T, msg }: { T: Theme; msg: ChatMessage }) {
+  const d = (msg.data || {}) as ActionData;
+  const failed = d.status === 'failed';
+  const fg = failed ? T.red : T.accent;
+  const icon = ACTION_ICON[d.action || ''] || 'bolt'; // unknown actions render generically
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-start', animation: 'tgbubble .32s cubic-bezier(.2,.8,.2,1)' }}>
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 13,
+        background: failed ? T.redSoft : T.accentSoft, maxWidth: '88%',
+      }}>
+        <TGIcon name={icon} size={15} color={fg} stroke={2.2} />
+        <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: fg, lineHeight: '17px' }}>{d.label || msg.content}</span>
+        {d.status === 'running'
+          ? <Spinner color={fg} size={13} />
+          : d.status === 'done'
+            ? <TGIcon name="check" size={14} color={fg} stroke={2.6} />
+            : null}
+      </div>
+    </div>
+  );
+}
+
 export function ChatThread({ T, messages, thinking, onOption, pendingNote }: {
   T: Theme; messages: ChatMessage[]; thinking: boolean;
   onOption?: (label: string) => void;
@@ -120,6 +158,8 @@ export function ChatThread({ T, messages, thinking, onOption, pendingNote }: {
   return (
     <>
       {messages.map(m => {
+        const data = m.data as { kind?: string } | undefined;
+        if (data?.kind === 'action') return <ActionLog key={m.id} T={T} msg={m} />;
         if (m.role === 'system') return <SystemLog key={m.id} T={T} msg={m} />;
         const own = m.role === 'owner';
         return (
