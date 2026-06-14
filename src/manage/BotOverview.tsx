@@ -1,27 +1,28 @@
 // BotOverview — per-bot overview page (My Bots → bot). Everything real:
 // agent-link status, task/PR stats from the project, Test bot via the managed
-// bot's @username, Recent Activity + Logs from the chat's system events.
-// "Request an update" (App footer) opens the chat view.
-import { useEffect, useState } from 'react';
-import { Theme, btnReset } from '../theme';
+// bot's @username, Recent Activity from the chat's system events (full feed on
+// the "View all" page). "Open chat" opens the owner ↔ build-agent chat; the
+// agent card's "Manage" opens the add-an-agent sheet.
+import { useEffect, useState, type ReactNode } from 'react';
+import { Theme, btnReset, hexA } from '../theme';
 import {
-  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BuildMode,
-  getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail,
+  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics,
+  getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
 import { MyBot } from './MyBots';
+import { ActivityTimeline, relTime } from './Activity';
 
-function relTime(iso?: string): string {
-  if (!iso) return '';
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return 'now';
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h`;
-  return `${Math.floor(s / 86400)}d`;
+// human-readable count: 3100 → "3.1k", 12000 → "12k"
+function human(n?: number): string {
+  if (n == null) return '—';
+  if (n >= 1000) {
+    const k = n / 1000;
+    return `${k >= 10 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')}k`;
+  }
+  return String(n);
 }
-
-const isFail = (m: ChatMessage) => /fail|error|crash|🔴|❌|✗/i.test(m.content);
 
 // latest test results — structured (data.kind=test) or parsed from a system
 // message like "38/38 passing · 94% cov"; null until CI results exist.
@@ -83,20 +84,30 @@ function PhaseStrip({ T, dag }: { T: Theme; dag: DagInfo }) {
   );
 }
 
-export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDelete, onModeChange, initialMode }: {
-  T: Theme; bot: MyBot; messages: ChatMessage[]; onConnectAgent: () => void;
+// uppercase section label, reused across sections
+function SectionLabel({ T, children, right }: { T: Theme; children: ReactNode; right?: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 4px 11px' }}>
+      <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3 }}>{children}</span>
+      {right}
+    </div>
+  );
+}
+
+export function BotOverview({ T, bot, messages, onOpenChat, onDelete, onViewActivity, onManageAgents, paused, onTogglePause }: {
+  T: Theme; bot: MyBot; messages: ChatMessage[];
   onOpenChat: () => void; onDelete: () => void;
-  onModeChange: (m: BuildMode) => void; initialMode: BuildMode;
+  onViewActivity: () => void; onManageAgents: () => void;
+  paused: boolean; onTogglePause: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [mode, setMode] = useState<BuildMode>(initialMode);
-  const switchMode = (m: BuildMode) => { setMode(m); onModeChange(m); };
   const [detail, setDetail] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [dag, setDag] = useState<DagInfo | null>(null);
   const [deploys, setDeploys] = useState<Deployment[]>([]);
   const [botUsername, setBotUsername] = useState<string | null>(null);
   const [link, setLink] = useState<AgentLinkStatus | null>(null);
+  const [analytics, setAnalytics] = useState<BotAnalytics | null>(null);
   const [commits7d, setCommits7d] = useState<number | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
@@ -116,12 +127,13 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
-      const [d, t, dep, b, l] = await Promise.all([
+      const [d, t, dep, b, l, an] = await Promise.all([
         getProject(bot.id).catch(() => null),
         fetchProjectTasks(bot.id).catch(() => null),
         listDeployments(bot.id).catch(() => null),
         getProjectBot(bot.id).catch(() => null),
         getAgentLink(bot.id).catch(() => null),
+        getBotAnalytics(bot.id).catch(() => null),
       ]);
       if (cancelled) return;
       if (d) setDetail(d.project);
@@ -129,6 +141,7 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
       if (dep) setDeploys(dep.deployments || []);
       if (b?.bot_username) setBotUsername(b.bot_username);
       if (l) setLink(l);
+      if (an) setAnalytics(an);
       timer = setTimeout(tick, 12000);
     };
     void tick();
@@ -155,100 +168,120 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
   const sys = messages.filter(m => m.role === 'system');
   const activity = [...sys].reverse().slice(0, 4);
   const done = tasks.filter(t => t.status === 'done').length;
+  const allDone = tasks.length > 0 && done >= tasks.length;
   const prodDeploys = deploys.filter(d => d.kind !== 'preview' && !d.failure_reason).length;
   const connected = link?.status === 'connected';
   const agentClient = (link?.connected_client || '').split('/')[0];
   const handle = botUsername || bot.handle;
+  const since = detail?.published_at || detail?.created_at;
+  const uptime = since ? relTime(since) : null;
+
+  // real build stats now; the same 3-up card swaps to deployed-bot analytics
+  // (active users / today / vs. yest.) once that endpoint lands.
+  const stats: { value: string; label: string; tone?: 'green' }[] = analytics ? [
+    { value: human(analytics.active_users), label: 'active users' },
+    { value: analytics.messages_today != null ? human(analytics.messages_today) : '—', label: 'today' },
+    {
+      value: analytics.delta_pct != null ? `${analytics.delta_pct > 0 ? '+' : ''}${analytics.delta_pct}%` : '—',
+      label: 'vs. yest.', tone: (analytics.delta_pct ?? 0) >= 0 ? 'green' : undefined,
+    },
+  ] : [
+    { value: tasks.length ? `${done}/${tasks.length}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
+    { value: String(prodDeploys), label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
+    { value: commits7d != null ? String(commits7d) : '—', label: 'Commits · 7d' },
+  ];
 
   return (
-    <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* identity */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 13, padding: '2px 2px 0' }}>
-        <BotTile T={T} name={bot.name} tone={bot.tone} size={52} radius={16} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: T.font, fontSize: 19, fontWeight: 700, color: T.text, letterSpacing: -0.3 }}>{bot.name}</div>
-          <div style={{ fontFamily: T.mono, fontSize: 13, color: T.accent, marginTop: 1 }}>@{handle}</div>
+    <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* identity — centered */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '6px 0 0' }}>
+        <BotTile T={T} name={bot.name} tone={bot.tone} size={72} radius={22} fontSize={30} />
+        <div style={{ fontFamily: T.font, fontSize: 25, fontWeight: 700, color: T.text, letterSpacing: -0.4, marginTop: 4 }}>{bot.name}</div>
+        <div style={{ fontFamily: T.mono, fontSize: 14, color: T.accent }}>@{handle}</div>
+        <div style={{ marginTop: 3 }}>
+          {paused
+            ? <Pill T={T} tone="neutral"><Dot color={T.hint} size={6} /> Paused · {bot.version}</Pill>
+            : bot.status === 'live'
+              ? <Pill T={T} tone="green"><Dot color={T.green} size={6} /> Live{uptime ? ` · up ${uptime}` : ''} · {bot.version}</Pill>
+              : <Pill T={T} tone="neutral">{bot.statusLabel}</Pill>}
         </div>
-        {bot.status === 'live'
-          ? <Pill T={T} tone="green"><Dot color={T.green} size={6} /> Live</Pill>
-          : <Pill T={T} tone="neutral">{bot.statusLabel}</Pill>}
       </div>
 
-      {/* builder — switch who builds anytime */}
-      <Card T={T} pad={0} style={{ overflow: 'hidden' }}>
-        <div style={{ display: 'flex', padding: 5, gap: 5 }}>
-          {(['platform', 'local'] as BuildMode[]).map(m => {
-            const sel = mode === m;
-            return (
-              <button key={m} onClick={() => switchMode(m)} style={{
-                ...btnReset, flex: 1, height: 36, borderRadius: 11,
-                background: sel ? T.accentSoft : 'transparent',
-                color: sel ? T.accent : T.hint,
-                fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
-                border: sel ? `1px solid ${T.accentBorder}` : '1px solid transparent',
-                transition: 'all .15s',
-              }}>
-                {m === 'platform' ? 'Platform builds' : 'Your agent builds'}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ borderTop: `0.5px solid ${T.sep}` }}>
-          {mode === 'platform' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px' }}>
-              <div style={{ width: 32, height: 32, borderRadius: 10, background: T.greenSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <TGIcon name="bolt" size={16} color={T.green} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.text }}>Platform agents on the job</div>
-                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>Code & PRs ship from our platform</div>
-              </div>
+      {/* primary action */}
+      <button onClick={onOpenChat} style={{
+        ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+        fontFamily: T.font, fontSize: 17, fontWeight: 600, boxShadow: `0 6px 18px ${hexA(T.accent, 0.32)}`,
+      }}>
+        <TGIcon name="chat" size={20} color="#fff" stroke={2} /> Open chat
+      </button>
+
+      {/* secondary actions */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 32, marginTop: -4 }}>
+        <button disabled={!botUsername} onClick={() => botUsername && openTgLink(`https://t.me/${botUsername}`)} style={{
+          ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600,
+          color: botUsername ? T.accent : T.hint, cursor: botUsername ? 'pointer' : 'default',
+        }}>
+          <TGIcon name="open" size={17} color={botUsername ? T.accent : T.hint} stroke={2} /> Test bot
+        </button>
+        <button onClick={onTogglePause} style={{
+          ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text,
+        }}>
+          <TGIcon name={paused ? 'play' : 'pause'} size={16} color={T.sub} stroke={2} /> {paused ? 'Resume' : 'Pause'}
+        </button>
+      </div>
+
+      {/* stats — single 3-up card */}
+      <Card T={T} pad={0}>
+        <div style={{ display: 'flex' }}>
+          {stats.map((s, i) => (
+            <div key={i} style={{ flex: 1, padding: '16px 8px', textAlign: 'center', borderLeft: i ? `0.5px solid ${T.sep}` : 'none' }}>
+              <div style={{ fontFamily: T.font, fontSize: 23, fontWeight: 700, letterSpacing: -0.4, color: s.tone === 'green' ? T.green : T.text }}>{s.value}</div>
+              <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 3 }}>{s.label}</div>
             </div>
-          ) : (
-            <button onClick={connected ? undefined : onConnectAgent} style={{
-              ...btnReset, width: '100%', textAlign: 'left',
-              display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px',
-              cursor: connected ? 'default' : 'pointer',
-            }}>
-              <div style={{ width: 32, height: 32, borderRadius: 10, background: connected ? T.greenSoft : T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <TGIcon name="link" size={16} color={connected ? T.green : T.accent} stroke={1.9} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.text }}>
-                  {connected ? `Agent · ${agentClient || 'connected'}` : 'No agent connected'}
-                </div>
-                <div style={{ fontFamily: T.font, fontSize: 12, color: connected ? T.green : T.hint, marginTop: 1 }}>
-                  {connected ? 'Connected — builds & pushes to the repo' : 'Tap to connect your Claude or Codex'}
-                </div>
-              </div>
-              {!connected && <TGIcon name="chevRight" size={16} color={T.hint} stroke={2} />}
-            </button>
-          )}
+          ))}
         </div>
       </Card>
 
-      {/* stats — real platform + repo numbers */}
-      <div style={{ display: 'flex', gap: 10 }}>
-        <StatTile T={T} value={tasks.length ? `${done}/${tasks.length}` : '—'} label="Tasks done" good={tasks.length > 0 && done >= tasks.length} />
-        <StatTile T={T} value={String(prodDeploys)} label={prodDeploys === 1 ? 'Deploy' : 'Deploys'} />
-        <StatTile T={T} value={commits7d != null ? String(commits7d) : '—'} label="Commits · 7d" />
-      </div>
+      {/* agent summary → manage sheet */}
+      <button onClick={onManageAgents} style={{ ...btnReset, width: '100%', textAlign: 'left' }}>
+        <Card T={T} pad={0}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
+            <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <TGIcon name="server" size={19} color={T.accent} stroke={1.9} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>
+                {connected ? '1 agent connected' : 'No agent connected'}
+              </div>
+              <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {connected
+                  ? <><Dot color={T.green} size={6} /> {agentClient || 'Agent'} · online</>
+                  : 'Add a cloud or local agent'}
+              </div>
+            </div>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.accent }}>
+              Manage <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
+            </span>
+          </div>
+        </Card>
+      </button>
 
-      {/* actions */}
-      <div style={{ display: 'flex', gap: 10 }}>
-        <ActionBtn T={T} icon="open" label="Test bot" disabled={!botUsername}
-          onClick={() => botUsername && openTgLink(`https://t.me/${botUsername}`)} />
-        <ActionBtn T={T} icon="chat" label="Chat" onClick={onOpenChat} />
+      {/* recent activity — timeline preview + view all */}
+      <div>
+        <SectionLabel T={T} right={
+          <button onClick={onViewActivity} style={{ ...btnReset, fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.accent }}>View all</button>
+        }>Recent activity</SectionLabel>
+        <div style={{ padding: '2px 4px 0' }}>
+          <ActivityTimeline T={T} events={activity} clamp />
+        </div>
       </div>
 
       {/* tasks — compact: phase stepper + one-line rows, expandable */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 4px 9px' }}>
-          <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3 }}>Tasks</span>
-          {tasks.length > 0 && (
-            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{done}/{tasks.length} done</span>
-          )}
-        </div>
+        <SectionLabel T={T} right={
+          tasks.length > 0 ? <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{done}/{tasks.length} done</span> : undefined
+        }>Tasks</SectionLabel>
         <Card T={T} pad={0}>
           {dag?.current_phase && <PhaseStrip T={T} dag={dag} />}
           {tasks.length === 0 && (
@@ -278,8 +311,7 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
                   <Pill T={T} tone={t.status === 'done' ? 'neutral' : 'accent'} style={{ height: 19, fontSize: 10, padding: '0 7px' }}>
                     {t.difficulty || 'task'}
                   </Pill>
-                  <TGIcon name="chevDown" size={14} color={T.hint} stroke={2}
-                    {...(open ? {} : {})} />
+                  <TGIcon name="chevDown" size={14} color={T.hint} stroke={2} />
                 </button>
 
                 {open && (
@@ -343,9 +375,7 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
 
       {/* tests — real when CI results land; honest placeholder until then */}
       <div>
-        <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>
-          Tests
-        </div>
+        <SectionLabel T={T}>Tests</SectionLabel>
         {(() => {
           const tr = latestTests(sys);
           if (!tr) return (
@@ -364,50 +394,6 @@ export function BotOverview({ T, bot, messages, onConnectAgent, onOpenChat, onDe
             </div>
           );
         })()}
-      </div>
-
-      {/* recent activity — latest build/deploy events */}
-      <div>
-        <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>
-          Recent activity
-        </div>
-        <Card T={T} pad={0}>
-          {activity.length === 0 && (
-            <div style={{ padding: 14, fontFamily: T.font, fontSize: 13.5, color: T.hint }}>
-              No events yet — they appear as the build progresses.
-            </div>
-          )}
-          {activity.map((m, i) => (
-            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderTop: i ? `0.5px solid ${T.sep}` : 'none' }}>
-              <Dot color={isFail(m) ? T.red : T.green} size={7} />
-              <span style={{
-                flex: 1, fontFamily: T.font, fontSize: 13.5, color: T.text, lineHeight: '18px',
-                overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-              }}>{m.content}</span>
-              <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.hint, flexShrink: 0 }}>{relTime(m.created_at)}</span>
-            </div>
-          ))}
-        </Card>
-      </div>
-
-      {/* full build log — after activity, replacing the mock's commands block */}
-      <div>
-        <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>
-          Logs
-        </div>
-        <div style={{ background: T.dark ? '#0a1119' : '#0d1620', borderRadius: 14, padding: 14, maxHeight: 180, overflow: 'auto' }}>
-          {sys.length === 0 && (
-            <span style={{ fontFamily: T.mono, fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>no build events yet…</span>
-          )}
-          {sys.map(m => (
-            <div key={m.id} style={{
-              fontFamily: T.mono, fontSize: 12, lineHeight: '19px',
-              color: isFail(m) ? '#ff9b8a' : '#b9f6ca',
-            }}>
-              <span style={{ color: 'rgba(255,255,255,0.35)' }}>[{relTime(m.created_at) || 'log'}] </span>{m.content}
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* delete — two-step inline confirm; the Telegram bot itself is the
@@ -478,21 +464,5 @@ function StatTile({ T, value, label, good }: { T: Theme; value: string; label: s
       <div style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: good ? T.green : T.text, letterSpacing: -0.4 }}>{value}</div>
       <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 2, lineHeight: '15px' }}>{label}</div>
     </Card>
-  );
-}
-
-function ActionBtn({ T, icon, label, onClick, disabled }: {
-  T: Theme; icon: string; label: string; onClick: () => void; disabled?: boolean;
-}) {
-  return (
-    <button onClick={disabled ? undefined : onClick} style={{
-      ...btnReset, flex: 1, height: 46, borderRadius: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-      background: T.cardBg, border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
-      color: disabled ? T.hint : T.accent, fontFamily: T.font, fontSize: 14.5, fontWeight: 600,
-      cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.6 : 1,
-    }}>
-      <TGIcon name={icon} size={17} color={disabled ? T.hint : T.accent} stroke={2} />
-      {label}
-    </button>
   );
 }

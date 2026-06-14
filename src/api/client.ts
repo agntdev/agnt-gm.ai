@@ -171,6 +171,8 @@ export function initiateBot(idOrSlug: string): Promise<BotInitiate> {
 export interface ProjectBot {
   bot_username?: string;
   bot_name?: string;
+  paused?: boolean;      // managed bot paused (webhook off) — once the API ships it
+  paused_at?: string;
 }
 
 // 404 until the managed-bot poller lands the row → null, keep polling.
@@ -411,4 +413,86 @@ export function createCliSession(clientName: string): Promise<CliSession> {
 
 export function pollCliSession(id: string): Promise<CliSessionPoll> {
   return request('GET', `/auth/cli-session/${encodeURIComponent(id)}`);
+}
+
+// ── Bot analytics (end-user usage of the DEPLOYED bot) ────────
+// Not in the API yet — 404/405 → null; the overview shows real build stats
+// until this lands. Mirrors the mock's "active users / today / vs. yest." card.
+export interface BotAnalytics {
+  active_users?: number;
+  messages_today?: number;
+  delta_pct?: number; // change vs. yesterday
+  window?: string;
+}
+
+export async function getBotAnalytics(idOrSlug: string): Promise<BotAnalytics | null> {
+  try {
+    return await request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/analytics`);
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return null;
+    throw e;
+  }
+}
+
+// ── Pause / resume the managed bot ────────────────────────────
+// Not in the API yet — set optimistically (404/405 tolerated, state kept
+// locally). The owner-visible status pill flips Live ⇄ Paused immediately.
+export function setBotPaused(idOrSlug: string, paused: boolean): Promise<unknown> {
+  return request('PUT', `/builder/projects/${encodeURIComponent(idOrSlug)}/bot/pause`, { paused });
+}
+
+// ── Local-agent registry (owner-scoped) + per-project assignment ──
+// The "Add an agent" surface: the owner's connected local agents across all
+// their projects, any of which can be assigned to a project to pick up its
+// tasks. Not in the API yet — list 404/405 → [], assign/unassign optimistic.
+// Until it ships, the manage sheet falls back to the single connected agent
+// from getAgentLink() — no invented agents are shown.
+export interface LocalAgent {
+  id: string;
+  name?: string;
+  client?: string;            // 'claude' | 'codex' | …
+  status?: 'online' | 'offline' | string;
+  last_seen_at?: string;
+  assigned?: boolean;         // assigned to the queried project
+}
+
+export async function listMyAgents(): Promise<LocalAgent[]> {
+  try {
+    const r = await request<{ agents?: LocalAgent[] }>('GET', '/builder/agents');
+    return r.agents || [];
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return [];
+    throw e;
+  }
+}
+
+export async function listProjectAgents(idOrSlug: string): Promise<LocalAgent[]> {
+  try {
+    const r = await request<{ agents?: LocalAgent[] }>('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/agents`);
+    return r.agents || [];
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return [];
+    throw e;
+  }
+}
+
+export function assignAgent(idOrSlug: string, agentId: string): Promise<unknown> {
+  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/agents/${encodeURIComponent(agentId)}/assign`);
+}
+
+export function unassignAgent(idOrSlug: string, agentId: string): Promise<unknown> {
+  return request('DELETE', `/builder/projects/${encodeURIComponent(idOrSlug)}/agents/${encodeURIComponent(agentId)}`);
+}
+
+// ── One-time cloud agent run ──────────────────────────────────
+// Triggers a SINGLE platform build pass (picks up the open tasks once, ships
+// PRs, then stops) — distinct from always-on platform mode. Not in the API
+// yet — 404/405 tolerated (the UI reports "couldn't start" only on real errors).
+export interface CloudRun {
+  run_id?: string;
+  status?: string;
+}
+
+export function runCloudAgent(idOrSlug: string): Promise<CloudRun> {
+  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/cloud-run`);
 }
