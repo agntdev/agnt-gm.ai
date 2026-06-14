@@ -8,9 +8,9 @@ import { Theme, btnReset, hexA } from '../theme';
 import { mintAgentLink, getAgentLink, Project, BuildMode } from '../api/client';
 import { TGIcon, Card, Pill, Dot, Spinner, Stepper } from '../ui';
 
-const INSTALL_CMD = 'npx skills add agntdev/skills --all';
+export const INSTALL_CMD = 'npx skills add agntdev/skills --all';
 
-function firstPrompt(project: Project | null, code: string): string {
+export function firstPrompt(project: Project | null, code: string): string {
   const slug = project?.slug || 'my-project';
   return [
     `Use the agnt-cli-builder skill to build my Telegram bot on agnt-gm.ai.`,
@@ -194,7 +194,7 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
   );
 }
 
-function CopyCard({ T, text, mono, small }: { T: Theme; text: string; mono?: boolean; small?: boolean }) {
+export function CopyCard({ T, text, mono, small }: { T: Theme; text: string; mono?: boolean; small?: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard?.writeText(text).catch(() => {});

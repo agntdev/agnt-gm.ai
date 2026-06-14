@@ -94,11 +94,11 @@ function SectionLabel({ T, children, right }: { T: Theme; children: ReactNode; r
   );
 }
 
-export function BotOverview({ T, bot, messages, onOpenChat, onDelete, onViewActivity, onManageAgents, paused, onTogglePause }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onDelete, onViewActivity, onManageAgents, cloudDeployed, paused, onTogglePause }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
   onOpenChat: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
-  paused: boolean; onTogglePause: () => void;
+  cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [detail, setDetail] = useState<Project | null>(null);
@@ -243,39 +243,31 @@ export function BotOverview({ T, bot, messages, onOpenChat, onDelete, onViewActi
         </div>
       </Card>
 
-      {/* agent summary → manage sheet */}
+      {/* agent summary → add-an-agent sheet (cloud or local) */}
       <button onClick={onManageAgents} style={{ ...btnReset, width: '100%', textAlign: 'left' }}>
         <Card T={T} pad={0}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
             <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TGIcon name="server" size={19} color={T.accent} stroke={1.9} />
+              <TGIcon name={connected ? 'code' : cloudDeployed ? 'cloud' : 'plus'} size={19} color={T.accent} stroke={1.9} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>
-                {connected ? '1 agent connected' : 'No agent connected'}
+                {connected ? 'Local agent' : cloudDeployed ? 'Cloud agent' : 'Add an agent'}
               </div>
               <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {connected
-                  ? <><Dot color={T.green} size={6} /> {agentClient || 'Agent'} · online</>
-                  : 'Add a cloud or local agent'}
+                  ? <><Dot color={T.green} size={6} /> {agentClient || 'Claude'} · online</>
+                  : cloudDeployed
+                    ? <><Dot color={T.green} size={6} /> running</>
+                    : 'Cloud or local — your choice'}
               </div>
             </div>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.accent }}>
-              Manage <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
+              {connected || cloudDeployed ? 'Manage' : 'Add'} <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
             </span>
           </div>
         </Card>
       </button>
-
-      {/* recent activity — timeline preview + view all */}
-      <div>
-        <SectionLabel T={T} right={
-          <button onClick={onViewActivity} style={{ ...btnReset, fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.accent }}>View all</button>
-        }>Recent activity</SectionLabel>
-        <div style={{ padding: '2px 4px 0' }}>
-          <ActivityTimeline T={T} events={activity} clamp />
-        </div>
-      </div>
 
       {/* tasks — compact: phase stepper + one-line rows, expandable */}
       <div>
@@ -394,6 +386,16 @@ export function BotOverview({ T, bot, messages, onOpenChat, onDelete, onViewActi
             </div>
           );
         })()}
+      </div>
+
+      {/* recent activity — moved to the bottom; timeline preview + view all */}
+      <div>
+        <SectionLabel T={T} right={
+          <button onClick={onViewActivity} style={{ ...btnReset, fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.accent }}>View all</button>
+        }>Recent activity</SectionLabel>
+        <div style={{ padding: '2px 4px 0' }}>
+          <ActivityTimeline T={T} events={activity} clamp />
+        </div>
       </div>
 
       {/* delete — two-step inline confirm; the Telegram bot itself is the
