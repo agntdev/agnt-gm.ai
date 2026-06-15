@@ -390,6 +390,9 @@ export interface UnifiedTasks {
   tasks: TaskItem[];
   token_symbol?: string;
   dag?: DagInfo;
+  // task_manager discriminator derived from the SAME /dag fetch (node_kind) — so
+  // callers don't need a second getProjectDag just to route old vs new (gap #1).
+  isTaskManager?: boolean;
 }
 
 // DAG first (the real system for chat-created projects), legacy list as
@@ -399,6 +402,7 @@ export async function fetchProjectTasks(idOrSlug: string): Promise<UnifiedTasks>
     const d = await getProjectDag(idOrSlug);
     if (d.tasks?.length || d.current_phase) {
       return {
+        isTaskManager: isTaskManagerDag(d),
         tasks: (d.tasks || []).map(t => ({
           id: t.slug,
           slug: t.slug,
@@ -421,7 +425,7 @@ export async function fetchProjectTasks(idOrSlug: string): Promise<UnifiedTasks>
     }
   } catch { /* no DAG — legacy project */ }
   const legacy = await listProjectTasks(idOrSlug);
-  return { tasks: legacy.tasks || [], token_symbol: legacy.token_symbol };
+  return { tasks: legacy.tasks || [], token_symbol: legacy.token_symbol, isTaskManager: false };
 }
 
 // ── Deployments (real deploy history; most recent first) ─────

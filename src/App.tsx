@@ -12,7 +12,7 @@ import {
 } from './telegram';
 import {
   ApiError, Project,
-  startChat, getProject, publishProject, deleteProject,
+  startChat, getProject, getProjectPipeline, publishProject, deleteProject,
   BuildMode, setBuildModeApi,
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
@@ -245,6 +245,21 @@ export default function App() {
     }
   };
 
+  // task_manager handoff (§7a): once the chat-created project leaves 'draft'
+  // decomposition has begun. Unlike the phase pipeline (spec → create bot →
+  // agent → publish), a task_manager project auto-decomposes and the owner just
+  // watches the living board — so drop them straight onto #/bots/:id/taskboard.
+  const handoffToBoard = (p: Project) => {
+    cancelPoll.current();
+    const bot = { ...botFromProject(p), isTaskManager: true }; // verdict known — board renders tap-through immediately
+    setMyBots(prev => prev.some(b => b.id === p.id) ? prev : [bot, ...prev]);
+    resetPipeline();
+    localStorage.removeItem(PIPELINE_KEY);
+    setIdea(''); setChanged(false); setStep(0);
+    setManageBot(p.id); setManageView('taskboard'); setDir(1); setTab('manage');
+    void refreshMyBots(p.id);
+  };
+
   // status poll: draft (chatting) → validating (plan-gen) → ready_to_publish.
   // No timeout while drafting — the owner chats at their own pace.
   const pollPlan = (projectId: string) => {
@@ -258,6 +273,22 @@ export default function App() {
         if (cancelled) return;
         setProject(d.project);
         const st = d.project.status;
+        // task_manager vs phase: once status leaves 'draft', discriminate by
+        // build_pipeline (when present), else status 'generating' (the
+        // task_manager-only decomposing state — phase uses validating→
+        // ready_to_publish), else probe /dag for node_kind. Probe every tick —
+        // the DAG may still be empty the instant decomposition starts; phase
+        // projects keep falling through unchanged below. This MUST precede both
+        // the live→'ready' branch (so a populated task_manager DAG hands off
+        // before the phase publish UI shows) and the 4-min plan-gen timeout (so
+        // a slow decomposition isn't killed before the board handoff fires).
+        if (st !== 'draft') {
+          const tm = d.project.build_pipeline
+            ? d.project.build_pipeline === 'task_manager'
+            : st === 'generating' || (await getProjectPipeline(projectId)) === 'task_manager';
+          if (cancelled) return;
+          if (tm) { handoffToBoard(d.project); return; }
+        }
         if (st === 'ready_to_publish' || st === 'publishing' || st === 'live') { setGen('ready'); return; }
         if (st === 'rejected' || st === 'failed') {
           setGenError(d.project.rejection_reason || `plan ${st}`); setGen('error'); return;

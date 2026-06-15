@@ -6,9 +6,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Theme, btnReset, hexA } from '../theme';
 import {
-  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot,
+  ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, ProjectSpec,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  getProjectDag, isTaskManagerDag, botIsLive,
+  botIsLive, retryDeploy, setAutoMerge, getProjectSpec,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
@@ -133,14 +133,13 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
-      const [d, t, dep, b, l, an, rawDag] = await Promise.all([
+      const [d, t, dep, b, l, an] = await Promise.all([
         getProject(bot.id).catch(() => null),
         fetchProjectTasks(bot.id).catch(() => null),
         listDeployments(bot.id).catch(() => null),
         getProjectBot(bot.id).catch(() => null),
         getAgentLink(bot.id).catch(() => null),
         getBotAnalytics(bot.id).catch(() => null),
-        getProjectDag(bot.id).catch(() => null),
       ]);
       if (cancelled) return;
       if (d) setDetail(d.project);
@@ -149,9 +148,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       if (b) { setBotRow(b); if (b.bot_username) setBotUsername(b.bot_username); }
       if (l) setLink(l);
       if (an) setAnalytics(an);
-      // route old vs new: build_pipeline (once it ships) else node_kind on /dag
+      // route old vs new: build_pipeline (once it ships) else node_kind off the
+      // DAG fetchProjectTasks already loaded — no second /dag round-trip.
       if (d?.project.build_pipeline) setIsTaskManager(d.project.build_pipeline === 'task_manager');
-      else if (rawDag) setIsTaskManager(isTaskManagerDag(rawDag));
+      else if (t) setIsTaskManager(t.isTaskManager ?? false);
       timer = setTimeout(tick, 12000);
     };
     void tick();
@@ -303,6 +303,12 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           </div>
         </Card>
       </button>
+
+      {/* task_manager owner controls: spec doc · auto-merge · retry deploy */}
+      {isTaskManager && (
+        <TaskManagerControls T={T} projectId={bot.id} repoUrl={repoUrl} live={live}
+          autoMergeEnabled={detail?.auto_merge_enabled} hasBot={!!botRow} />
+      )}
 
       {/* tasks — compact: phase stepper + one-line rows, expandable */}
       <div>
@@ -491,6 +497,153 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </Card>
       )}
     </div>
+  );
+}
+
+// ── task_manager owner controls (spec · auto-merge · retry deploy) ──
+// Only rendered for task_manager bots. Reuses the file's Card/LinkChip/Switch
+// + the client helpers; all owner-only POST/PATCH, optimistic with verbatim
+// error text (409/503 are actionable — surfaced as-is).
+function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, hasBot }: {
+  T: Theme; projectId: string; repoUrl?: string; live: boolean;
+  autoMergeEnabled?: boolean; hasBot: boolean;
+}) {
+  // Spec doc (gap #2): real endpoint if it exists, else link docs/spec.md in the repo.
+  const [spec, setSpec] = useState<ProjectSpec | null | 'loading'>('loading');
+  const [specOpen, setSpecOpen] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setSpec('loading');
+    getProjectSpec(projectId)
+      .then(s => { if (!cancelled) setSpec(s); })
+      .catch(() => { if (!cancelled) setSpec(null); });
+    return () => { cancelled = true; };
+  }, [projectId]);
+  const specBody = spec && spec !== 'loading' ? (spec.body_md || spec.content || spec.markdown || '') : '';
+  const specLink = (spec && spec !== 'loading' && spec.url)
+    || (repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/spec.md` : null);
+
+  // Auto-merge (§6.6): seed from the project DTO; optimistic flip, revert on error.
+  const [amOn, setAmOn] = useState(autoMergeEnabled ?? true);
+  const [amBusy, setAmBusy] = useState(false);
+  const [amError, setAmError] = useState<string | null>(null);
+  useEffect(() => { if (autoMergeEnabled !== undefined) setAmOn(autoMergeEnabled); }, [autoMergeEnabled]);
+  const toggleAutoMerge = async () => {
+    if (amBusy) return;
+    const next = !amOn;
+    setAmOn(next); setAmBusy(true); setAmError(null);
+    try { await setAutoMerge(projectId, next); }
+    catch (e) { setAmOn(!next); setAmError(e instanceof ApiError ? e.message : 'network error — try again'); }
+    finally { setAmBusy(false); }
+  };
+
+  // Retry deploy (§6.7): async 202 → optimistic "started" line; 409/503 verbatim.
+  // The button stays tappable while pending so a stalled/failed deploy (narrated
+  // into chat, never reaching `live`) is always retriable. Cleared once live.
+  const [dpBusy, setDpBusy] = useState(false);
+  const [dpPending, setDpPending] = useState(false);
+  const [dpError, setDpError] = useState<string | null>(null);
+  useEffect(() => { if (live) setDpPending(false); }, [live]);
+  const onRetryDeploy = async () => {
+    if (dpBusy) return;
+    setDpBusy(true); setDpError(null);
+    try { await retryDeploy(projectId); setDpPending(true); }
+    catch (e) {
+      setDpPending(false);
+      setDpError(e instanceof ApiError ? (e.warning || `${e.message}${e.details ? ` — ${e.details}` : ''}`) : 'network error — try again');
+    } finally { setDpBusy(false); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* spec */}
+      <div>
+        <SectionLabel T={T} right={specBody && specLink
+          ? <button onClick={() => openExternal(specLink)} style={{ ...btnReset, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent }}>Open</button>
+          : undefined
+        }>Spec</SectionLabel>
+        <Card T={T} pad={0}>
+          {spec === 'loading' ? (
+            <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 9 }}>
+              <Spinner color={T.hint} size={14} />
+              <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>Loading spec…</span>
+            </div>
+          ) : specBody ? (
+            <div style={{ padding: '12px 14px' }}>
+              <div style={{
+                fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '19px',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                maxHeight: specOpen ? 420 : 96, overflowY: specOpen ? 'auto' : 'hidden',
+              }}>{specBody}</div>
+              {specBody.length > 220 && (
+                <button onClick={() => setSpecOpen(v => !v)} style={{
+                  ...btnReset, marginTop: 8, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent,
+                }}>{specOpen ? 'Show less' : 'Read more'}</button>
+              )}
+            </div>
+          ) : specLink ? (
+            <div style={{ padding: '12px 14px' }}>
+              <LinkChip T={T} label="View spec" onClick={() => openExternal(specLink)} />
+            </div>
+          ) : (
+            <div style={{ padding: 14, fontFamily: T.font, fontSize: 13, color: T.hint, lineHeight: '18px' }}>
+              The spec appears here once your idea is decomposed.
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* auto-merge + retry deploy */}
+      <Card T={T} pad={0}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Auto-merge PRs</div>
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>
+              {amOn ? 'Approved PRs merge automatically.' : 'Approved PRs stay open — merge them on GitHub.'}
+            </div>
+          </div>
+          <Switch T={T} on={amOn} busy={amBusy} onClick={() => void toggleAutoMerge()} />
+        </div>
+        {amError && (
+          <div style={{ padding: '0 14px 11px', fontFamily: T.font, fontSize: 12, color: T.amber, lineHeight: '16px' }}>{amError}</div>
+        )}
+
+        {hasBot && (
+          <div style={{ borderTop: `0.5px solid ${T.sep}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+            <button onClick={() => void onRetryDeploy()} disabled={dpBusy} style={{
+              ...btnReset, width: '100%', height: 42, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              background: T.accentSoft, color: T.accent, fontFamily: T.font, fontSize: 14, fontWeight: 600,
+            }}>
+              {dpBusy ? <Spinner color={T.accent} size={15} /> : <TGIcon name="refresh" size={16} color={T.accent} stroke={2} />}
+              {live ? 'Redeploy bot' : 'Retry deploy'}
+            </button>
+            {dpPending && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: T.font, fontSize: 12.5, color: T.accent, lineHeight: '17px' }}>
+                <Spinner color={T.accent} size={13} /> Deploy started — watching for it to come online…
+              </div>
+            )}
+            {dpError && (
+              <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.red, lineHeight: '17px' }}>{dpError}</div>
+            )}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function Switch({ T, on, onClick, busy }: { T: Theme; on: boolean; onClick: () => void; busy?: boolean }) {
+  return (
+    <button onClick={busy ? undefined : onClick} aria-pressed={on} style={{
+      ...btnReset, width: 46, height: 28, borderRadius: 999, flexShrink: 0, position: 'relative',
+      background: on ? T.accent : (T.dark ? 'rgba(255,255,255,0.16)' : 'rgba(15,22,32,0.16)'),
+      transition: 'background .2s', opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer',
+    }}>
+      <span style={{
+        position: 'absolute', top: 3, left: on ? 21 : 3, width: 22, height: 22, borderRadius: 999,
+        background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'left .2s',
+      }} />
+    </button>
   );
 }
 

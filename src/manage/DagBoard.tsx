@@ -64,7 +64,13 @@ const isFix = (t: DagTask) => /^fix[-:]/i.test(t.slug);
 // onOpenTask (optional): when provided, tapping a task row opens the TaskDetail
 // panel (the task_manager flow) instead of inline-expanding. Absent ⇒ unchanged
 // inline-expand behaviour (the phase fallback).
-export function DagBoard({ T, bot, onOpenTask }: { T: Theme; bot: MyBot; onOpenTask?: (slug: string) => void }) {
+// onKind (optional): reports the pipeline (task_manager once any row carries
+// node_kind, else phase) off the board's OWN /dag poll — lets the BoardView
+// wrapper discriminate without a second fetch and self-heal mid-decompose.
+export function DagBoard({ T, bot, onOpenTask, onKind }: {
+  T: Theme; bot: MyBot; onOpenTask?: (slug: string) => void;
+  onKind?: (kind: 'task_manager' | 'phase') => void;
+}) {
   const [tasks, setTasks] = useState<DagTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [details, setDetails] = useState<Record<string, TaskDetail | 'loading' | 'none'>>({});
@@ -75,6 +81,15 @@ export function DagBoard({ T, bot, onOpenTask }: { T: Theme; bot: MyBot; onOpenT
   const [errored, setErrored] = useState(false); // /dag failing on first load (no snapshot yet)
   const requested = useRef<Set<string>>(new Set());
   const fails = useRef(0);
+  const onKindRef = useRef(onKind);
+  onKindRef.current = onKind;
+
+  // report the pipeline off our own poll (node_kind ⇒ task_manager) so the
+  // BoardView wrapper can route + self-heal without a separate /dag probe.
+  useEffect(() => {
+    if (tasks.length === 0) return;
+    onKindRef.current?.(tasks.some(t => !!t.node_kind) ? 'task_manager' : 'phase');
+  }, [tasks]);
 
   // fresh state per bot
   useEffect(() => {
