@@ -8,10 +8,12 @@ const BASE: string = (import.meta.env.VITE_API_BASE as string | undefined)
 export class ApiError extends Error {
   status: number;
   details?: string;
-  constructor(status: number, message: string, details?: string) {
+  warning?: string; // 409s carry an actionable `warning` (e.g. cancel-review escape) — surfaced verbatim
+  constructor(status: number, message: string, details?: string, warning?: string) {
     super(message);
     this.status = status;
     this.details = details;
+    this.warning = warning;
   }
 }
 
@@ -32,7 +34,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   let json: any = null;
   try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON body */ }
   if (!res.ok && res.status !== 202) {
-    throw new ApiError(res.status, json?.error || res.statusText || 'request failed', json?.details);
+    throw new ApiError(res.status, json?.error || res.statusText || 'request failed', json?.details, json?.warning);
   }
   return json as T;
 }
@@ -71,6 +73,14 @@ export interface Project {
   created_at?: string;
   published_at?: string;
   build_mode?: string; // 'local_agent' | 'platform_agent' once the API ships it
+  // ── task_manager flow (landing on the project DTO; absent for now — feature-detect) ──
+  build_pipeline?: 'phase' | 'task_manager' | string; // discriminator (gap #1 — absent today)
+  current_phase?: string;   // 'published' once the bot is actually live (gap #4 workaround)
+  phase_status?: string;
+  bot_go_live_at?: string;  // server-side only today (gap #4)
+  decomposed_at?: string;
+  auto_merge_enabled?: boolean;
+  auto_merge_after_revalidation?: boolean;
 }
 
 export interface ProjectCreated {
@@ -171,8 +181,23 @@ export function initiateBot(idOrSlug: string): Promise<BotInitiate> {
 export interface ProjectBot {
   bot_username?: string;
   bot_name?: string;
-  paused?: boolean;      // managed bot paused (webhook off) — once the API ships it
+  bot_id?: string;
+  is_managed?: boolean;
+  container_state?: string; // live-status surface — non-empty/'running' ⇒ the bot actually serves users
+  last_active_at?: string;
+  created_at?: string;
+  version?: string;
+  commands?: unknown;
+  paused?: boolean;      // managed bot paused (webhook off)
   paused_at?: string;
+}
+
+// the managed bot is actually serving users (the only FE-visible go-live signal
+// besides current_phase==='published') — do NOT key this off project.status.
+export function botIsLive(b: ProjectBot | null | undefined): boolean {
+  if (!b || b.paused) return false;
+  const s = (b.container_state || '').toLowerCase();
+  return /run|live|ready|active|started|up|healthy|serving/.test(s);
 }
 
 // 404 until the managed-bot poller lands the row → null, keep polling.
@@ -313,6 +338,35 @@ export interface DagTask {
   claim_reason?: string;
   assignee_agent_id?: string; // the bound executor
   claimers?: ClaimerBrief[];  // 2h soft-claims; never null
+  // landing on the /dag DTO (gap #3) — feature-detect; until then fetch per-task
+  parent_id?: string; // epic→subtask tree
+  skills?: string[];  // skills the task references (a.k.a. skill_refs on the per-task GET)
+}
+
+// task_manager rows carry node_kind; phase rows carry `phase` and no node_kind.
+// Presence of node_kind on /dag is the reliable discriminator (gap #1 workaround).
+export function isTaskManagerDag(d: { tasks?: DagTask[] } | null | undefined): boolean {
+  return !!d?.tasks?.some(t => !!t.node_kind);
+}
+
+// route old vs new per project: prefer the (future) build_pipeline field, else
+// fall back to inspecting the DAG for node_kind.
+export function pipelineOf(
+  p?: Pick<Project, 'build_pipeline'> | null,
+  d?: { tasks?: DagTask[] } | null,
+): 'task_manager' | 'phase' {
+  if (p?.build_pipeline === 'task_manager') return 'task_manager';
+  if (p?.build_pipeline === 'phase') return 'phase';
+  return isTaskManagerDag(d) ? 'task_manager' : 'phase';
+}
+
+// one-shot discriminator at board/inbox open — public /dag, no token needed.
+export async function getProjectPipeline(idOrSlug: string): Promise<'task_manager' | 'phase'> {
+  try {
+    return isTaskManagerDag(await getProjectDag(idOrSlug)) ? 'task_manager' : 'phase';
+  } catch {
+    return 'phase';
+  }
 }
 
 export interface DagInfo {
@@ -473,4 +527,113 @@ export interface CloudRun {
 
 export function runCloudAgent(idOrSlug: string): Promise<CloudRun> {
   return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/cloud-agent`);
+}
+
+// ── task_manager: clarification thread + owner actions ─────────
+// The owner only watches and unblocks — these are the actions that move a
+// living DAG forward. All owner-only; a non-owner gets 403, a phase project 404.
+
+// a single thread comment (color by author_role; kind='answer' = the resolving reply)
+export interface TaskComment {
+  id: number;
+  task_id?: string;
+  project_id?: string;
+  author_role: 'agent' | 'owner' | 'system' | string;
+  author_agent_id?: string;
+  kind?: 'note' | 'question' | 'answer' | string;
+  body_md: string;
+  created_at?: string;
+}
+
+export function getTaskThread(idOrSlug: string, slug: string): Promise<{ comments: TaskComment[] }> {
+  return request('GET',
+    `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks/${encodeURIComponent(slug)}/thread`);
+}
+
+// Resolving reply to a node_kind='question' task — flips it done + unblocks deps.
+export interface AnswerResult { question_slug?: string; unblocked?: string[] }
+export function answerQuestion(idOrSlug: string, slug: string, bodyMd: string): Promise<AnswerResult> {
+  return request('POST',
+    `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks/${encodeURIComponent(slug)}/answer`,
+    { body_md: bodyMd });
+}
+
+// Non-resolving note on any task thread (back-and-forth that doesn't unblock).
+export function addTaskComment(idOrSlug: string, slug: string, bodyMd: string): Promise<{ ok: boolean; comment_id?: number }> {
+  return request('POST',
+    `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks/${encodeURIComponent(slug)}/comments`,
+    { body_md: bodyMd });
+}
+
+// Cancel a task. Cancelling a node_kind='review' task requires ?confirm=true —
+// without it the API 409s with an actionable `warning` (the cancel-review escape).
+export interface CancelResult { slug?: string; status?: string; cascaded_cancels?: number }
+export function cancelTask(idOrSlug: string, slug: string, confirm = false): Promise<CancelResult> {
+  const q = confirm ? '?confirm=true' : '';
+  return request('POST',
+    `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks/${encodeURIComponent(slug)}/cancel${q}`);
+}
+
+// Reopen a failed task (resets attempt_count). 409 if the task isn't 'failed'.
+export function reopenTask(idOrSlug: string, slug: string): Promise<{ slug?: string; status?: string }> {
+  return request('POST',
+    `/builder/projects/${encodeURIComponent(idOrSlug)}/tasks/${encodeURIComponent(slug)}/reopen`);
+}
+
+// "Needs your input" inbox: open questions + blocked + failed tasks, oldest first.
+export interface BlockedItem {
+  slug: string;
+  title: string;
+  node_kind?: string;
+  status: string;
+  blocked_since?: string;
+  warning?: string; // a systemically-failed review holding the go-live gate
+}
+export function getBlockedItems(idOrSlug: string): Promise<{ items: BlockedItem[] }> {
+  return request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/blocked`);
+}
+
+// Post-go-live feedback that materializes NEW tasks into the living DAG.
+// Async (202). Rate limited 20/hr → 429. (Equivalent to a chat message once live.)
+export function postFeedback(idOrSlug: string, text: string): Promise<{ accepted?: boolean }> {
+  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/feedback`, { text });
+}
+
+// Manual vs auto merge. Default enabled=true (PRs auto-merge). enabled=false
+// leaves approved PRs open for the owner to merge on GitHub (no in-app merge).
+export interface AutoMergeResult {
+  ok?: boolean;
+  project_id?: string;
+  auto_merge_enabled?: boolean;
+  auto_merge_after_revalidation?: boolean;
+}
+export function setAutoMerge(idOrSlug: string, enabled: boolean, afterRevalidation?: boolean): Promise<AutoMergeResult> {
+  const body: { enabled: boolean; after_revalidation?: boolean } = { enabled };
+  if (afterRevalidation !== undefined) body.after_revalidation = afterRevalidation;
+  return request('PATCH', `/builder/projects/${encodeURIComponent(idOrSlug)}/auto-merge`, body);
+}
+
+// "Retry deploy" — async (202). 409s carry the reason (no bot token, tests gate,
+// already running); 503 if the deploy worker is unconfigured. Narrated into chat.
+export function retryDeploy(idOrSlug: string): Promise<{ ok?: boolean; status?: string; project_id?: string }> {
+  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/deploy`);
+}
+
+// Spec doc. No public endpoint exists yet (gap #2) — 404/405 → null and the UI
+// falls back to linking docs/spec.md in the repo. Tolerant of the eventual shape.
+export interface ProjectSpec {
+  title?: string;
+  body_md?: string;
+  content?: string;
+  markdown?: string;
+  updated_at?: string;
+  url?: string;
+}
+export async function getProjectSpec(idOrSlug: string): Promise<ProjectSpec | null> {
+  try {
+    return await request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/spec`);
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return null;
+    throw e;
+  }
 }
