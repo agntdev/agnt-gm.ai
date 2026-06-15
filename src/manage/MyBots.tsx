@@ -16,6 +16,10 @@ export interface MyBot {
   inProgress: boolean; // not deployed yet — tapping resumes the build pipeline
   statusLabel: string;
   preview: string;
+  // task_manager (living DAG) vs the legacy phase pipeline. From the project's
+  // build_pipeline once it ships (gap #1); undefined today → the board/overview
+  // fall back to probing /dag for node_kind. Drives which board/inbox to show.
+  isTaskManager?: boolean;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -40,6 +44,8 @@ export function botFromProject(p: Project): MyBot {
     inProgress: !deployed,
     statusLabel: STATUS_LABELS[p.status] || p.status,
     preview: desc,
+    // undefined until the DTO carries build_pipeline; the board/overview probe /dag otherwise
+    isTaskManager: p.build_pipeline ? p.build_pipeline === 'task_manager' : undefined,
   };
 }
 
