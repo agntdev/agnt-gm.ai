@@ -27,6 +27,9 @@ import { AgentScreen } from './screens/Agent';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
 import { BotOverview } from './manage/BotOverview';
 import { DagBoard } from './manage/DagBoard';
+import { BoardView } from './manage/TaskManagerBoard';
+import { TaskManagerInbox } from './manage/TaskManagerInbox';
+import { TaskDetail } from './manage/TaskDetail';
 import { ActivityPage } from './manage/Activity';
 import { AgentManager } from './manage/AgentManager';
 import { ConnectAgent } from './manage/ConnectAgent';
@@ -194,7 +197,8 @@ export default function App() {
   const [myBots, setMyBots] = useState<MyBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(false);
   const [manageBot, setManageBot] = useState<string | null>(null);
-  const [manageView, setManageView] = useState<'overview' | 'board' | 'chat' | 'activity' | 'connect'>('overview');
+  const [manageView, setManageView] = useState<'overview' | 'board' | 'taskboard' | 'inbox' | 'chat' | 'activity' | 'connect'>('overview');
+  const [detailTask, setDetailTask] = useState<string | null>(null); // task_manager TaskDetail overlay (slug)
   const [hiddenBots, setHiddenBots] = useState<Set<string>>(loadHidden);
   const [pausedBots, setPausedBots] = useState<Set<string>>(loadPaused);
   const [cloudBots, setCloudBots] = useState<Set<string>>(loadCloud);
@@ -211,6 +215,10 @@ export default function App() {
   // a stale "couldn't start the build" error shouldn't linger when you leave
   // (or re-enter) the agent step
   useEffect(() => { if (id !== 'agent') setBuildError(null); }, [id]);
+
+  // close the TaskDetail overlay whenever the open bot or view changes, so a
+  // stale slug never bleeds across bots/screens
+  useEffect(() => { setDetailTask(null); }, [manageBot, manageView]);
 
   // ── the clarify chat (real, on the draft project) ──
   const clarifyChat = useChat(project?.id ?? null, tab === 'build' && id === 'clarify');
@@ -331,7 +339,7 @@ export default function App() {
       setTab('manage');
       if (parts[1]) {
         setManageBot(parts[1]);
-        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'connect' ? 'connect' : parts[2] === 'board' ? 'board' : 'overview');
+        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'connect' ? 'connect' : parts[2] === 'taskboard' ? 'taskboard' : parts[2] === 'inbox' ? 'inbox' : parts[2] === 'board' ? 'board' : 'overview');
       }
       routeReady.current = true;
     } else if (parts[0] === 'build' && parts[1]) {
@@ -344,7 +352,7 @@ export default function App() {
 
   useEffect(() => {
     if (!routeReady.current) return;
-    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'connect' ? '/connect' : manageView === 'board' ? '/board' : '';
+    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'connect' ? '/connect' : manageView === 'taskboard' ? '/taskboard' : manageView === 'inbox' ? '/inbox' : manageView === 'board' ? '/board' : '';
     const h = tab === 'manage'
       ? (manageBot ? `#/bots/${manageBot}${sub}` : '#/bots')
       : project ? `#/build/${project.id}` : '#/';
@@ -598,6 +606,7 @@ export default function App() {
   })();
   const closeChat = () => {
     setDir(-1);
+    if (detailTask) { setDetailTask(null); return; } // close the TaskDetail overlay first
     if (agentSheet) { setAgentSheet(false); return; }
     if (manageView !== 'overview') setManageView('overview');
     else setManageBot(null);
@@ -648,8 +657,8 @@ export default function App() {
   const header = insideTelegram ? null : (tab === 'manage'
     ? (activeBot
       ? <TGHeader T={T}
-          title={manageView === 'activity' ? 'Activity' : manageView === 'connect' ? 'Connect agent' : manageView === 'board' ? 'Build board' : activeBot.name}
-          subtitle={manageView === 'activity' || manageView === 'connect' || manageView === 'board' ? '@' + activeBot.handle : '@' + activeBot.handle + ' · ' + activeBot.version}
+          title={manageView === 'activity' ? 'Activity' : manageView === 'connect' ? 'Connect agent' : manageView === 'board' || manageView === 'taskboard' ? 'Build board' : manageView === 'inbox' ? 'Needs you' : activeBot.name}
+          subtitle={manageView === 'overview' || manageView === 'chat' ? '@' + activeBot.handle + ' · ' + activeBot.version : '@' + activeBot.handle}
           onBack={closeChat} />
       : <TGHeader T={T} title="My Bots" subtitle="Deployed on AgentBot" />)
     : <TGHeader T={T} title="AgentBot" subtitle={STAGE_SUB[id]} onBack={onBack} />);
@@ -665,6 +674,14 @@ export default function App() {
         ? <ActivityPage T={T} bot={activeBot} events={manageChat.messages.filter(m => m.role === 'system')} />
         : manageView === 'board'
         ? <DagBoard T={T} bot={activeBot} />
+        : manageView === 'taskboard'
+        // task_manager → tap-through TaskManagerBoard; phase → DagBoard (BoardView discriminates)
+        ? <BoardView T={T} bot={activeBot}
+            known={activeBot.isTaskManager === true ? 'task_manager' : activeBot.isTaskManager === false ? 'phase' : undefined}
+            onOpenTask={(slug) => { setDir(1); setDetailTask(slug); }} />
+        : manageView === 'inbox'
+        ? <TaskManagerInbox T={T} bot={activeBot}
+            onOpenTask={(slug) => { setDir(1); setDetailTask(slug); }} />
         : manageView === 'connect'
         ? <ConnectAgent T={T} bot={activeBot} onConnected={() => {
             // a local agent now owns the bot — it supersedes any cloud agent
@@ -678,7 +695,8 @@ export default function App() {
           }} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
             onOpenChat={() => { setDir(1); setManageView('chat'); }}
-            onOpenBoard={() => { setDir(1); setManageView('board'); }}
+            onOpenBoard={() => { setDir(1); setManageView('taskboard'); }}
+            onOpenInbox={() => { setDir(1); setManageView('inbox'); }}
             onViewActivity={() => { setDir(1); setManageView('activity'); }}
             onManageAgents={() => setAgentSheet(true)}
             cloudDeployed={cloudBots.has(activeBot.id)}
@@ -759,6 +777,12 @@ export default function App() {
             setManageView('connect');
           }}
           onClose={() => setAgentSheet(false)} />
+      )}
+
+      {/* task_manager: per-task detail panel — overlay opened from the board/inbox */}
+      {detailTask && manageBot && (
+        <TaskDetail T={T} projectId={manageBot} slug={detailTask}
+          onClose={() => setDetailTask(null)} />
       )}
     </div>
   );
