@@ -26,6 +26,7 @@ import { SpecScreen } from './screens/Spec';
 import { AgentScreen } from './screens/Agent';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
 import { BotOverview } from './manage/BotOverview';
+import { DagBoard } from './manage/DagBoard';
 import { ActivityPage } from './manage/Activity';
 import { AgentManager } from './manage/AgentManager';
 import { ConnectAgent } from './manage/ConnectAgent';
@@ -193,7 +194,7 @@ export default function App() {
   const [myBots, setMyBots] = useState<MyBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(false);
   const [manageBot, setManageBot] = useState<string | null>(null);
-  const [manageView, setManageView] = useState<'overview' | 'chat' | 'activity' | 'connect'>('overview');
+  const [manageView, setManageView] = useState<'overview' | 'board' | 'chat' | 'activity' | 'connect'>('overview');
   const [hiddenBots, setHiddenBots] = useState<Set<string>>(loadHidden);
   const [pausedBots, setPausedBots] = useState<Set<string>>(loadPaused);
   const [cloudBots, setCloudBots] = useState<Set<string>>(loadCloud);
@@ -330,7 +331,7 @@ export default function App() {
       setTab('manage');
       if (parts[1]) {
         setManageBot(parts[1]);
-        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'connect' ? 'connect' : 'overview');
+        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'connect' ? 'connect' : parts[2] === 'board' ? 'board' : 'overview');
       }
       routeReady.current = true;
     } else if (parts[0] === 'build' && parts[1]) {
@@ -343,7 +344,7 @@ export default function App() {
 
   useEffect(() => {
     if (!routeReady.current) return;
-    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'connect' ? '/connect' : '';
+    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'connect' ? '/connect' : manageView === 'board' ? '/board' : '';
     const h = tab === 'manage'
       ? (manageBot ? `#/bots/${manageBot}${sub}` : '#/bots')
       : project ? `#/build/${project.id}` : '#/';
@@ -570,10 +571,14 @@ export default function App() {
         disabled: gen !== 'ready', busy: gen === 'generating' && project?.status !== 'draft',
         onClick: next,
       };
-      case 'spec': return {
-        label: botCreated ? 'Connect agent' : botInit ? 'Waiting for your bot…' : 'Create the bot to continue',
-        disabled: !botCreated, busy: !!botInit && !botCreated, onClick: next,
-      };
+      case 'spec':
+        // while the bot is being created in Telegram, the waiting state lives in
+        // the spec card (with its own spinner) — don't duplicate it in the footer
+        if (botInit && !botCreated) return null;
+        return {
+          label: botCreated ? 'Connect agent' : 'Create the bot to continue',
+          disabled: !botCreated, onClick: next,
+        };
       case 'agent': {
         const ready = buildMode === 'platform' || connected;
         return {
@@ -628,7 +633,13 @@ export default function App() {
       case 'agent': return (
         <AgentScreen T={T} connected={connected} agentName={agentName} project={project}
           mode={buildMode} onMode={chooseBuildMode} error={buildError}
-          onConnected={(client) => { setAgentName((client || 'Claude').split('/')[0]); setConnected(true); }} />
+          onConnected={(client) => {
+            setAgentName((client || 'Claude').split('/')[0]);
+            setConnected(true);
+            // agent is live — no extra tap: publish and go straight to the overview
+            // (on failure startBuild surfaces the error and the manual button returns)
+            void startBuild();
+          }} />
       );
     }
   })();
@@ -637,8 +648,8 @@ export default function App() {
   const header = insideTelegram ? null : (tab === 'manage'
     ? (activeBot
       ? <TGHeader T={T}
-          title={manageView === 'activity' ? 'Activity' : manageView === 'connect' ? 'Connect agent' : activeBot.name}
-          subtitle={manageView === 'activity' || manageView === 'connect' ? '@' + activeBot.handle : '@' + activeBot.handle + ' · ' + activeBot.version}
+          title={manageView === 'activity' ? 'Activity' : manageView === 'connect' ? 'Connect agent' : manageView === 'board' ? 'Build board' : activeBot.name}
+          subtitle={manageView === 'activity' || manageView === 'connect' || manageView === 'board' ? '@' + activeBot.handle : '@' + activeBot.handle + ' · ' + activeBot.version}
           onBack={closeChat} />
       : <TGHeader T={T} title="My Bots" subtitle="Deployed on AgentBot" />)
     : <TGHeader T={T} title="AgentBot" subtitle={STAGE_SUB[id]} onBack={onBack} />);
@@ -652,6 +663,8 @@ export default function App() {
             cloudAgent={cloudBots.has(activeBot.id)} />
         : manageView === 'activity'
         ? <ActivityPage T={T} bot={activeBot} events={manageChat.messages.filter(m => m.role === 'system')} />
+        : manageView === 'board'
+        ? <DagBoard T={T} bot={activeBot} />
         : manageView === 'connect'
         ? <ConnectAgent T={T} bot={activeBot} onConnected={() => {
             // a local agent now owns the bot — it supersedes any cloud agent
@@ -665,6 +678,7 @@ export default function App() {
           }} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
             onOpenChat={() => { setDir(1); setManageView('chat'); }}
+            onOpenBoard={() => { setDir(1); setManageView('board'); }}
             onViewActivity={() => { setDir(1); setManageView('activity'); }}
             onManageAgents={() => setAgentSheet(true)}
             cloudDeployed={cloudBots.has(activeBot.id)}

@@ -94,9 +94,9 @@ function SectionLabel({ T, children, right }: { T: Theme; children: ReactNode; r
   );
 }
 
-export function BotOverview({ T, bot, messages, onOpenChat, onDelete, onViewActivity, onManageAgents, cloudDeployed, paused, onTogglePause }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onDelete, onViewActivity, onManageAgents, cloudDeployed, paused, onTogglePause }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
-  onOpenChat: () => void; onDelete: () => void;
+  onOpenChat: () => void; onOpenBoard: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
   cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
 }) {
@@ -272,7 +272,12 @@ export function BotOverview({ T, bot, messages, onOpenChat, onDelete, onViewActi
       {/* tasks — compact: phase stepper + one-line rows, expandable */}
       <div>
         <SectionLabel T={T} right={
-          tasks.length > 0 ? <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{done}/{tasks.length} done</span> : undefined
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {tasks.length > 0 && <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{done}/{tasks.length} done</span>}
+            <button onClick={onOpenBoard} style={{ ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent }}>
+              Board <TGIcon name="chevRight" size={15} color={T.accent} stroke={2} />
+            </button>
+          </div>
         }>Tasks</SectionLabel>
         <Card T={T} pad={0}>
           {dag?.current_phase && <PhaseStrip T={T} dag={dag} />}

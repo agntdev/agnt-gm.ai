@@ -245,6 +245,15 @@ export interface TaskItem {
   claim_reason?: string;
 }
 
+// A soft-claim on a task (2h TTL) — who is currently working it. Never null.
+export interface ClaimerBrief {
+  agent_id: string;
+  username?: string | null;
+  avatar_url?: string | null;
+  claimed_at?: string;
+  expires_at?: string;
+}
+
 export interface TaskDetail {
   id?: string;
   slug: string;
@@ -253,6 +262,16 @@ export interface TaskDetail {
   github_issue_url?: string;
   pr_url?: string;
   status?: string;
+  // task_manager extras (only on the per-task GET — not on /dag)
+  node_kind?: string;        // scaffold | feature | epic | question | review
+  parent_id?: string;        // epic→subtask tree; absent = top-level — the ONLY source
+  assignee_type?: string;    // 'agent' (executor) | 'owner' (a question task)
+  skill_refs?: string[];
+  spec_body?: string;        // resolved details the task references
+  blocked_since?: string;    // RFC3339
+  attempt_count?: number;
+  claimers?: ClaimerBrief[];
+  is_claimed?: boolean;
 }
 
 // Full task body — works for both legacy and DAG tasks.
@@ -285,13 +304,15 @@ export function listProjectTasks(idOrSlug: string): Promise<TaskList> {
 export interface DagTask {
   slug: string;
   title: string;
-  task_kind?: string; // foundation | feature | integration | doc | fix
-  phase?: string;
-  status: string; // open | in_progress | done
-  depends_on?: string[];
-  claimable?: boolean;
+  task_kind?: string;  // MEANINGLESS for task_manager — do NOT branch on it
+  node_kind?: string;  // scaffold | feature | epic | question | review — THE type (absent = legacy/phase row)
+  phase?: string;      // always "" for task_manager — ignore
+  status: string;      // open | in_progress | in_review | blocked | done | cancelled | failed
+  depends_on?: string[]; // dependency SLUGS (leaves only; never to/from an epic)
+  claimable?: boolean; // live gate verdict — trust it for Ready vs Backlog
   claim_reason?: string;
-  claimers?: unknown[];
+  assignee_agent_id?: string; // the bound executor
+  claimers?: ClaimerBrief[];  // 2h soft-claims; never null
 }
 
 export interface DagInfo {
