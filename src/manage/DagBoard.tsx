@@ -61,7 +61,10 @@ const isEpic = (t: DagTask) => t.node_kind === 'epic';
 const isFix = (t: DagTask) => /^fix[-:]/i.test(t.slug);
 
 // ── component ─────────────────────────────────────────────────
-export function DagBoard({ T, bot }: { T: Theme; bot: MyBot }) {
+// onOpenTask (optional): when provided, tapping a task row opens the TaskDetail
+// panel (the task_manager flow) instead of inline-expanding. Absent ⇒ unchanged
+// inline-expand behaviour (the phase fallback).
+export function DagBoard({ T, bot, onOpenTask }: { T: Theme; bot: MyBot; onOpenTask?: (slug: string) => void }) {
   const [tasks, setTasks] = useState<DagTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [details, setDetails] = useState<Record<string, TaskDetail | 'loading' | 'none'>>({});
@@ -243,7 +246,8 @@ export function DagBoard({ T, bot }: { T: Theme; bot: MyBot }) {
           <Card T={T} pad={0}>
             {general.map((t, i) => (
               <TaskRow key={t.slug} T={T} t={t} first={i === 0}
-                detail={details[t.slug]} open={expanded === t.slug} onToggle={() => toggleExpand(t.slug)} />
+                detail={details[t.slug]} open={expanded === t.slug} onToggle={() => toggleExpand(t.slug)}
+                onOpen={onOpenTask ? () => onOpenTask(t.slug) : undefined} />
             ))}
           </Card>
         </div>
@@ -275,7 +279,8 @@ export function DagBoard({ T, bot }: { T: Theme; bot: MyBot }) {
               </button>
               {!collapsed && shown.map(t => (
                 <TaskRow key={t.slug} T={T} t={t} first={false} nested
-                  detail={details[t.slug]} open={expanded === t.slug} onToggle={() => toggleExpand(t.slug)} />
+                  detail={details[t.slug]} open={expanded === t.slug} onToggle={() => toggleExpand(t.slug)}
+                  onOpen={onOpenTask ? () => onOpenTask(t.slug) : undefined} />
               ))}
               {!collapsed && shown.length === 0 && (
                 <div style={{ padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`, display: 'flex', alignItems: 'center', gap: 8, fontFamily: T.font, fontSize: 12.5, color: T.hint }}>
@@ -310,7 +315,8 @@ export function DagBoard({ T, bot }: { T: Theme; bot: MyBot }) {
             <Card T={T} pad={0} style={{ marginTop: 6, opacity: 0.7 }}>
               {sortTasks(cancelled).map((t, i) => (
                 <TaskRow key={t.slug} T={T} t={t} first={i === 0}
-                  detail={details[t.slug]} open={expanded === t.slug} onToggle={() => toggleExpand(t.slug)} />
+                  detail={details[t.slug]} open={expanded === t.slug} onToggle={() => toggleExpand(t.slug)}
+                  onOpen={onOpenTask ? () => onOpenTask(t.slug) : undefined} />
               ))}
             </Card>
           )}
@@ -321,10 +327,15 @@ export function DagBoard({ T, bot }: { T: Theme; bot: MyBot }) {
 }
 
 // ── a single task row (collapsed line + expandable detail) ────
-function TaskRow({ T, t, first, nested, detail, open, onToggle }: {
+// onOpen (optional): tap navigates to the TaskDetail panel instead of
+// inline-expanding (task_manager flow). When set, the inline body is suppressed.
+function TaskRow({ T, t, first, nested, detail, open, onToggle, onOpen }: {
   T: Theme; t: DagTask; first: boolean; nested?: boolean;
   detail: TaskDetail | 'loading' | 'none' | undefined; open: boolean; onToggle: () => void;
+  onOpen?: () => void;
 }) {
+  const navigates = !!onOpen;
+  const isOpen = navigates ? false : open;
   const b = bucketOf(t);
   const color = bucketColor(T, b);
   const d = detail && detail !== 'loading' && detail !== 'none' ? detail : null;
@@ -334,23 +345,23 @@ function TaskRow({ T, t, first, nested, detail, open, onToggle }: {
 
   return (
     <div style={{ borderTop: first ? 'none' : `0.5px solid ${T.sep}` }}>
-      <button onClick={onToggle} style={{
+      <button onClick={onOpen || onToggle} style={{
         ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
         padding: nested ? '10px 14px 10px 16px' : '11px 14px',
-        opacity: !open && b === 'done' ? 0.7 : 1,
+        opacity: !isOpen && b === 'done' ? 0.7 : 1,
       }}>
         {b === 'done'
           ? <TGIcon name="check" size={15} color={T.green} stroke={2.6} />
           : <Dot color={color} size={7} pulse={b === 'building'} />}
         <span style={{
           flex: 1, fontFamily: T.font, fontSize: 13.5, color: T.text, lineHeight: '18px',
-          ...(open ? {} : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
+          ...(isOpen ? {} : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
         }}>{t.title}</span>
         <NodeBadges T={T} t={t} b={b} />
-        <TGIcon name="chevDown" size={14} color={T.hint} stroke={2} />
+        <TGIcon name={navigates ? 'chevRight' : 'chevDown'} size={14} color={T.hint} stroke={2} />
       </button>
 
-      {open && (
+      {isOpen && (
         <div style={{ padding: nested ? '0 14px 13px 40px' : '0 14px 13px 31px', display: 'flex', flexDirection: 'column', gap: 9 }}>
           {/* meta line */}
           <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>
