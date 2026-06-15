@@ -6,13 +6,16 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Theme, btnReset, hexA } from '../theme';
 import {
-  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics,
+  Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
+  getProjectDag, isTaskManagerDag, botIsLive,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
 import { MyBot } from './MyBots';
 import { ActivityTimeline, relTime } from './Activity';
+import { useBlocked, BlockedBadge } from './TaskManagerInbox';
+import { FeedbackComposer } from './FeedbackComposer';
 
 // human-readable count: 3100 → "3.1k", 12000 → "12k"
 function human(n?: number): string {
@@ -94,9 +97,9 @@ function SectionLabel({ T, children, right }: { T: Theme; children: ReactNode; r
   );
 }
 
-export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onDelete, onViewActivity, onManageAgents, cloudDeployed, paused, onTogglePause }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, cloudDeployed, paused, onTogglePause }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
-  onOpenChat: () => void; onOpenBoard: () => void; onDelete: () => void;
+  onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
   cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
 }) {
@@ -106,12 +109,15 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onDelet
   const [dag, setDag] = useState<DagInfo | null>(null);
   const [deploys, setDeploys] = useState<Deployment[]>([]);
   const [botUsername, setBotUsername] = useState<string | null>(null);
+  const [botRow, setBotRow] = useState<ProjectBot | null>(null);
   const [link, setLink] = useState<AgentLinkStatus | null>(null);
   const [analytics, setAnalytics] = useState<BotAnalytics | null>(null);
   const [commits7d, setCommits7d] = useState<number | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetail | 'loading' | 'none'>>({});
+  const [isTaskManager, setIsTaskManager] = useState(false); // gap #1 — derived from /dag node_kind
+  const blocked = useBlocked(bot.id, isTaskManager); // attention badge (owner /blocked)
 
   // tap a task → expand with the full title + body fetched from the API
   const toggleTask = (slug: string) => {
@@ -127,21 +133,25 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onDelet
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
-      const [d, t, dep, b, l, an] = await Promise.all([
+      const [d, t, dep, b, l, an, rawDag] = await Promise.all([
         getProject(bot.id).catch(() => null),
         fetchProjectTasks(bot.id).catch(() => null),
         listDeployments(bot.id).catch(() => null),
         getProjectBot(bot.id).catch(() => null),
         getAgentLink(bot.id).catch(() => null),
         getBotAnalytics(bot.id).catch(() => null),
+        getProjectDag(bot.id).catch(() => null),
       ]);
       if (cancelled) return;
       if (d) setDetail(d.project);
       if (t) { setTasks(t.tasks); setDag(t.dag ?? null); }
       if (dep) setDeploys(dep.deployments || []);
-      if (b?.bot_username) setBotUsername(b.bot_username);
+      if (b) { setBotRow(b); if (b.bot_username) setBotUsername(b.bot_username); }
       if (l) setLink(l);
       if (an) setAnalytics(an);
+      // route old vs new: build_pipeline (once it ships) else node_kind on /dag
+      if (d?.project.build_pipeline) setIsTaskManager(d.project.build_pipeline === 'task_manager');
+      else if (rawDag) setIsTaskManager(isTaskManagerDag(rawDag));
       timer = setTimeout(tick, 12000);
     };
     void tick();
@@ -175,6 +185,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onDelet
   const handle = botUsername || bot.handle;
   const since = detail?.published_at || detail?.created_at;
   const uptime = since ? relTime(since) : null;
+  // the real go-live signal (NOT project.status): current_phase==='published'
+  // OR the managed bot's container_state. Drives the feedback channel.
+  const live = dag?.current_phase === 'published' || detail?.current_phase === 'published' || botIsLive(botRow);
 
   // real build stats now; the same 3-up card swaps to deployed-bot analytics
   // (active users / today / vs. yest.) once that endpoint lands.
@@ -230,6 +243,28 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onDelet
           <TGIcon name={paused ? 'play' : 'pause'} size={16} color={T.sub} stroke={2} /> {paused ? 'Resume' : 'Pause'}
         </button>
       </div>
+
+      {/* task_manager: attention inbox — amber/red badge when something needs the
+          owner, else a neutral "all clear" entry point */}
+      {isTaskManager && onOpenInbox && (
+        blocked.items.length > 0
+          ? <BlockedBadge T={T} state={blocked} onClick={onOpenInbox} />
+          : (
+            <button onClick={onOpenInbox} style={{
+              ...btnReset, width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px',
+              borderRadius: 14, background: T.cardBg, border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
+            }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: T.greenSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <TGIcon name="check" size={17} color={T.green} stroke={2.2} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Inbox</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>Nothing needs you right now</div>
+              </div>
+              <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />
+            </button>
+          )
+      )}
 
       {/* stats — single 3-up card */}
       <Card T={T} pad={0}>
@@ -369,6 +404,13 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onDelet
           )}
         </Card>
       </div>
+
+      {/* task_manager: living-DAG feedback — once live, owner requests grow the DAG */}
+      {isTaskManager && live && (
+        <Card T={T} pad={14}>
+          <FeedbackComposer T={T} bot={bot} live={live} onGrown={onOpenBoard} />
+        </Card>
+      )}
 
       {/* tests — real when CI results land; honest placeholder until then */}
       <div>
