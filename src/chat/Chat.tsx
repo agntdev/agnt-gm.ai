@@ -3,9 +3,9 @@
 // cursor polling, optimistic owner messages, ai_thinking typing indicator,
 // quick-reply options, role=system deploy/build logs.
 import { useEffect, useRef, useState } from 'react';
-import { Theme } from '../theme';
+import { Theme, btnReset } from '../theme';
 import { ChatMessage, getChatMessages, sendChatMessage } from '../api/client';
-import { TGIcon, Bubble, TypingBubble, Chip, Spinner } from '../ui';
+import { TGIcon, Bubble, TypingBubble, Spinner } from '../ui';
 
 // adaptive polling: tight while an AI turn is running (the answer can land
 // any moment), relaxed when the chat is idle.
@@ -168,9 +168,19 @@ export function ChatThread({ T, messages, thinking, onOption, pendingNote }: {
               <span style={{ whiteSpace: 'pre-line' }}>{m.content}</span>
             </Bubble>
             {!own && opts?.msgId === m.id && !thinking && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              // quick replies are often full sentences, not short labels — render
+              // them as left-aligned, auto-height option buttons (short ones hug
+              // their text, long ones wrap) rather than fixed-height centered pills.
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
                 {opts.options.map(o => (
-                  <Chip key={o} T={T} onClick={() => onOption!(o)}>{o}</Chip>
+                  <button key={o} onClick={() => onOption!(o)} style={{
+                    ...btnReset, maxWidth: '88%', textAlign: 'left',
+                    padding: '10px 14px', borderRadius: 14,
+                    background: T.accentSoft, color: T.accent,
+                    border: `1.5px solid ${T.accentBorder}`,
+                    fontFamily: T.font, fontSize: 14.5, fontWeight: 500, lineHeight: '19px',
+                    whiteSpace: 'normal', wordBreak: 'break-word', transition: 'background .15s',
+                  }}>{o}</button>
                 ))}
               </div>
             )}

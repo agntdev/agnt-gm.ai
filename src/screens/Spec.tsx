@@ -102,7 +102,7 @@ export function SpecScreen({ T, project, taskCount, created, creating, createErr
                   ...btnReset, width: '100%', height: 44, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                   backgroundColor: T.accent, color: '#fff', fontFamily: T.font, fontSize: 15, fontWeight: 600,
                 }}>
-                  <TGIcon name="send" size={17} color="#fff" stroke={2} /> Create @{handle} in Telegram
+                  <TGIcon name="send" size={17} color="#fff" stroke={2} /> Create in Telegram
                 </button>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 11 }}>
