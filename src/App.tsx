@@ -554,14 +554,17 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, tgAuthed]);
 
-  // keep the open chat pinned to the latest message
+  // keep the open chat pinned to the latest message — ONLY in the chat view.
+  // manageChat also feeds the overview's Recent Activity, so without the
+  // manageView gate this yanked the overview/other views to the bottom whenever
+  // chat messages loaded.
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeBot = manageBot ? myBots.find(b => b.id === manageBot) ?? null : null;
   useEffect(() => {
-    if (tab === 'manage' && manageBot && scrollRef.current) {
+    if (tab === 'manage' && manageBot && manageView === 'chat' && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [tab, manageBot, manageChat.messages.length, manageChat.thinking]);
+  }, [tab, manageBot, manageView, manageChat.messages.length, manageChat.thinking]);
 
   // delete: real DELETE when the API grows it; local hide as the fallback
   const deleteBot = async (botId: string) => {

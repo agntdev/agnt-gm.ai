@@ -137,6 +137,16 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const [taskDraft, setTaskDraft] = useState('');
   const [addBusy, setAddBusy] = useState(false);
   const [addErr, setAddErr] = useState<string | null>(null);
+  const addTaskRef = useRef<HTMLTextAreaElement>(null);
+
+  // grow the add-task input to fit the text (descriptions can be long), up to a
+  // cap, then scroll within it
+  useEffect(() => {
+    const el = addTaskRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(200, Math.max(38, el.scrollHeight)) + 'px';
+  }, [taskDraft, addingTask]);
 
   // add a task: the owner's path into the living DAG is feedback (POST /feedback),
   // which the analyzer turns into task(s). The new task shows on the next poll.
@@ -369,14 +379,16 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </Card>
       )}
 
-      {/* primary action */}
-      <button onClick={onOpenChat} style={{
-        ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-        fontFamily: T.font, fontSize: 17, fontWeight: 600, boxShadow: `0 6px 18px ${hexA(T.accent, 0.32)}`,
-      }}>
-        <TGIcon name="chat" size={20} color="#fff" stroke={2} /> Open chat
-      </button>
+      {/* primary action — "Open chat" hidden from the overview for now */}
+      {false && (
+        <button onClick={onOpenChat} style={{
+          ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          fontFamily: T.font, fontSize: 17, fontWeight: 600, boxShadow: `0 6px 18px ${hexA(T.accent, 0.32)}`,
+        }}>
+          <TGIcon name="chat" size={20} color="#fff" stroke={2} /> Open chat
+        </button>
+      )}
 
       {/* secondary actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 32, marginTop: -4 }}>
@@ -565,10 +577,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             addingTask ? (
               <div style={{ borderTop: `0.5px solid ${T.sep}`, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-                  <textarea autoFocus value={taskDraft} onChange={e => setTaskDraft(e.target.value)}
+                  <textarea ref={addTaskRef} autoFocus value={taskDraft} onChange={e => setTaskDraft(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submitNewTask(); } }}
                     placeholder="Describe a task to add…" rows={1}
-                    style={{ flex: 1, resize: 'none', maxHeight: 88, minHeight: 38, padding: '9px 12px', borderRadius: 12, background: T.inputBg, border: `0.5px solid ${T.sep}`, color: T.text, fontFamily: T.font, fontSize: 14, lineHeight: '19px', outline: 'none', boxSizing: 'border-box' }} />
+                    style={{ flex: 1, resize: 'none', maxHeight: 200, minHeight: 38, overflowY: 'auto', padding: '9px 12px', borderRadius: 12, background: T.inputBg, border: `0.5px solid ${T.sep}`, color: T.text, fontFamily: T.font, fontSize: 14, lineHeight: '19px', outline: 'none', boxSizing: 'border-box' }} />
                   <button onClick={() => void submitNewTask()} style={{ ...btnReset, width: 38, height: 38, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: taskDraft.trim() && !addBusy ? T.accent : (T.dark ? '#243140' : '#dfe4ea') }}>
                     {addBusy ? <Spinner color="#fff" size={16} /> : <TGIcon name="send" size={17} color={taskDraft.trim() ? '#fff' : T.hint} stroke={2} />}
                   </button>
