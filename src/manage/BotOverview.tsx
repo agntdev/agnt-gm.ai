@@ -127,7 +127,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetail | 'loading' | 'none'>>({});
-  const [isTaskManager, setIsTaskManager] = useState(seed?.isTaskManager ?? false); // gap #1 — derived from /dag node_kind
+  const [isTaskManager, setIsTaskManager] = useState(seed?.isTaskManager ?? bot.isTaskManager ?? false); // verdict from cache → bot prop → /dag node_kind
   const blocked = useBlocked(bot.id, isTaskManager); // attention badge (owner /blocked)
   const [cloudApi, setCloudApi] = useState<boolean | null>(null); // GET /cloud-agent → deployed?
   const cloudNotified = useRef(false);

@@ -25,6 +25,7 @@ export interface MyBot {
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Clarifying idea…',
   validating: 'Generating spec…',
+  generating: 'Building…', // task_manager decompose/build state
   ready_to_publish: 'In progress',
   publishing: 'Publishing…',
   live: 'Live',

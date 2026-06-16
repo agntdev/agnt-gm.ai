@@ -418,7 +418,17 @@ export default function App() {
       void refreshMyBots(p.id);
       return;
     }
-    // re-enter the build pipeline
+    // task_manager projects auto-decompose — they have no spec/agent/publish
+    // wizard. Reopening one mid-build drops onto the living board (the fresh-chat
+    // handoff), not the wizard (which would 409 on publish). Detect via the same
+    // signals as pollPlan: build_pipeline, the 'generating' proxy, else a /dag probe.
+    if (!target) {
+      const tm = p.build_pipeline === 'task_manager'
+        || p.status === 'generating'
+        || (await getProjectPipeline(p.id)) === 'task_manager';
+      if (tm) { handoffToBoard(p); routeReady.current = true; return; }
+    }
+    // re-enter the build pipeline (phase projects)
     setDir(1); setTab('build');
     cancelPoll.current();
     resetPipeline();
