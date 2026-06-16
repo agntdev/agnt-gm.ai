@@ -471,15 +471,23 @@ export default function App() {
     setBuildModeApi(project.id, buildMode).catch(() => { /* endpoint not shipped yet */ });
     try {
       let pub: Project = project;
-      if (project.status !== 'live' && project.status !== 'publishing' && project.status !== 'completed') {
+      // task_manager projects auto-build (draft→validating→generating→live) with
+      // NO manual publish step — only the old phase flow calls publishProject.
+      // Skip it when the project is task_manager or already building/published;
+      // otherwise a publish 409s ("project not ready_to_publish, status: generating").
+      const BUILDING = new Set(['live', 'publishing', 'completed', 'generating']);
+      const alreadyBuilding = BUILDING.has(project.status) || project.build_pipeline === 'task_manager';
+      if (!alreadyBuilding) {
         try {
           const r = await publishProject(project.id);
           pub = r.project ?? { ...project, status: 'live', github_repo_url: r.github_repo_url };
         } catch (e) {
+          // re-fetch: if it's already moving forward (incl. task_manager's
+          // auto-build), go watch it on the overview instead of erroring.
           const d = await getProject(project.id).catch(() => null);
-          if (d && (d.project.status === 'live' || d.project.status === 'publishing' || d.project.status === 'completed')) {
-            pub = d.project;
-          } else { throw e; }
+          const s = d?.project.status;
+          if (s && (BUILDING.has(s) || s === 'validating')) pub = d!.project;
+          else throw e;
         }
       }
       const pid = pub.id;
