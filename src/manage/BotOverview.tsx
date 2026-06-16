@@ -8,7 +8,7 @@ import { Theme, btnReset, hexA } from '../theme';
 import {
   ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, ProjectSpec, BotInitiate,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  botIsLive, retryDeploy, setAutoMerge, getProjectSpec, getCloudAgent, initiateBot,
+  botIsLive, retryDeploy, setAutoMerge, getProjectSpec, getCloudAgent, initiateBot, postFeedback,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
@@ -133,6 +133,28 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const [creatingBot, setCreatingBot] = useState(false);
   const [botInit, setBotInit] = useState<BotInitiate | null>(null); // deep link issued, waiting for Telegram
   const [createBotErr, setCreateBotErr] = useState<string | null>(null);
+  const [addingTask, setAddingTask] = useState(false); // "Add new task" input open
+  const [taskDraft, setTaskDraft] = useState('');
+  const [addBusy, setAddBusy] = useState(false);
+  const [addErr, setAddErr] = useState<string | null>(null);
+
+  // add a task: the owner's path into the living DAG is feedback (POST /feedback),
+  // which the analyzer turns into task(s). The new task shows on the next poll.
+  const submitNewTask = async () => {
+    const text = taskDraft.trim();
+    if (!text || addBusy) return;
+    setAddBusy(true); setAddErr(null);
+    try {
+      await postFeedback(bot.id, text);
+      setTaskDraft(''); setAddingTask(false);
+      // nudge a refresh shortly after so the new task appears promptly
+      setTimeout(() => {
+        void fetchProjectTasks(bot.id).then(t => { setTasks(t.tasks); setDag(t.dag ?? null); }).catch(() => {});
+      }, 3000);
+    } catch (e) {
+      setAddErr(e instanceof ApiError ? (e.status === 429 ? 'Too many requests — try again shortly.' : e.message) : 'network error — try again');
+    } finally { setAddBusy(false); }
+  };
 
   // tap a task → expand with the full title + body fetched from the API
   const toggleTask = (slug: string) => {
@@ -264,8 +286,12 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 
   const sys = messages.filter(m => m.role === 'system');
   const activity = [...sys].reverse().slice(0, 4);
-  const done = tasks.filter(t => t.status === 'done').length;
-  const allDone = tasks.length > 0 && done >= tasks.length;
+  // count only real work tasks (exclude epics = display-only containers, and
+  // cancelled) so the overview total matches the board. Phase projects: count all.
+  const countable = isTaskManager ? tasks.filter(t => t.node_kind !== 'epic' && t.status !== 'cancelled') : tasks;
+  const done = countable.filter(t => t.status === 'done').length;
+  const total = countable.length;
+  const allDone = total > 0 && done >= total;
   const prodDeploys = deploys.filter(d => d.kind !== 'preview' && !d.failure_reason).length;
   const connected = link?.status === 'connected';
   // a cloud agent is active if the API says so (GET /cloud-agent or platform
@@ -291,7 +317,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       label: 'vs. yest.', tone: (analytics.delta_pct ?? 0) >= 0 ? 'green' : undefined,
     },
   ] : [
-    { value: tasks.length ? `${done}/${tasks.length}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
+    { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
     { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
     { value: commits7d ? String(commits7d) : '—', label: 'Commits · 7d' },
   ];
@@ -439,7 +465,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       <div>
         <SectionLabel T={T} right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {tasks.length > 0 && <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{done}/{tasks.length} done</span>}
+            {total > 0 && <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{done}/{total} done</span>}
             <button onClick={onOpenBoard} style={{ ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent }}>
               Board <TGIcon name="chevRight" size={15} color={T.accent} stroke={2} />
             </button>
@@ -535,13 +561,39 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
               </div>
             );
           })}
-          {tasks.length > 4 && (
-            <button onClick={() => setShowAllTasks(v => !v)} style={{
-              ...btnReset, width: '100%', padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`,
-              fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent, textAlign: 'center',
-            }}>
-              {showAllTasks ? 'Show less' : `Show all ${tasks.length} tasks`}
-            </button>
+          {isTaskManager ? (
+            addingTask ? (
+              <div style={{ borderTop: `0.5px solid ${T.sep}`, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                  <textarea autoFocus value={taskDraft} onChange={e => setTaskDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submitNewTask(); } }}
+                    placeholder="Describe a task to add…" rows={1}
+                    style={{ flex: 1, resize: 'none', maxHeight: 88, minHeight: 38, padding: '9px 12px', borderRadius: 12, background: T.inputBg, border: `0.5px solid ${T.sep}`, color: T.text, fontFamily: T.font, fontSize: 14, lineHeight: '19px', outline: 'none', boxSizing: 'border-box' }} />
+                  <button onClick={() => void submitNewTask()} style={{ ...btnReset, width: 38, height: 38, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: taskDraft.trim() && !addBusy ? T.accent : (T.dark ? '#243140' : '#dfe4ea') }}>
+                    {addBusy ? <Spinner color="#fff" size={16} /> : <TGIcon name="send" size={17} color={taskDraft.trim() ? '#fff' : T.hint} stroke={2} />}
+                  </button>
+                </div>
+                {addErr && <span style={{ fontFamily: T.font, fontSize: 12, color: T.amber, lineHeight: '16px' }}>{addErr}</span>}
+                <button onClick={() => { setAddingTask(false); setTaskDraft(''); setAddErr(null); }} style={{ ...btnReset, alignSelf: 'flex-start', fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.hint }}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setAddingTask(true)} style={{
+                ...btnReset, width: '100%', padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent,
+              }}>
+                <TGIcon name="plus" size={15} color={T.accent} stroke={2.2} /> Add new task
+              </button>
+            )
+          ) : (
+            tasks.length > 4 && (
+              <button onClick={() => setShowAllTasks(v => !v)} style={{
+                ...btnReset, width: '100%', padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`,
+                fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent, textAlign: 'center',
+              }}>
+                {showAllTasks ? 'Show less' : `Show all ${tasks.length} tasks`}
+              </button>
+            )
           )}
         </Card>
       </div>
