@@ -248,17 +248,18 @@ export default function App() {
   };
 
   // task_manager handoff (§7a): once the chat-created project leaves 'draft'
-  // decomposition has begun. Unlike the phase pipeline (spec → create bot →
-  // agent → publish), a task_manager project auto-decomposes and the owner just
-  // watches the living board — so drop them straight onto #/bots/:id/taskboard.
-  const handoffToBoard = (p: Project) => {
+  // decomposition has begun. Unlike the phase pipeline (spec → agent → publish),
+  // a task_manager project auto-decomposes — so drop the owner onto the bot's
+  // OVERVIEW, which shows the create-your-bot step and a "building" loader while
+  // the DAG decomposes in the background (the board is one tap away).
+  const handoffTaskManager = (p: Project) => {
     cancelPoll.current();
-    const bot = { ...botFromProject(p), isTaskManager: true }; // verdict known — board renders tap-through immediately
+    const bot = { ...botFromProject(p), isTaskManager: true }; // verdict known — overview renders the tm surface immediately
     setMyBots(prev => prev.some(b => b.id === p.id) ? prev : [bot, ...prev]);
     resetPipeline();
     localStorage.removeItem(PIPELINE_KEY);
     setIdea(''); setChanged(false); setStep(0);
-    setManageBot(p.id); setManageView('taskboard'); setDir(1); setTab('manage');
+    setManageBot(p.id); setManageView('overview'); setDir(1); setTab('manage');
     void refreshMyBots(p.id);
   };
 
@@ -289,7 +290,7 @@ export default function App() {
             ? d.project.build_pipeline === 'task_manager'
             : st === 'generating' || (await getProjectPipeline(projectId)) === 'task_manager';
           if (cancelled) return;
-          if (tm) { handoffToBoard(d.project); return; }
+          if (tm) { handoffTaskManager(d.project); return; }
         }
         if (st === 'ready_to_publish' || st === 'publishing' || st === 'live') { setGen('ready'); return; }
         if (st === 'rejected' || st === 'failed') {
@@ -426,7 +427,7 @@ export default function App() {
       const tm = p.build_pipeline === 'task_manager'
         || p.status === 'generating'
         || (await getProjectPipeline(p.id)) === 'task_manager';
-      if (tm) { handoffToBoard(p); routeReady.current = true; return; }
+      if (tm) { handoffTaskManager(p); routeReady.current = true; return; }
     }
     // re-enter the build pipeline (phase projects)
     setDir(1); setTab('build');

@@ -6,9 +6,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Theme, btnReset, hexA } from '../theme';
 import {
-  ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, ProjectSpec,
+  ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, ProjectSpec, BotInitiate,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  botIsLive, retryDeploy, setAutoMerge, getProjectSpec, getCloudAgent,
+  botIsLive, retryDeploy, setAutoMerge, getProjectSpec, getCloudAgent, initiateBot,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
@@ -131,6 +131,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const blocked = useBlocked(bot.id, isTaskManager); // attention badge (owner /blocked)
   const [cloudApi, setCloudApi] = useState<boolean | null>(null); // GET /cloud-agent → deployed?
   const cloudNotified = useRef(false);
+  const [creatingBot, setCreatingBot] = useState(false);
+  const [botInit, setBotInit] = useState<BotInitiate | null>(null); // deep link issued, waiting for Telegram
+  const [createBotErr, setCreateBotErr] = useState<string | null>(null);
 
   // tap a task → expand with the full title + body fetched from the API
   const toggleTask = (slug: string) => {
@@ -141,6 +144,37 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         setTaskDetails(prev => ({ ...prev, [slug]: d ?? 'none' })));
     }
   };
+
+  // provision the managed Telegram bot (the step the task_manager flow used to
+  // reach via the spec wizard) — reserve a username + open the manager-bot deep
+  // link; the poll below picks the bot up once it's created in Telegram.
+  const createBot = async () => {
+    if (creatingBot || botUsername) return;
+    setCreatingBot(true); setCreateBotErr(null);
+    try {
+      const init = await initiateBot(bot.id);
+      setBotInit(init);
+      if (init.deep_link) openTgLink(init.deep_link);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) setBotInit({}); // already exists — just poll
+      else setCreateBotErr(e instanceof ApiError ? `Couldn't start — ${e.message}` : 'network error — try again');
+    } finally { setCreatingBot(false); }
+  };
+
+  // after initiate, poll quickly until the managed-bot poller lands the row
+  useEffect(() => {
+    if (!botInit || botUsername) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      const b = await getProjectBot(bot.id).catch(() => null);
+      if (cancelled) return;
+      if (b?.bot_username) { setBotRow(b); setBotUsername(b.bot_username); return; }
+      timer = setTimeout(tick, 5000);
+    };
+    void tick();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [botInit, botUsername, bot.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,8 +197,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       if (an) setAnalytics(an);
       // route old vs new: build_pipeline (once it ships) else node_kind off the
       // DAG fetchProjectTasks already loaded — no second /dag round-trip.
+      // upgrade-only: don't flip a known task_manager verdict back to false off an
+      // empty DAG mid-decompose (which would nuke the create-bot CTA + loader).
       if (d?.project.build_pipeline) setIsTaskManager(d.project.build_pipeline === 'task_manager');
-      else if (t) setIsTaskManager(t.isTaskManager ?? false);
+      else if (t?.isTaskManager) setIsTaskManager(true);
       // refresh the snapshot cache (keep prior values where a fetch failed)
       const prev = OV_CACHE.get(bot.id);
       OV_CACHE.set(bot.id, {
@@ -176,9 +212,13 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         botUsername: b?.bot_username ?? prev?.botUsername ?? null,
         link: l ?? prev?.link ?? null,
         analytics: an ?? prev?.analytics ?? null,
-        isTaskManager: d?.project.build_pipeline ? d.project.build_pipeline === 'task_manager' : (t?.isTaskManager ?? prev?.isTaskManager ?? false),
+        isTaskManager: d?.project.build_pipeline ? d.project.build_pipeline === 'task_manager' : (t?.isTaskManager || prev?.isTaskManager || bot.isTaskManager || false),
       });
-      timer = setTimeout(tick, 20000);
+      // while a task_manager bot is still decomposing (no tasks) or its managed
+      // bot hasn't landed, poll quickly so the overview fills in fast; relax once settled
+      const tmHint = bot.isTaskManager === true || t?.isTaskManager === true || isTaskManager;
+      const settling = tmHint && ((t?.tasks?.length ?? 0) === 0 || !b?.bot_username);
+      timer = setTimeout(tick, settling ? 6000 : 20000);
     };
     void tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
@@ -239,6 +279,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // the real go-live signal (NOT project.status): current_phase==='published'
   // OR the managed bot's container_state. Drives the feedback channel.
   const live = dag?.current_phase === 'published' || detail?.current_phase === 'published' || botIsLive(botRow);
+  const needsBot = isTaskManager && !botUsername;          // managed bot not provisioned yet
+  const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
 
   // real build stats now; the same 3-up card swaps to deployed-bot analytics
   // (active users / today / vs. yest.) once that endpoint lands.
@@ -270,6 +312,37 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
               : <Pill T={T} tone="neutral">{bot.statusLabel}</Pill>}
         </div>
       </div>
+
+      {/* task_manager: create the managed Telegram bot (the step that used to live
+          in the spec wizard) — shown until the bot is provisioned, so the owner
+          can set it up while the DAG decomposes in the background */}
+      {needsBot && (
+        <Card T={T} pad={0} style={{ border: `1px solid ${T.accentBorder}` }}>
+          {botInit ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
+              <Spinner color={T.accent} size={18} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Finishing in Telegram…</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>Create the bot in the window that opened — it'll appear here once it's set up.</div>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => void createBot()} style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {creatingBot ? <Spinner color={T.accent} size={18} /> : <TGIcon name="send" size={19} color={T.accent} stroke={1.9} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>Create your bot</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>Set up the Telegram bot while your tasks build</div>
+              </div>
+              <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
+            </button>
+          )}
+          {createBotErr && (
+            <div style={{ padding: '0 16px 12px', fontFamily: T.font, fontSize: 12.5, color: T.amber, lineHeight: '17px' }}>{createBotErr}</div>
+          )}
+        </Card>
+      )}
 
       {/* primary action */}
       <button onClick={onOpenChat} style={{
@@ -376,9 +449,18 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         <Card T={T} pad={0}>
           {dag?.current_phase && <PhaseStrip T={T} dag={dag} />}
           {tasks.length === 0 && (
-            <div style={{ padding: 14, fontFamily: T.font, fontSize: 13.5, color: T.hint }}>
-              Build starting — your plan and tasks will appear here in a moment.
-            </div>
+            decomposing ? (
+              <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Spinner color={T.accent} size={15} />
+                <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.sub, lineHeight: '18px' }}>
+                  Decomposing your idea into tasks — this can take a minute. They'll stream in here as they're built.
+                </span>
+              </div>
+            ) : (
+              <div style={{ padding: 14, fontFamily: T.font, fontSize: 13.5, color: T.hint }}>
+                Build starting — your plan and tasks will appear here in a moment.
+              </div>
+            )
           )}
           {orderTasks(tasks).slice(0, showAllTasks ? undefined : 4).map((t, i) => {
             const tone = TASK_DOT[t.status] || 'hint';
