@@ -35,15 +35,18 @@ export function useBlocked(botId: string | null, active: boolean): BlockedState 
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
       if (cancelled) return;
+      let next = 12000; // error/back-off default
       try {
         const r = await getBlockedItems(botId);
         if (cancelled) return;
-        setItems(r.items || []); setReachable(true);
+        const list = r.items || [];
+        setItems(list); setReachable(true);
+        next = list.length ? 9000 : 20000; // nothing blocked ⇒ check far less often
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) { if (!cancelled) { setItems([]); setReachable(false); } return; }
-        // 401/403/network — keep the last snapshot, keep trying
+        // 401/403/429/network — keep the last snapshot, keep trying (relaxed)
       }
-      if (!cancelled) timer = setTimeout(tick, 6000);
+      if (!cancelled) timer = setTimeout(tick, next);
     };
     pollNow.current = () => { if (timer) clearTimeout(timer); void tick(); };
     void tick();

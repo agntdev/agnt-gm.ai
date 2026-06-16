@@ -97,26 +97,36 @@ function SectionLabel({ T, children, right }: { T: Theme; children: ReactNode; r
   );
 }
 
+// Last overview snapshot per bot. Re-opening a bot paints instantly from this
+// cache, then the tick refreshes it — instead of six cold fetches every visit.
+interface OvSnap {
+  detail: Project | null; tasks: TaskItem[]; dag: DagInfo | null; deploys: Deployment[];
+  botRow: ProjectBot | null; botUsername: string | null; link: AgentLinkStatus | null;
+  analytics: BotAnalytics | null; isTaskManager: boolean;
+}
+const OV_CACHE = new Map<string, OvSnap>();
+
 export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, cloudDeployed, paused, onTogglePause }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
   onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
   cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
 }) {
+  const seed = OV_CACHE.get(bot.id); // instant re-open from the last snapshot
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [detail, setDetail] = useState<Project | null>(null);
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [dag, setDag] = useState<DagInfo | null>(null);
-  const [deploys, setDeploys] = useState<Deployment[]>([]);
-  const [botUsername, setBotUsername] = useState<string | null>(null);
-  const [botRow, setBotRow] = useState<ProjectBot | null>(null);
-  const [link, setLink] = useState<AgentLinkStatus | null>(null);
-  const [analytics, setAnalytics] = useState<BotAnalytics | null>(null);
+  const [detail, setDetail] = useState<Project | null>(seed?.detail ?? null);
+  const [tasks, setTasks] = useState<TaskItem[]>(seed?.tasks ?? []);
+  const [dag, setDag] = useState<DagInfo | null>(seed?.dag ?? null);
+  const [deploys, setDeploys] = useState<Deployment[]>(seed?.deploys ?? []);
+  const [botUsername, setBotUsername] = useState<string | null>(seed?.botUsername ?? null);
+  const [botRow, setBotRow] = useState<ProjectBot | null>(seed?.botRow ?? null);
+  const [link, setLink] = useState<AgentLinkStatus | null>(seed?.link ?? null);
+  const [analytics, setAnalytics] = useState<BotAnalytics | null>(seed?.analytics ?? null);
   const [commits7d, setCommits7d] = useState<number | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetail | 'loading' | 'none'>>({});
-  const [isTaskManager, setIsTaskManager] = useState(false); // gap #1 — derived from /dag node_kind
+  const [isTaskManager, setIsTaskManager] = useState(seed?.isTaskManager ?? false); // gap #1 — derived from /dag node_kind
   const blocked = useBlocked(bot.id, isTaskManager); // attention badge (owner /blocked)
 
   // tap a task → expand with the full title + body fetched from the API
@@ -152,7 +162,20 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       // DAG fetchProjectTasks already loaded — no second /dag round-trip.
       if (d?.project.build_pipeline) setIsTaskManager(d.project.build_pipeline === 'task_manager');
       else if (t) setIsTaskManager(t.isTaskManager ?? false);
-      timer = setTimeout(tick, 12000);
+      // refresh the snapshot cache (keep prior values where a fetch failed)
+      const prev = OV_CACHE.get(bot.id);
+      OV_CACHE.set(bot.id, {
+        detail: d?.project ?? prev?.detail ?? null,
+        tasks: t?.tasks ?? prev?.tasks ?? [],
+        dag: t?.dag ?? prev?.dag ?? null,
+        deploys: dep?.deployments ?? prev?.deploys ?? [],
+        botRow: b ?? prev?.botRow ?? null,
+        botUsername: b?.bot_username ?? prev?.botUsername ?? null,
+        link: l ?? prev?.link ?? null,
+        analytics: an ?? prev?.analytics ?? null,
+        isTaskManager: d?.project.build_pipeline ? d.project.build_pipeline === 'task_manager' : (t?.isTaskManager ?? prev?.isTaskManager ?? false),
+      });
+      timer = setTimeout(tick, 20000);
     };
     void tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
@@ -304,8 +327,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </Card>
       </button>
 
-      {/* task_manager owner controls: spec doc · auto-merge · retry deploy */}
-      {isTaskManager && (
+      {/* task_manager owner controls (spec doc · auto-merge · retry deploy) —
+          hidden from the overview per request. The inbox + board surface what
+          the owner actually needs to act on. */}
+      {false && isTaskManager && (
         <TaskManagerControls T={T} projectId={bot.id} repoUrl={repoUrl} live={live}
           autoMergeEnabled={detail?.auto_merge_enabled} hasBot={!!botRow} />
       )}

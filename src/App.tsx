@@ -221,8 +221,10 @@ export default function App() {
   useEffect(() => { setDetailTask(null); }, [manageBot, manageView]);
 
   // ── the clarify chat (real, on the draft project) ──
-  const clarifyChat = useChat(project?.id ?? null, tab === 'build' && id === 'clarify');
-  const manageChat = useChat(manageBot, tab === 'manage' && !!manageBot);
+  const clarifyChat = useChat(project?.id ?? null, tab === 'build' && id === 'clarify', true);
+  // active across all bot views (the overview reads its activity feed), but only
+  // FAST-polls when the chat is the focused view — elsewhere it ticks slowly.
+  const manageChat = useChat(manageBot, tab === 'manage' && !!manageBot, manageView === 'chat');
 
   // "Start generating": create the draft project from the idea and enter the chat
   const startChatFlow = async () => {

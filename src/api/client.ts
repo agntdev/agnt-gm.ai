@@ -21,7 +21,19 @@ export class ApiError extends Error {
 let authToken: string | null = null;
 export function setAuthToken(token: string | null): void { authToken = token; }
 
+// Global rate-limit backoff. A 429 from anywhere pauses ALL polling GETs until
+// this time, so the many background pollers (chat, /blocked, /dag, overview…)
+// stop hammering instead of each independently retrying into the limit.
+// Mutations (POST/PUT/DELETE) are never short-circuited — a user action must
+// not be silently dropped; polls catch the synthetic 429 and keep their snapshot.
+let rateLimitedUntil = 0;
+export function rateLimitedFor(): number { return Math.max(0, rateLimitedUntil - Date.now()); }
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const isGet = method.toUpperCase() === 'GET';
+  if (isGet && Date.now() < rateLimitedUntil) {
+    throw new ApiError(429, 'rate limited — backing off');
+  }
   const headers: Record<string, string> = {};
   if (body) headers['Content-Type'] = 'application/json';
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
@@ -30,6 +42,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 429) {
+    const ra = parseInt(res.headers.get('retry-after') || '', 10);
+    rateLimitedUntil = Date.now() + (Number.isFinite(ra) && ra > 0 ? ra * 1000 : 15000);
+  }
   const text = await res.text();
   let json: any = null;
   try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON body */ }

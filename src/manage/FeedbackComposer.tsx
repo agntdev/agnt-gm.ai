@@ -38,7 +38,7 @@ export function FeedbackComposer({ T, bot, live, onGrown }: {
         setDagCount(n);
         setPending(prev => prev.map(p => (!p.done && n > p.baseline ? { ...p, done: true } : p)));
       } catch { /* transient */ }
-      if (!cancelled) timer = setTimeout(tick, 4000);
+      if (!cancelled) timer = setTimeout(tick, 8000);
     };
     void tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };

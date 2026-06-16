@@ -8,9 +8,11 @@ import { ChatMessage, getChatMessages, sendChatMessage } from '../api/client';
 import { TGIcon, Bubble, TypingBubble, Spinner } from '../ui';
 
 // adaptive polling: tight while an AI turn is running (the answer can land
-// any moment), relaxed when the chat is idle.
-const POLL_FAST_MS = 700;
-const POLL_IDLE_MS = 2500;
+// any moment), relaxed when the chat is idle, and much slower when the chat
+// isn't the focused view (it's only feeding the overview's activity strip).
+const POLL_FAST_MS = 1200;
+const POLL_IDLE_MS = 4000;
+const POLL_BG_MS = 12000;
 
 export interface ChatState {
   messages: ChatMessage[];
@@ -18,7 +20,7 @@ export interface ChatState {
   send: (text: string) => void;
 }
 
-export function useChat(projectId: string | null, active: boolean): ChatState {
+export function useChat(projectId: string | null, active: boolean, focused = true): ChatState {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [thinking, setThinking] = useState(false);
   const cursor = useRef(0);
@@ -54,12 +56,12 @@ export function useChat(projectId: string | null, active: boolean): ChatState {
         busy = !!r.ai_thinking;
         setThinking(busy);
       } catch { /* transient — next tick retries */ }
-      timer = setTimeout(tick, busy ? POLL_FAST_MS : POLL_IDLE_MS);
+      timer = setTimeout(tick, !focused ? POLL_BG_MS : busy ? POLL_FAST_MS : POLL_IDLE_MS);
     };
     pollNow.current = () => { if (timer) clearTimeout(timer); void tick(); };
     tick();
     return () => { cancelled = true; pollNow.current = () => {}; if (timer) clearTimeout(timer); };
-  }, [projectId, active]);
+  }, [projectId, active, focused]);
 
   const send = (text: string) => {
     const t = text.trim();

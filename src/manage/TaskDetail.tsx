@@ -85,7 +85,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
       } catch (e) {
         if (e instanceof ApiError && (e.status === 403 || e.status === 404)) threadCanFetch.current = false;
       }
-      if (!cancelled) timer = setTimeout(tick, 3000);
+      if (!cancelled) timer = setTimeout(tick, 5000);
     };
     void tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
