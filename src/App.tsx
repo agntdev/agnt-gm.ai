@@ -828,7 +828,14 @@ export default function App() {
       {agentSheet && activeBot && (
         <AgentManager T={T} project={{ id: activeBot.id, name: activeBot.name }}
           cloudDeployed={cloudBots.has(activeBot.id)}
-          onCloudDeployed={() => markCloudDeployed(activeBot.id)}
+          onCloudDeployed={() => {
+            markCloudDeployed(activeBot.id);
+            // cloud agent ⇒ PLATFORM mode, so the build-mode gate lets the
+            // platform's agent pick up tasks (symmetric with the local path below)
+            const all = loadModes(); all[activeBot.id] = 'platform';
+            localStorage.setItem(MODE_KEY, JSON.stringify(all));
+            setBuildModeApi(activeBot.id, 'platform').catch(() => { /* PUT /build-mode not shipped yet */ });
+          }}
           onConnectNew={() => {
             setAgentSheet(false); setDir(1);
             // local agent ⇒ mark the project LOCAL so the platform defers to it
