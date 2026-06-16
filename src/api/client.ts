@@ -282,6 +282,7 @@ export interface TaskItem {
   solved_by_agent_id?: string;
   // DAG extras (chat-created projects)
   phase?: string;
+  node_kind?: string; // task_manager type: scaffold|feature|epic|question|review — the real pill (NOT task_kind)
   depends_on?: string[];
   claim_reason?: string;
 }
@@ -425,7 +426,8 @@ export async function fetchProjectTasks(idOrSlug: string): Promise<UnifiedTasks>
           slug: t.slug,
           title: t.title,
           status: t.status,
-          difficulty: t.task_kind, // shown as the row pill
+          difficulty: t.task_kind, // legacy/phase pill
+          node_kind: t.node_kind,  // task_manager pill (scaffold|feature|epic|question|review)
           claimers_count: t.claimers?.length || 0,
           is_claimed: (t.claimers?.length || 0) > 0,
           phase: t.phase,

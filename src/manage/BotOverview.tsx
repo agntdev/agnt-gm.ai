@@ -15,7 +15,6 @@ import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
 import { MyBot } from './MyBots';
 import { ActivityTimeline, relTime } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
-import { FeedbackComposer } from './FeedbackComposer';
 
 // human-readable count: 3100 → "3.1k", 12000 → "12k"
 function human(n?: number): string {
@@ -447,7 +446,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           </div>
         }>Tasks</SectionLabel>
         <Card T={T} pad={0}>
-          {dag?.current_phase && <PhaseStrip T={T} dag={dag} />}
+          {/* phases are a phase-pipeline concept — task_manager is epics + tasks, no phase strip */}
+          {dag?.current_phase && !isTaskManager && <PhaseStrip T={T} dag={dag} />}
           {tasks.length === 0 && (
             decomposing ? (
               <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -469,7 +469,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             const open = expandedTask === slug;
             const detail = taskDetails[slug];
             return (
-              <div key={slug} style={{ borderTop: i || dag?.current_phase ? `0.5px solid ${T.sep}` : 'none' }}>
+              <div key={slug} style={{ borderTop: i || (dag?.current_phase && !isTaskManager) ? `0.5px solid ${T.sep}` : 'none' }}>
                 <button onClick={() => toggleTask(slug)} style={{
                   ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
                   padding: '10px 14px', opacity: !open && t.status === 'done' ? 0.72 : 1,
@@ -482,7 +482,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                     ...(open ? {} : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
                   }}>{open ? t.title : t.title.replace(/^Fix:\s*/i, '')}</span>
                   <Pill T={T} tone={t.status === 'done' ? 'neutral' : 'accent'} style={{ height: 19, fontSize: 10, padding: '0 7px' }}>
-                    {t.difficulty || 'task'}
+                    {t.node_kind || t.difficulty || 'task'}
                   </Pill>
                   <TGIcon name="chevDown" size={14} color={T.hint} stroke={2} />
                 </button>
@@ -546,12 +546,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </Card>
       </div>
 
-      {/* task_manager: living-DAG feedback — once live, owner requests grow the DAG */}
-      {isTaskManager && live && (
-        <Card T={T} pad={14}>
-          <FeedbackComposer T={T} bot={bot} live={live} onGrown={onOpenBoard} />
-        </Card>
-      )}
+      {/* feedback now lives in the chat: once LIVE, a chat message routes to the
+          feedback analyzer and the new tasks come back as tool-call messages
+          (agent conversation behavior) — no separate composer here */}
 
       {/* tests — real when CI results land; honest placeholder until then */}
       <div>
