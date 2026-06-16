@@ -3,12 +3,12 @@
 // bot's @username, Recent Activity from the chat's system events (full feed on
 // the "View all" page). "Open chat" opens the owner ↔ build-agent chat; the
 // agent card's "Manage" opens the add-an-agent sheet.
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Theme, btnReset, hexA } from '../theme';
 import {
   ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, ProjectSpec,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  botIsLive, retryDeploy, setAutoMerge, getProjectSpec,
+  botIsLive, retryDeploy, setAutoMerge, getProjectSpec, getCloudAgent,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
@@ -106,10 +106,11 @@ interface OvSnap {
 }
 const OV_CACHE = new Map<string, OvSnap>();
 
-export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, cloudDeployed, paused, onTogglePause }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, onCloudDetected, cloudDeployed, paused, onTogglePause }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
   onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
+  onCloudDetected?: () => void; // API revealed a cloud agent this client hadn't recorded
   cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
 }) {
   const seed = OV_CACHE.get(bot.id); // instant re-open from the last snapshot
@@ -128,6 +129,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetail | 'loading' | 'none'>>({});
   const [isTaskManager, setIsTaskManager] = useState(seed?.isTaskManager ?? false); // gap #1 — derived from /dag node_kind
   const blocked = useBlocked(bot.id, isTaskManager); // attention badge (owner /blocked)
+  const [cloudApi, setCloudApi] = useState<boolean | null>(null); // GET /cloud-agent → deployed?
+  const cloudNotified = useRef(false);
 
   // tap a task → expand with the full title + body fetched from the API
   const toggleTask = (slug: string) => {
@@ -181,6 +184,28 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [bot.id]);
 
+  // cloud-agent status from the API — the source of truth for "is a cloud agent
+  // running", so a server-side deploy (or one made on another device) reflects
+  // even if this client never recorded it locally. Fetched once per bot.
+  useEffect(() => {
+    let cancelled = false;
+    void getCloudAgent(bot.id)
+      .then(c => { if (!cancelled) setCloudApi(c?.deployed ?? null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [bot.id]);
+
+  // once the API reveals a cloud agent this client hadn't recorded, tell the app
+  // so the chat placeholder + agent sheet agree with the overview (fire once).
+  useEffect(() => {
+    const apiCloud = cloudApi === true || detail?.build_mode === 'platform_agent';
+    if (!cloudNotified.current && !cloudDeployed && apiCloud) {
+      cloudNotified.current = true;
+      onCloudDetected?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudApi, detail?.build_mode, cloudDeployed]);
+
   // commits over the last 7 days, straight from the public GitHub repo.
   // Fetched once per repo (not on the 12s tick) — unauthenticated GitHub
   // calls are rate-limited per client IP.
@@ -204,6 +229,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const allDone = tasks.length > 0 && done >= tasks.length;
   const prodDeploys = deploys.filter(d => d.kind !== 'preview' && !d.failure_reason).length;
   const connected = link?.status === 'connected';
+  // a cloud agent is active if the API says so (GET /cloud-agent or platform
+  // build_mode) OR this client recorded the deploy — API wins over local state.
+  const cloudActive = cloudDeployed || cloudApi === true || detail?.build_mode === 'platform_agent';
   const agentClient = (link?.connected_client || '').split('/')[0];
   const handle = botUsername || bot.handle;
   const since = detail?.published_at || detail?.created_at;
@@ -306,14 +334,14 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         <Card T={T} pad={0}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
             <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TGIcon name={cloudDeployed ? 'cloud' : connected ? 'code' : 'plus'} size={19} color={T.accent} stroke={1.9} />
+              <TGIcon name={cloudActive ? 'cloud' : connected ? 'code' : 'plus'} size={19} color={T.accent} stroke={1.9} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>
-                {cloudDeployed ? 'Cloud agent' : connected ? 'Local agent' : 'Add an agent'}
+                {cloudActive ? 'Cloud agent' : connected ? 'Local agent' : 'Add an agent'}
               </div>
               <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {cloudDeployed
+                {cloudActive
                   ? <><Dot color={T.green} size={6} /> running</>
                   : connected
                     ? <><Dot color={T.green} size={6} /> {agentClient || 'Claude'} · online</>
@@ -321,7 +349,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
               </div>
             </div>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.accent }}>
-              {cloudDeployed || connected ? 'Manage' : 'Add'} <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
+              {cloudActive || connected ? 'Manage' : 'Add'} <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
             </span>
           </div>
         </Card>

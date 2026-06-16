@@ -732,6 +732,7 @@ export default function App() {
             onOpenInbox={() => { setDir(1); setManageView('inbox'); }}
             onViewActivity={() => { setDir(1); setManageView('activity'); }}
             onManageAgents={() => setAgentSheet(true)}
+            onCloudDetected={() => markCloudDeployed(activeBot.id)}
             cloudDeployed={cloudBots.has(activeBot.id)}
             paused={pausedBots.has(activeBot.id)}
             onTogglePause={() => togglePause(activeBot.id)}

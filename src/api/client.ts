@@ -550,6 +550,23 @@ export function runCloudAgent(idOrSlug: string): Promise<CloudRun> {
   return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/cloud-agent`);
 }
 
+// Live cloud-agent status — the source of truth for "is a cloud agent deployed",
+// so the UI doesn't depend on this client having recorded the deploy locally.
+// 404/405 → null (endpoint not shipped); fall back to build_mode + local state.
+export interface CloudAgentStatus {
+  deployed?: boolean;
+  status?: string;
+  id?: string;
+}
+export async function getCloudAgent(idOrSlug: string): Promise<CloudAgentStatus | null> {
+  try {
+    return await request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/cloud-agent`);
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return null;
+    throw e;
+  }
+}
+
 // ── task_manager: clarification thread + owner actions ─────────
 // The owner only watches and unblocks — these are the actions that move a
 // living DAG forward. All owner-only; a non-owner gets 403, a phase project 404.
