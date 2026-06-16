@@ -201,6 +201,22 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
             </div>
           )}
 
+          {/* why it failed — the API exposes no granular per-task reason today,
+              so explain the documented meaning of 'failed' (retry budget
+              exhausted), preferring a real failure_reason if the backend sends one */}
+          {status === 'failed' && (
+            <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 12px', borderRadius: 12, background: T.redSoft }}>
+              <TGIcon name="refresh" size={16} color={T.red} stroke={2} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 700, color: T.red, lineHeight: '17px' }}>Why it failed</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.sub, lineHeight: '17px', marginTop: 3 }}>
+                  {task?.failure_reason
+                    || `The build agent used up its retry budget${typeof task?.attempt_count === 'number' && task.attempt_count > 0 ? ` after ${task.attempt_count} attempt${task.attempt_count > 1 ? 's' : ''}` : ''} and stopped. Reopen below to let it try again.`}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* claimers */}
           {claimers.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -295,6 +295,7 @@ export interface TaskDetail {
   spec_body?: string;        // resolved details the task references
   blocked_since?: string;    // RFC3339
   attempt_count?: number;
+  failure_reason?: string;   // why a 'failed' task gave up — optimistic; absent today (backend gap)
   claimers?: ClaimerBrief[];
   is_claimed?: boolean;
 }
