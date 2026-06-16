@@ -13,28 +13,22 @@ export type IdeaExample = { title: string; blurb: string; prompt: string };
 
 export const IDEA_EXAMPLES: IdeaExample[] = [
   {
-    title: 'TON price alerts',
-    blurb: 'Watchlist, threshold pings, morning summary, quiet hours',
+    title: 'Crypto price alerts',
+    blurb: 'Watchlist · threshold & %-move alerts · price check · quiet hours',
     prompt:
-      'I want a Telegram bot that watches Toncoin and TON jettons like USDT and GRAM and pings me the moment something important moves. Each person keeps their own private watchlist — add or remove coins with simple inline buttons — so the bot only follows what they actually care about. I want threshold alerts in plain language: tell me when TON drops below a price I set, or when anything jumps or falls more than 5% within an hour. Give me an on-demand "price now" check, plus an optional morning summary of where my coins stand. Add quiet hours so it never wakes me at night, and please don\'t spam — if a coin keeps wobbling around my threshold, send one clear alert, not fifty. Every message should say exactly what changed and by how much. If a price source hiccups, stay calm and retry instead of sending garbage. Handle typos and odd input gracefully, keep each person\'s settings private, and give me an owner view of who\'s using it and which alerts fire most.',
-  },
-  {
-    title: 'Daily AI news digest',
-    blurb: 'Curated morning AI news, summarized, deduped, on-demand',
-    prompt:
-      'I want a Telegram bot that greets me each morning with a clean, skimmable digest of the freshest AI and Telegram-bot news, so I never have to dig through a dozen sites myself. When someone first opens it, let them pick the topics and keywords they care about — model launches, funding rounds, new bots, research — and set the time their digest arrives. Each morning, send a short rundown: a punchy headline, two or three sentences on what happened, and a link to read more. If the same story shows up across several sources, merge it into one entry instead of repeating it. Add a "what\'s new" button for an on-demand pull between digests, and let readers tap to bookmark items they want to revisit. Make it easy to add or drop sources and mute topics that get noisy. Above all, it should never miss a day, quietly skip any source that\'s down rather than breaking, and keep things tight — a handful of strong items, not an endless wall of links.',
-  },
-  {
-    title: 'Trip expense splitter',
-    blurb: 'Shared expenses, fair splits, settle up in TON',
-    prompt:
-      'I want a Telegram bot that splits expenses for a group trip, so nobody has to chase friends for money or do the math by hand. I start a trip, add everyone who\'s in it, and then anyone can log an expense — who paid, how much, and what it was for — split evenly or by custom shares when only some of us were in on it. The bot keeps a running tally of who owes whom, simplified down to the fewest payments, and I can check the balance any time with a tap. When it\'s time to settle, let people pay each other back in TON straight from their wallet, then mark the debt cleared once it lands. Handle the awkward stuff gracefully: round amounts so balances always net to zero, never lose an expense someone logged, and cope with people joining or leaving partway through the trip. Always confirm before marking a debt settled, keep each group\'s amounts private to its members, and give the organizer a clean overview of the whole trip.',
+      'I want a Telegram bot that watches crypto prices and pings me when something moves. Each person keeps their own private watchlist and adds or removes coins with inline buttons — Bitcoin, Ethereum, Toncoin, or any ticker they type. Support two kinds of alerts: a price threshold ("tell me when BTC drops below $60k") and a percentage move ("tell me when any coin on my list jumps or falls more than 5% in an hour"). Add a /price command for an on-demand check of one coin or my whole list, and an optional morning summary at a time I choose. Include quiet hours so it never alerts me overnight, and don\'t spam — if a coin keeps wobbling around my threshold, send one alert and then cool down for a while instead of firing repeatedly. Every alert should say exactly which coin moved, the old and new price, and the percent change. If a price feed fails, retry quietly instead of sending bad numbers, and handle unknown tickers or typos with a helpful reply. Keep each person\'s watchlist and settings private, and give me an owner view of how many people use it and which alerts fire most.',
   },
   {
     title: 'Restaurant table booking',
-    blurb: 'Live slots, reminders, easy reschedule, refundable deposits',
+    blurb: 'Live availability · instant confirm · reminders · reschedule',
     prompt:
-      'I want a Telegram bot that takes table reservations for my restaurant, Durger King. A guest starts with a tap, picks a date, a time, and how many people are coming, and the bot only ever shows slots that are actually open — it checks real availability against my tables and never offers a time that\'s already full. Once they choose, it confirms the booking right away with a warm, clear message they can trust, then sends a gentle reminder a couple of hours before they\'re due. Guests can cancel or reschedule straight from inline buttons, no need to message me. For bigger parties, let me hold the table with a small refundable TON deposit that comes back when they arrive. On my side I need an owner view of all upcoming bookings, the day\'s table capacity, and a heads-up on no-shows, so we never double-book or get caught overbooked. Keep it forgiving when someone types something odd, private with guest details, and friendly at every step.',
+      'I want a Telegram bot that takes table reservations for my restaurant. A guest taps to start, then picks a date, a time, and party size, and the bot only ever offers slots that are genuinely open — it checks real availability against my tables and capacity and never shows a time that\'s already full. As soon as they choose, confirm the booking with a clear message and a short reference code, then send a reminder a couple of hours before. Guests can reschedule or cancel from inline buttons without messaging us. Let me configure the basics — opening hours, how long a sitting lasts, and how many tables and seats I have — so the bot prevents double-booking and overbooking on its own. On my side I need an owner view of all upcoming bookings, today\'s remaining capacity at a glance, and a flag on no-shows. Handle odd or partial input gracefully, keep guest details private, and stay friendly and clear at every step. No payments needed.',
+  },
+  {
+    title: 'Trip expense splitter',
+    blurb: 'Group trips · log expenses · who-owes-whom · settle up',
+    prompt:
+      'I want a Telegram bot that splits expenses for a trip with friends, so nobody has to do the math or chase people for money. It should work inside our group chat: I create a trip, set its currency, and add everyone, then anyone can log an expense — who paid, how much, and what for — split evenly or by custom shares when only some of us were in on it. The bot keeps a running tally of who owes whom, simplified down to the fewest payments, and we can see the balance any time with /balance. When it\'s time to settle, people pay each other back however they like and then mark the debt as paid in the bot, which always asks for a quick confirm before clearing it. Handle the awkward parts: round amounts so balances always net to zero, never lose an expense someone logged, and cope with people joining or leaving partway through. Keep each trip\'s amounts visible only to its members, and give the organizer a clean overview of the whole trip and every expense in it.',
   },
 ];
 
