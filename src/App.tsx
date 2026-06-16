@@ -755,6 +755,12 @@ export default function App() {
             onViewActivity={() => { setDir(1); setManageView('activity'); }}
             onManageAgents={() => setAgentSheet(true)}
             onCloudDetected={() => markCloudDeployed(activeBot.id)}
+            onCloudGone={() => setCloudBots(prev => {
+              if (!prev.has(activeBot.id)) return prev;
+              const next = new Set(prev); next.delete(activeBot.id);
+              localStorage.setItem(CLOUD_KEY, JSON.stringify([...next]));
+              return next;
+            })}
             cloudDeployed={cloudBots.has(activeBot.id)}
             paused={pausedBots.has(activeBot.id)}
             onTogglePause={() => togglePause(activeBot.id)}

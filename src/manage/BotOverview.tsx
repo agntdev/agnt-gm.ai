@@ -105,11 +105,12 @@ interface OvSnap {
 }
 const OV_CACHE = new Map<string, OvSnap>();
 
-export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, onCloudDetected, cloudDeployed, paused, onTogglePause }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
   onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
   onCloudDetected?: () => void; // API revealed a cloud agent this client hadn't recorded
+  onCloudGone?: () => void;     // API says no cloud agent — clear a stale local mark
   cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
 }) {
   const seed = OV_CACHE.get(bot.id); // instant re-open from the last snapshot
@@ -266,16 +267,18 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     return () => { cancelled = true; };
   }, [bot.id]);
 
-  // once the API reveals a cloud agent this client hadn't recorded, tell the app
-  // so the chat placeholder + agent sheet agree with the overview (fire once).
+  // sync the app/local cloud state to the API verdict: a real deployed agent
+  // (cloudApi true) records it once; the API saying NO agent (false) clears a
+  // stale local mark. build_mode is intentionally NOT a trigger.
   useEffect(() => {
-    const apiCloud = cloudApi === true || detail?.build_mode === 'platform_agent';
-    if (!cloudNotified.current && !cloudDeployed && apiCloud) {
+    if (cloudApi === true && !cloudNotified.current && !cloudDeployed) {
       cloudNotified.current = true;
       onCloudDetected?.();
+    } else if (cloudApi === false && cloudDeployed) {
+      onCloudGone?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cloudApi, detail?.build_mode, cloudDeployed]);
+  }, [cloudApi, cloudDeployed]);
 
   // commits over the last 7 days, straight from the public GitHub repo.
   // Fetched once per repo (not on the 12s tick) — unauthenticated GitHub
@@ -306,7 +309,11 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const connected = link?.status === 'connected';
   // a cloud agent is active if the API says so (GET /cloud-agent or platform
   // build_mode) OR this client recorded the deploy — API wins over local state.
-  const cloudActive = cloudDeployed || cloudApi === true || detail?.build_mode === 'platform_agent';
+  // "Cloud agent · running" needs real evidence: the live GET /cloud-agent verdict
+  // wins; fall back to this client's optimistic deploy flag only when the endpoint
+  // is silent (null). NOT build_mode — platform is the DEFAULT mode and does not
+  // mean an agent is actually deployed/running.
+  const cloudActive = cloudApi ?? cloudDeployed;
   const agentClient = (link?.connected_client || '').split('/')[0];
   const handle = botUsername || bot.handle;
   const since = detail?.published_at || detail?.created_at;
@@ -391,7 +398,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       )}
 
       {/* secondary actions */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 32, marginTop: -4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px 28px', marginTop: -4 }}>
         <button disabled={!botUsername} onClick={() => botUsername && openTgLink(`https://t.me/${botUsername}`)} style={{
           ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600,
           color: botUsername ? T.accent : T.hint, cursor: botUsername ? 'pointer' : 'default',
@@ -403,6 +410,13 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         }}>
           <TGIcon name={paused ? 'play' : 'pause'} size={16} color={T.sub} stroke={2} /> {paused ? 'Resume' : 'Pause'}
         </button>
+        {repoUrl && (
+          <button onClick={() => openExternal(repoUrl)} style={{
+            ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
+          }}>
+            <TGIcon name="code" size={17} color={T.accent} stroke={2} /> Code
+          </button>
+        )}
       </div>
 
       {/* task_manager: attention inbox — amber/red badge when something needs the
