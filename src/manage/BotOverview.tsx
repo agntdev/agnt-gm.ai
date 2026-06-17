@@ -479,12 +479,11 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </Card>
       </button>
 
-      {/* task_manager owner controls (spec doc · auto-merge · retry deploy) —
-          hidden from the overview per request. The inbox + board surface what
-          the owner actually needs to act on. */}
-      {false && isTaskManager && (
+      {/* task_manager: show the spec/goal doc on the overview (the auto-merge +
+          retry-deploy controls stay hidden via specOnly) */}
+      {isTaskManager && (
         <TaskManagerControls T={T} projectId={bot.id} repoUrl={repoUrl} live={live}
-          autoMergeEnabled={detail?.auto_merge_enabled} hasBot={!!botRow} />
+          autoMergeEnabled={detail?.auto_merge_enabled} hasBot={!!botRow} specOnly />
       )}
 
       {/* tasks — compact: phase stepper + one-line rows, expandable */}
@@ -714,9 +713,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 // Only rendered for task_manager bots. Reuses the file's Card/LinkChip/Switch
 // + the client helpers; all owner-only POST/PATCH, optimistic with verbatim
 // error text (409/503 are actionable — surfaced as-is).
-function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, hasBot }: {
+function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, hasBot, specOnly }: {
   T: Theme; projectId: string; repoUrl?: string; live: boolean;
-  autoMergeEnabled?: boolean; hasBot: boolean;
+  autoMergeEnabled?: boolean; hasBot: boolean; specOnly?: boolean;
 }) {
   // Spec doc (gap #2): real endpoint if it exists, else link docs/spec.md in the repo.
   const [spec, setSpec] = useState<ProjectSpec | null | 'loading'>('loading');
@@ -803,7 +802,8 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
         </Card>
       </div>
 
-      {/* auto-merge + retry deploy */}
+      {/* auto-merge + retry deploy — hidden unless full controls are requested */}
+      {!specOnly && (
       <Card T={T} pad={0}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -838,6 +838,7 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
           </div>
         )}
       </Card>
+      )}
     </div>
   );
 }
