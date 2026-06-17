@@ -309,11 +309,11 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const connected = link?.status === 'connected';
   // a cloud agent is active if the API says so (GET /cloud-agent or platform
   // build_mode) OR this client recorded the deploy — API wins over local state.
-  // "Cloud agent · running" needs real evidence: the live GET /cloud-agent verdict
-  // wins; fall back to this client's optimistic deploy flag only when the endpoint
-  // is silent (null). NOT build_mode — platform is the DEFAULT mode and does not
-  // mean an agent is actually deployed/running.
-  const cloudActive = cloudApi ?? cloudDeployed;
+  // ONLY show "Cloud agent" when the API actually confirms a deployed agent
+  // (GET /cloud-agent → deployed:true). No optimistic local flag, no build_mode —
+  // those produced a "running" agent that wasn't real. Until the API says so, the
+  // card reads "Add an agent" (or "Local agent" if a local one is connected).
+  const cloudActive = cloudApi === true;
   const agentClient = (link?.connected_client || '').split('/')[0];
   const handle = botUsername || bot.handle;
   const since = detail?.published_at || detail?.created_at;
