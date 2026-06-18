@@ -105,13 +105,14 @@ interface OvSnap {
 }
 const OV_CACHE = new Map<string, OvSnap>();
 
-export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause, discoverable, onToggleDiscoverable }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
   onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
   onCloudDetected?: () => void; // API revealed a cloud agent this client hadn't recorded
   onCloudGone?: () => void;     // API says no cloud agent — clear a stale local mark
   cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
+  discoverable: boolean; onToggleDiscoverable: () => void;
 }) {
   const seed = OV_CACHE.get(bot.id); // instant re-open from the last snapshot
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -418,6 +419,17 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           </button>
         )}
       </div>
+
+      {/* Show on Discovery — owner opt-out of the public Discover feed */}
+      <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Show on Discovery</div>
+          <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 2, lineHeight: '17px' }}>
+            Listed on the Discover page for everyone to find
+          </div>
+        </div>
+        <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} />
+      </Card>
 
       {/* task_manager: attention inbox — amber/red badge when something needs the
           owner, else a neutral "all clear" entry point */}

@@ -18,6 +18,7 @@ import {
   initiateBot, getProjectBot, BotInitiate,
   setBotPaused,
   listDiscoverBots,
+  setDiscoverable,
 } from './api/client';
 import { useChat } from './chat/Chat';
 import { TGHeader, MainButton, TabBar, Tab } from './ui';
@@ -65,6 +66,12 @@ function loadHidden(): Set<string> {
 const PAUSED_KEY = 'agentbot-paused'; // optimistic pause state per bot (until the API carries `paused`)
 function loadPaused(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(PAUSED_KEY) || '[]') as string[]); }
+  catch { return new Set(); }
+}
+
+const DISCOVER_OPTOUT_KEY = 'agentbot-discover-optout'; // bots the owner hid from Discovery (until the API carries `discoverable`)
+function loadDiscoverOptOut(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(DISCOVER_OPTOUT_KEY) || '[]') as string[]); }
   catch { return new Set(); }
 }
 
@@ -203,6 +210,7 @@ export default function App() {
   const [detailTask, setDetailTask] = useState<string | null>(null); // task_manager TaskDetail overlay (slug)
   const [hiddenBots, setHiddenBots] = useState<Set<string>>(loadHidden);
   const [pausedBots, setPausedBots] = useState<Set<string>>(loadPaused);
+  const [discoverOptOut, setDiscoverOptOut] = useState<Set<string>>(loadDiscoverOptOut);
   const [cloudBots, setCloudBots] = useState<Set<string>>(loadCloud);
   const [agentSheet, setAgentSheet] = useState(false); // "Add an agent" bottom sheet
   const [draft, setDraft] = useState('');
@@ -619,6 +627,18 @@ export default function App() {
     });
   };
 
+  // show/hide a bot on Discovery — optimistic (real PUT when the API ships)
+  const toggleDiscoverable = (botId: string) => {
+    setDiscoverOptOut(prev => {
+      const next = new Set(prev);
+      const willHide = !next.has(botId); // currently shown → hide it
+      if (willHide) next.add(botId); else next.delete(botId);
+      localStorage.setItem(DISCOVER_OPTOUT_KEY, JSON.stringify([...next]));
+      setDiscoverable(botId, !willHide).catch(() => { /* endpoint not shipped yet */ });
+      return next;
+    });
+  };
+
   // remember a deployed cloud agent so the sheet enforces max one per bot
   const markCloudDeployed = (botId: string) => {
     setCloudBots(prev => {
@@ -789,6 +809,8 @@ export default function App() {
             cloudDeployed={cloudBots.has(activeBot.id)}
             paused={pausedBots.has(activeBot.id)}
             onTogglePause={() => togglePause(activeBot.id)}
+            discoverable={!discoverOptOut.has(activeBot.id)}
+            onToggleDiscoverable={() => toggleDiscoverable(activeBot.id)}
             onDelete={() => void deleteBot(activeBot.id)} />)
       : <MyBotsList T={T} bots={myBots} loading={botsLoading} authed={tgAuthed}
           onOpen={(bid) => {
