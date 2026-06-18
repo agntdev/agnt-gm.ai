@@ -422,6 +422,17 @@ export interface UnifiedTasks {
   isTaskManager?: boolean;
 }
 
+// Backend ships some claim_reasons that just restate an obvious, non-actionable
+// state (in-progress task, epic rollup) — drop those so the UI stays quiet.
+const NOISE_CLAIM_REASONS = [
+  'task is in_progress; only open tasks can be claimed',
+  'epic nodes are display-only rollups and are never claimable',
+];
+function suppressNoiseReason(reason?: string): string | undefined {
+  if (!reason) return undefined;
+  return NOISE_CLAIM_REASONS.includes(reason.trim()) ? undefined : reason;
+}
+
 // DAG first (the real system for chat-created projects), legacy list as
 // the fallback for older bounty-style projects.
 export async function fetchProjectTasks(idOrSlug: string): Promise<UnifiedTasks> {
@@ -441,7 +452,7 @@ export async function fetchProjectTasks(idOrSlug: string): Promise<UnifiedTasks>
           is_claimed: (t.claimers?.length || 0) > 0,
           phase: t.phase,
           depends_on: t.depends_on,
-          claim_reason: t.claimable === false ? t.claim_reason : undefined,
+          claim_reason: t.claimable === false ? suppressNoiseReason(t.claim_reason) : undefined,
         })),
         dag: {
           current_phase: d.current_phase,
