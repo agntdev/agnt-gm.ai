@@ -253,12 +253,12 @@ export function ProgressBar({ T, value, color }: { T: Theme; value: number; colo
 }
 
 // ── bottom tab bar ────────────────────────────────────────────
-export type Tab = 'build' | 'manage';
+export type Tab = 'build' | 'discover' | 'manage';
 
 export function TabBar({ T, tab, onTab }: { T: Theme; tab: Tab; onTab: (t: Tab) => void }) {
   const items: { id: Tab; icon: string; label: string }[] = [
     { id: 'build', icon: 'bolt', label: 'Build' },
-    // Discover tab exists in the design but is hidden for now
+    { id: 'discover', icon: 'compass', label: 'Discover' },
     { id: 'manage', icon: 'chat', label: 'My Bots' },
   ];
   return (

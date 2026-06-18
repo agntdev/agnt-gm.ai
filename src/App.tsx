@@ -17,6 +17,7 @@ import {
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
   setBotPaused,
+  listDiscoverBots,
 } from './api/client';
 import { useChat } from './chat/Chat';
 import { TGHeader, MainButton, TabBar, Tab } from './ui';
@@ -25,6 +26,7 @@ import { ClarifyScreen, GenPhase } from './screens/Clarify';
 import { SpecScreen } from './screens/Spec';
 import { AgentScreen } from './screens/Agent';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
+import { DiscoveryPage, DiscoverBot, discoverBotFromProject } from './manage/Discovery';
 import { BotOverview } from './manage/BotOverview';
 import { DagBoard } from './manage/DagBoard';
 import { BoardView } from './manage/TaskManagerBoard';
@@ -205,6 +207,11 @@ export default function App() {
   const [agentSheet, setAgentSheet] = useState(false); // "Add an agent" bottom sheet
   const [draft, setDraft] = useState('');
 
+  // Discover tab — server-side feed of live bots (everyone's). Empty until the
+  // listing endpoint ships (no client-side fallback — can't list others locally).
+  const [discoverBots, setDiscoverBots] = useState<DiscoverBot[]>([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+
   const id: StepId = STEPS[step];
   const cancelPoll = useRef<() => void>(() => {});
 
@@ -376,6 +383,9 @@ export default function App() {
         setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'connect' ? 'connect' : parts[2] === 'taskboard' ? 'taskboard' : parts[2] === 'inbox' ? 'inbox' : parts[2] === 'board' ? 'board' : 'overview');
       }
       routeReady.current = true;
+    } else if (parts[0] === 'discover') {
+      setTab('discover');
+      routeReady.current = true;
     } else if (parts[0] === 'build' && parts[1]) {
       void resumeBuild(parts[1]); // restores the step; sets routeReady when settled
     } else {
@@ -389,6 +399,7 @@ export default function App() {
     const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'connect' ? '/connect' : manageView === 'taskboard' ? '/taskboard' : manageView === 'inbox' ? '/inbox' : manageView === 'board' ? '/board' : '';
     const h = tab === 'manage'
       ? (manageBot ? `#/bots/${manageBot}${sub}` : '#/bots')
+      : tab === 'discover' ? '#/discover'
       : project ? `#/build/${project.id}` : '#/';
     history.replaceState(null, '', h);
   }, [tab, manageBot, manageView, project?.id]);
@@ -549,8 +560,19 @@ export default function App() {
     setBotsLoading(false);
   };
 
+  // load the public discover feed; tolerate a missing endpoint (empty state)
+  const refreshDiscover = async () => {
+    setDiscoverLoading(true);
+    try {
+      const list = await listDiscoverBots();
+      setDiscoverBots((list.projects || []).map(discoverBotFromProject).filter((b): b is DiscoverBot => b !== null));
+    } catch { setDiscoverBots([]); } // 404/405/429 → empty "coming soon"
+    setDiscoverLoading(false);
+  };
+
   useEffect(() => {
     if (tab === 'manage') void refreshMyBots();
+    if (tab === 'discover') void refreshDiscover();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, tgAuthed]);
 
@@ -666,7 +688,8 @@ export default function App() {
     if (manageView !== 'overview') setManageView('overview');
     else setManageBot(null);
   };
-  const backAction: (() => void) | null = tab === 'manage' ? (activeBot ? closeChat : null) : onBack;
+  const backAction: (() => void) | null =
+    tab === 'discover' ? null : tab === 'manage' ? (activeBot ? closeChat : null) : onBack;
 
   // Telegram's own header already exists inside the mini-app — drive its
   // native BackButton instead of rendering our mocked chrome.
@@ -716,6 +739,8 @@ export default function App() {
           subtitle={manageView === 'overview' || manageView === 'chat' ? '@' + activeBot.handle + ' · ' + activeBot.version : '@' + activeBot.handle}
           onBack={closeChat} />
       : <TGHeader T={T} title="My Bots" subtitle="Deployed on AgentBot" />)
+    : tab === 'discover'
+    ? <TGHeader T={T} title="Discover" subtitle="Bots built on AgentBot" />
     : <TGHeader T={T} title="AgentBot" subtitle={STAGE_SUB[id]} onBack={onBack} />);
 
   // ── body per tab ──
@@ -772,6 +797,8 @@ export default function App() {
             else { setManageBot(bid); setManageView('overview'); setDir(1); }
           }}
           onBuildFirst={() => { setDir(1); setTab('build'); }} />)
+    : tab === 'discover'
+      ? <DiscoveryPage T={T} bots={discoverBots} loading={discoverLoading} />
     : screen;
 
   // ── footer (above the tab bar) ──
@@ -790,7 +817,7 @@ export default function App() {
         disabled={false} placeholder="Type your answer…" />
     : (mainBtn ? <MainButton T={T} {...mainBtn} /> : null);
 
-  const animKey = tab === 'manage' ? `m-${manageBot || 'list'}-${manageView}` : `b-${step}`;
+  const animKey = tab === 'manage' ? `m-${manageBot || 'list'}-${manageView}` : tab === 'discover' ? 'd-discover' : `b-${step}`;
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.pageBg, transition: 'background .3s' }}>
