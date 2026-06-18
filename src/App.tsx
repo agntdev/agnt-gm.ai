@@ -806,7 +806,9 @@ export default function App() {
   // (status leaves draft) the MainButton takes over.
   const drafting = id === 'clarify' && project?.status === 'draft' && gen !== 'error'
     && !clarifyChat.messages.some(m => m.role === 'system'); // system msg = brief locked, even before the status poll catches up
-  const footer = tab === 'manage'
+  const footer = tab === 'discover'
+    ? null // the discover feed has no footer (no stray build CTA / composer)
+    : tab === 'manage'
     ? (activeBot && manageView === 'chat'
       ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false}
           placeholder={cloudBots.has(activeBot.id) ? 'Ask your cloud agent…' : undefined} />
