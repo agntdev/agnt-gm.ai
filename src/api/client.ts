@@ -78,6 +78,8 @@ export interface Project {
   github_repo_url?: string;
   github_project_url?: string;
   live_url?: string;
+  bot_username?: string;   // the real managed-bot @username (for t.me links on Discovery)
+  discoverable?: boolean;  // listed on the Discover page; absent/true = shown, false = opted out
   logo_url?: string;
   preview_image_url?: string;
   open_tasks?: number;
@@ -247,6 +249,13 @@ export function setBuildModeApi(idOrSlug: string, mode: BuildMode): Promise<unkn
 
 export function listProjectsByAgent(agentId: string, limit = 50): Promise<ProjectList> {
   return request('GET', `/builder/projects?owner_agent_id=${encodeURIComponent(agentId)}&limit=${limit}`);
+}
+
+// ── Discovery: public feed of live bots (gap — backend ticket pending) ──
+// Lists LIVE, discoverable bots (everyone's). The UI feature-detects: a
+// 404/405 (endpoint not shipped) surfaces as an empty "coming soon" state.
+export function listDiscoverBots(limit = 50): Promise<ProjectList> {
+  return request('GET', `/builder/projects/discover?limit=${limit}`);
 }
 
 // ── Telegram Mini-App auth (silent, via WebApp initData) ──────
@@ -537,6 +546,11 @@ export async function getBotAnalytics(idOrSlug: string): Promise<BotAnalytics | 
 // locally). The owner-visible status pill flips Live ⇄ Paused immediately.
 export function setBotPaused(idOrSlug: string, paused: boolean): Promise<unknown> {
   return request('PUT', `/builder/projects/${encodeURIComponent(idOrSlug)}/bot/pause`, { paused });
+}
+
+// opt a bot in/out of the Discover feed — optimistic (real PUT when the API ships)
+export function setDiscoverable(idOrSlug: string, on: boolean): Promise<unknown> {
+  return request('PUT', `/builder/projects/${encodeURIComponent(idOrSlug)}/discoverable`, { discoverable: on });
 }
 
 // ── Cloud agent (deploy one; max one per bot) ─────────────────
