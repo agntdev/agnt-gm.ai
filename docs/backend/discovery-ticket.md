@@ -49,3 +49,7 @@ Response (addition): { ..., "discoverable": true }
   (`bot_username`, `discoverable`).
 - Frontend already calls `listDiscoverBots()` (the GET) and `setDiscoverable()`
   (the PUT). Everything else 404/405 = "not shipped" fallback.
+- FE follow-up once this ships: the overview "Show on Discovery" toggle currently
+  reflects localStorage opt-out only. When `GET /projects/{id}` returns
+  `discoverable`, thread it onto `MyBot` (`botFromProject`) and seed the toggle's
+  initial state from it, so a server-set opt-out shows correctly on load.
