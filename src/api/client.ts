@@ -27,7 +27,6 @@ export function setAuthToken(token: string | null): void { authToken = token; }
 // Mutations (POST/PUT/DELETE) are never short-circuited — a user action must
 // not be silently dropped; polls catch the synthetic 429 and keep their snapshot.
 let rateLimitedUntil = 0;
-export function rateLimitedFor(): number { return Math.max(0, rateLimitedUntil - Date.now()); }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const isGet = method.toUpperCase() === 'GET';
@@ -101,12 +100,6 @@ export interface Project {
   auto_merge_after_revalidation?: boolean;
 }
 
-export interface ProjectCreated {
-  project: Project;
-  task_count?: number;
-  next_step?: string;
-}
-
 export interface ProjectDetail {
   project: Project;
   readme_md?: string;
@@ -118,12 +111,6 @@ export interface ProjectList {
   total: number;
   limit: number;
   offset: number;
-}
-
-// Authorized via Telegram (Bearer token) — the owner is derived from the
-// session; no wallet address needed at creation (bind one later to fund).
-export function createProject(rawIdea: string): Promise<ProjectCreated> {
-  return request('POST', '/builder/projects', { raw_idea: rawIdea });
 }
 
 export function getProject(idOrSlug: string): Promise<ProjectDetail> {
@@ -376,17 +363,6 @@ export function isTaskManagerDag(d: { tasks?: DagTask[] } | null | undefined): b
   return !!d?.tasks?.some(t => !!t.node_kind);
 }
 
-// route old vs new per project: prefer the (future) build_pipeline field, else
-// fall back to inspecting the DAG for node_kind.
-export function pipelineOf(
-  p?: Pick<Project, 'build_pipeline'> | null,
-  d?: { tasks?: DagTask[] } | null,
-): 'task_manager' | 'phase' {
-  if (p?.build_pipeline === 'task_manager') return 'task_manager';
-  if (p?.build_pipeline === 'phase') return 'phase';
-  return isTaskManagerDag(d) ? 'task_manager' : 'phase';
-}
-
 // one-shot discriminator at board/inbox open — public /dag, no token needed.
 export async function getProjectPipeline(idOrSlug: string): Promise<'task_manager' | 'phase'> {
   try {
@@ -506,31 +482,6 @@ export function mintAgentLink(projectId: string): Promise<AgentLinkCode> {
 
 export function getAgentLink(projectId: string): Promise<AgentLinkStatus> {
   return request('GET', `/builder/projects/${encodeURIComponent(projectId)}/agent-link`);
-}
-
-// ── CLI auth session (device-flow: connect the owner's agent) ─
-
-export interface CliSession {
-  session_id: string;
-  login_url: string;
-  verification_code?: string;
-  expires_in?: number;
-  expires_at?: string;
-}
-
-export interface CliSessionPoll {
-  status: 'pending' | 'ready' | 'expired';
-  token?: string;
-  jwt?: string;
-  agent?: { id?: string; github_username?: string; display_name?: string };
-}
-
-export function createCliSession(clientName: string): Promise<CliSession> {
-  return request('POST', '/auth/cli-session', { client_name: clientName });
-}
-
-export function pollCliSession(id: string): Promise<CliSessionPoll> {
-  return request('GET', `/auth/cli-session/${encodeURIComponent(id)}`);
 }
 
 // ── Bot analytics (end-user usage of the DEPLOYED bot) ────────
