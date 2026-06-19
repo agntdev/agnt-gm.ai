@@ -325,20 +325,25 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const needsBot = isTaskManager && !botUsername;          // managed bot not provisioned yet
   const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
 
-  // real build stats now; the same 3-up card swaps to deployed-bot analytics
-  // (active users / today / vs. yest.) once that endpoint lands.
-  const stats: { value: string; label: string; tone?: 'green' }[] = analytics ? [
+  // Deployed-bot analytics (active users / today / vs. yest.) sit on top once
+  // that endpoint lands; build stats (tasks / deploys / commits) stay below.
+  // Both render in one compact 3-up grid — 1 row when there's no analytics yet,
+  // 2 rows once it does.
+  type Stat = { value: string; label: string; tone?: 'green' };
+  const buildStats: Stat[] = [
+    { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
+    { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
+    { value: commits7d ? String(commits7d) : '—', label: 'Commits · 7d' },
+  ];
+  const analyticsStats: Stat[] = analytics ? [
     { value: human(analytics.active_users), label: 'active users' },
     { value: analytics.messages_today != null ? human(analytics.messages_today) : '—', label: 'today' },
     {
       value: analytics.delta_pct != null ? `${analytics.delta_pct > 0 ? '+' : ''}${analytics.delta_pct}%` : '—',
       label: 'vs. yest.', tone: (analytics.delta_pct ?? 0) >= 0 ? 'green' : undefined,
     },
-  ] : [
-    { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
-    { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
-    { value: commits7d ? String(commits7d) : '—', label: 'Commits · 7d' },
-  ];
+  ] : [];
+  const stats: Stat[] = [...analyticsStats, ...buildStats];
 
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -453,13 +458,17 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           )
       )}
 
-      {/* stats — single 3-up card */}
+      {/* stats — compact 3-up grid; wraps to a 2nd row when analytics is live */}
       <Card T={T} pad={0}>
-        <div style={{ display: 'flex' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
           {stats.map((s, i) => (
-            <div key={i} style={{ flex: 1, padding: '16px 8px', textAlign: 'center', borderLeft: i ? `0.5px solid ${T.sep}` : 'none' }}>
-              <div style={{ fontFamily: T.font, fontSize: 23, fontWeight: 700, letterSpacing: -0.4, color: s.tone === 'green' ? T.green : T.text }}>{s.value}</div>
-              <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 3 }}>{s.label}</div>
+            <div key={i} style={{
+              padding: '11px 8px', textAlign: 'center',
+              borderLeft: i % 3 ? `0.5px solid ${T.sep}` : 'none',
+              borderTop: i >= 3 ? `0.5px solid ${T.sep}` : 'none',
+            }}>
+              <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, letterSpacing: -0.4, color: s.tone === 'green' ? T.green : T.text }}>{s.value}</div>
+              <div style={{ fontFamily: T.font, fontSize: 11, color: T.hint, marginTop: 2 }}>{s.label}</div>
             </div>
           ))}
         </div>
