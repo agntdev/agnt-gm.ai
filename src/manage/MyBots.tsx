@@ -28,25 +28,30 @@ const STATUS_LABELS: Record<string, string> = {
   generating: 'Building…', // task_manager decompose/build state
   ready_to_publish: 'In progress',
   publishing: 'Publishing…',
-  live: 'Live',
-  completed: 'Completed',
+  live: 'Building…',
+  completed: 'Build complete',
 };
 
 export function botFromProject(p: Project): MyBot {
-  const desc = p.short_description || p.goal_of_project || 'Your bot is deployed and running.';
-  const deployed = p.status === 'live' || p.status === 'completed' || p.status === 'publishing';
+  const isTaskManager = p.build_pipeline ? p.build_pipeline === 'task_manager' : undefined;
+  const runtimeLive = p.current_phase === 'published' || !!p.bot_go_live_at;
+  const legacyLive = isTaskManager !== true && (p.status === 'live' || p.status === 'completed');
+  const deployed = runtimeLive || legacyLive;
+  const desc = p.short_description || p.goal_of_project || (deployed
+    ? 'Your bot is deployed and running.'
+    : 'Build in progress — open for status and changes.');
   return {
     id: p.id,
     name: p.name,
-    handle: `${p.slug.replace(/-/g, '_')}_bot`,
+    handle: p.bot_username || `${p.slug.replace(/-/g, '_')}_bot`,
     tone: toneFor(p.slug),
     version: 'v1.0',
-    status: p.status,
+    status: deployed ? 'live' : p.status,
     inProgress: !deployed,
-    statusLabel: STATUS_LABELS[p.status] || p.status,
+    statusLabel: deployed ? 'Live' : (STATUS_LABELS[p.status] || p.status),
     preview: desc,
     // undefined until the DTO carries build_pipeline; the board/overview probe /dag otherwise
-    isTaskManager: p.build_pipeline ? p.build_pipeline === 'task_manager' : undefined,
+    isTaskManager,
   };
 }
 

@@ -45,7 +45,7 @@ function latestTests(sys: ChatMessage[]): { passed: number; total: number; cover
 }
 
 const TASK_DOT: Record<string, 'green' | 'accent' | 'hint'> = {
-  done: 'green', in_progress: 'accent', open: 'hint',
+  done: 'green', in_progress: 'accent', in_review: 'accent', blocked: 'accent', failed: 'hint', open: 'hint',
 };
 
 // active work first, queued next, done last — the collapsed view shows
@@ -86,6 +86,52 @@ function PhaseStrip({ T, dag }: { T: Theme; dag: DagInfo }) {
   );
 }
 
+type ProgressState = 'done' | 'active' | 'todo' | 'failed';
+type ProgressStep = { label: string; state: ProgressState };
+
+function BuildProgress({ T, steps }: { T: Theme; steps: ProgressStep[] }) {
+  const colorFor = (state: ProgressState) =>
+    state === 'done' ? T.green : state === 'failed' ? T.red : state === 'active' ? T.accent : T.hint;
+  return (
+    <Card T={T} pad={13}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`, gap: 8 }}>
+        {steps.map((s, i) => {
+          const color = colorFor(s.state);
+          return (
+            <div key={s.label} style={{ minWidth: 0 }}>
+              <div style={{
+                height: 4, borderRadius: 999,
+                background: s.state === 'todo' ? (T.dark ? 'rgba(255,255,255,0.1)' : 'rgba(15,22,32,0.08)') : color,
+                opacity: s.state === 'done' ? 0.72 : 1,
+              }} />
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                {s.state === 'done'
+                  ? <TGIcon name="check" size={13} color={T.green} stroke={2.7} />
+                  : <Dot color={color} size={6} pulse={s.state === 'active'} />}
+                <span style={{
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  fontFamily: T.font, fontSize: 11.5, fontWeight: i === 0 || s.state !== 'todo' ? 600 : 500,
+                  color: s.state === 'todo' ? T.hint : color,
+                }}>{s.label}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+function deployFailed(d?: Deployment | null): boolean {
+  if (!d) return false;
+  return !!d.failure_reason || /fail|error|cancel/i.test(d.status || '');
+}
+
+function deployActive(d?: Deployment | null): boolean {
+  if (!d) return false;
+  return /queue|pending|build|deploy|progress|running|started/i.test(d.status || '');
+}
+
 // uppercase section label, reused across sections
 function SectionLabel({ T, children, right }: { T: Theme; children: ReactNode; right?: ReactNode }) {
   return (
@@ -124,7 +170,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const [botRow, setBotRow] = useState<ProjectBot | null>(seed?.botRow ?? null);
   const [link, setLink] = useState<AgentLinkStatus | null>(seed?.link ?? null);
   const [analytics, setAnalytics] = useState<BotAnalytics | null>(seed?.analytics ?? null);
-  const [commits7d, setCommits7d] = useState<number | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetail | 'loading' | 'none'>>({});
@@ -281,22 +326,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cloudApi, cloudDeployed]);
 
-  // commits over the last 7 days, straight from the public GitHub repo.
-  // Fetched once per repo (not on the 12s tick) — unauthenticated GitHub
-  // calls are rate-limited per client IP.
   const repoUrl = detail?.github_repo_url;
-  useEffect(() => {
-    if (!repoUrl) return;
-    const m = /github\.com\/([^/]+)\/([^/#?]+)/.exec(repoUrl);
-    if (!m) return;
-    let cancelled = false;
-    const since = new Date(Date.now() - 7 * 86400_000).toISOString();
-    fetch(`https://api.github.com/repos/${m[1]}/${m[2]}/commits?since=${since}&per_page=100`)
-      .then(r => (r.ok ? r.json() : null))
-      .then((arr) => { if (!cancelled && Array.isArray(arr)) setCommits7d(arr.length); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [repoUrl]);
 
   const sys = messages.filter(m => m.role === 'system');
   const activity = [...sys].reverse().slice(0, 4);
@@ -307,6 +337,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const total = countable.length;
   const allDone = total > 0 && done >= total;
   const prodDeploys = deploys.filter(d => d.kind !== 'preview' && !d.failure_reason).length;
+  const latestDeploy = deploys[0] ?? null;
+  const latestDeployFailed = deployFailed(latestDeploy);
+  const latestDeployActive = deployActive(latestDeploy);
   const connected = link?.status === 'connected';
   // a cloud agent is active if the API says so (GET /cloud-agent or platform
   // build_mode) OR this client recorded the deploy — API wins over local state.
@@ -322,25 +355,53 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // the real go-live signal (NOT project.status): current_phase==='published'
   // OR the managed bot's container_state. Drives the feedback channel.
   const live = dag?.current_phase === 'published' || detail?.current_phase === 'published' || botIsLive(botRow);
+  const pausedEffective = paused || !!botRow?.paused;
   const needsBot = isTaskManager && !botUsername;          // managed bot not provisioned yet
   const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
+  const testResult = latestTests(sys);
+  const testsFailed = !!testResult && testResult.passed < testResult.total;
+  const hasUsageAnalytics = !!analytics && (
+    typeof analytics.active_users === 'number'
+    || typeof analytics.messages_today === 'number'
+    || typeof analytics.delta_pct === 'number'
+  );
+  const statusState = (() => {
+    if (pausedEffective) return { label: `Paused · ${bot.version}`, tone: 'neutral' as const, color: T.hint, pulse: false };
+    if (live) return { label: `Live${uptime ? ` · up ${uptime}` : ''} · ${bot.version}`, tone: 'green' as const, color: T.green, pulse: false };
+    if (needsBot) return { label: 'Create bot to continue', tone: 'accent' as const, color: T.accent, pulse: true };
+    if (latestDeployFailed || testsFailed) return { label: 'Needs a fix', tone: 'neutral' as const, color: T.red, pulse: false };
+    if (blocked.items.length > 0) return { label: 'Needs you', tone: 'accent' as const, color: T.accent, pulse: true };
+    if (latestDeployActive) return { label: 'Deploying', tone: 'accent' as const, color: T.accent, pulse: true };
+    if (allDone && botUsername) return { label: 'Testing & deploy', tone: 'accent' as const, color: T.accent, pulse: true };
+    if (decomposing) return { label: 'Planning build', tone: 'accent' as const, color: T.accent, pulse: true };
+    return { label: bot.statusLabel || 'Building', tone: 'accent' as const, color: T.accent, pulse: true };
+  })();
+  const progressSteps: ProgressStep[] = [
+    { label: 'Plan', state: total > 0 || !decomposing ? 'done' : 'active' },
+    { label: 'Build', state: latestDeployFailed ? 'failed' : allDone ? 'done' : (total > 0 || decomposing ? 'active' : 'todo') },
+    { label: 'Test', state: testsFailed ? 'failed' : testResult ? 'done' : allDone ? 'active' : 'todo' },
+    { label: 'Live', state: live ? 'done' : latestDeployFailed ? 'failed' : latestDeployActive ? 'active' : 'todo' },
+  ];
 
-  // Deployed-bot analytics (active users / today / vs. yest.) sit on top once
-  // that endpoint lands; build stats (tasks / deploys / commits) stay below.
+  // Deployed-bot analytics (active users / today / vs. yest.) sit on top only
+  // when those usage fields exist; build stats stay visible either way.
   // Both render in one compact 3-up grid — 1 row when there's no analytics yet,
   // 2 rows once it does.
   type Stat = { value: string; label: string; tone?: 'green' };
   const buildStats: Stat[] = [
     { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
     { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
-    { value: commits7d ? String(commits7d) : '—', label: 'Commits · 7d' },
-  ];
-  const analyticsStats: Stat[] = analytics ? [
-    { value: human(analytics.active_users), label: 'active users' },
-    { value: analytics.messages_today != null ? human(analytics.messages_today) : '—', label: 'today' },
     {
-      value: analytics.delta_pct != null ? `${analytics.delta_pct > 0 ? '+' : ''}${analytics.delta_pct}%` : '—',
-      label: 'vs. yest.', tone: (analytics.delta_pct ?? 0) >= 0 ? 'green' : undefined,
+      value: latestDeploy?.deployed_at ? relTime(latestDeploy.deployed_at) : latestDeploy?.status || '—',
+      label: latestDeployFailed ? 'Deploy failed' : 'Last deploy',
+    },
+  ];
+  const analyticsStats: Stat[] = hasUsageAnalytics ? [
+    { value: human(analytics?.active_users), label: 'active users' },
+    { value: analytics?.messages_today != null ? human(analytics.messages_today) : '—', label: 'today' },
+    {
+      value: analytics?.delta_pct != null ? `${analytics.delta_pct > 0 ? '+' : ''}${analytics.delta_pct}%` : '—',
+      label: 'vs. yest.', tone: (analytics?.delta_pct ?? 0) >= 0 ? 'green' : undefined,
     },
   ] : [];
   const stats: Stat[] = [...analyticsStats, ...buildStats];
@@ -353,11 +414,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         <div style={{ fontFamily: T.font, fontSize: 25, fontWeight: 700, color: T.text, letterSpacing: -0.4, marginTop: 4 }}>{bot.name}</div>
         <div style={{ fontFamily: T.mono, fontSize: 14, color: T.accent }}>@{handle}</div>
         <div style={{ marginTop: 3 }}>
-          {paused
-            ? <Pill T={T} tone="neutral"><Dot color={T.hint} size={6} /> Paused · {bot.version}</Pill>
-            : bot.status === 'live'
-              ? <Pill T={T} tone="green"><Dot color={T.green} size={6} /> Live{uptime ? ` · up ${uptime}` : ''} · {bot.version}</Pill>
-              : <Pill T={T} tone="neutral">{bot.statusLabel}</Pill>}
+          <Pill T={T} tone={statusState.tone}>
+            <Dot color={statusState.color} size={6} pulse={statusState.pulse} /> {statusState.label}
+          </Pill>
         </div>
       </div>
 
@@ -392,29 +451,38 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </Card>
       )}
 
-      {/* primary action — "Open chat" hidden from the overview for now */}
-      {false && (
+      {/* primary action — the Lovable-style feedback loop */}
+      {(() => {
+        const label = live ? 'Ask for change' : latestDeployFailed || testsFailed ? 'Fix with builder' : 'Message builder';
+        return (
         <button onClick={onOpenChat} style={{
           ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           fontFamily: T.font, fontSize: 17, fontWeight: 600, boxShadow: `0 6px 18px ${hexA(T.accent, 0.32)}`,
         }}>
-          <TGIcon name="chat" size={20} color="#fff" stroke={2} /> Open chat
+          <TGIcon name="chat" size={20} color="#fff" stroke={2} /> {label}
         </button>
-      )}
+        );
+      })()}
 
       {/* secondary actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px 28px', marginTop: -4 }}>
-        <button disabled={!botUsername} onClick={() => botUsername && openTgLink(`https://t.me/${botUsername}`)} style={{
+        {(() => {
+          const canTest = !!botUsername && live && !pausedEffective;
+          return (
+        <button disabled={!canTest} onClick={() => canTest && openTgLink(`https://t.me/${botUsername}`)} style={{
           ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600,
-          color: botUsername ? T.accent : T.hint, cursor: botUsername ? 'pointer' : 'default',
+          color: canTest ? T.accent : T.hint, cursor: canTest ? 'pointer' : 'default',
         }}>
-          <TGIcon name="open" size={17} color={botUsername ? T.accent : T.hint} stroke={2} /> Test bot
+          <TGIcon name="open" size={17} color={canTest ? T.accent : T.hint} stroke={2} /> Test bot
         </button>
-        <button onClick={onTogglePause} style={{
+          );
+        })()}
+        <button disabled={!botUsername} onClick={botUsername ? onTogglePause : undefined} style={{
           ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text,
+          opacity: botUsername ? 1 : 0.45, cursor: botUsername ? 'pointer' : 'default',
         }}>
-          <TGIcon name={paused ? 'play' : 'pause'} size={16} color={T.sub} stroke={2} /> {paused ? 'Resume' : 'Pause'}
+          <TGIcon name={pausedEffective ? 'play' : 'pause'} size={16} color={T.sub} stroke={2} /> {pausedEffective ? 'Resume' : 'Pause'}
         </button>
         {repoUrl && (
           <button onClick={() => openExternal(repoUrl)} style={{
@@ -426,15 +494,17 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       </div>
 
       {/* Show on Discovery — owner opt-out of the public Discover feed */}
-      <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Show on Discovery</div>
-          <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 2, lineHeight: '17px' }}>
-            Listed on the Discover page for everyone to find
+      {live && botUsername && (
+        <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Show on Discovery</div>
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 2, lineHeight: '17px' }}>
+              Listed on the Discover page for everyone to find
+            </div>
           </div>
-        </div>
-        <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} />
-      </Card>
+          <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} />
+        </Card>
+      )}
 
       {/* task_manager: attention inbox — amber/red badge when something needs the
           owner, else a neutral "all clear" entry point */}
@@ -458,6 +528,11 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           )
       )}
 
+      <div>
+        <SectionLabel T={T}>Build progress</SectionLabel>
+        <BuildProgress T={T} steps={progressSteps} />
+      </div>
+
       {/* stats — compact 3-up grid; wraps to a 2nd row when analytics is live */}
       <Card T={T} pad={0}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
@@ -474,34 +549,36 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </div>
       </Card>
 
-      {/* agent summary → add-an-agent sheet (cloud or local) */}
-      <button onClick={onManageAgents} style={{ ...btnReset, width: '100%', textAlign: 'left' }}>
-        <Card T={T} pad={0}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
-            <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TGIcon name={cloudActive ? 'cloud' : connected ? 'code' : 'plus'} size={19} color={T.accent} stroke={1.9} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>
-                {cloudActive ? 'Cloud agent' : connected ? 'Local agent' : 'Add an agent'}
+      {/* agent summary → advanced add-an-agent sheet (cloud or local) */}
+      <div>
+        <SectionLabel T={T}>Advanced</SectionLabel>
+        <button onClick={onManageAgents} style={{ ...btnReset, width: '100%', textAlign: 'left' }}>
+          <Card T={T} pad={0}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <TGIcon name={cloudActive ? 'cloud' : connected ? 'code' : 'plus'} size={19} color={T.accent} stroke={1.9} />
               </div>
-              <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {cloudActive
-                  ? <><Dot color={T.green} size={6} /> running</>
-                  : connected
-                    ? <><Dot color={T.green} size={6} /> {agentClient || 'Claude'} · online</>
-                    : 'Cloud or local — your choice'}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>
+                  {cloudActive ? 'Cloud agent' : connected ? 'Local agent' : 'Builder agents'}
+                </div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {cloudActive
+                    ? <><Dot color={T.green} size={6} /> running</>
+                    : connected
+                      ? <><Dot color={T.green} size={6} /> {agentClient || 'Claude'} · online</>
+                      : 'Optional cloud/local builder controls'}
+                </div>
               </div>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.accent }}>
+                Manage <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
+              </span>
             </div>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.accent }}>
-              {cloudActive || connected ? 'Manage' : 'Add'} <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
-            </span>
-          </div>
-        </Card>
-      </button>
+          </Card>
+        </button>
+      </div>
 
-      {/* task_manager: show the spec/goal doc on the overview (the auto-merge +
-          retry-deploy controls stay hidden via specOnly) */}
+      {/* task_manager: show the build brief and owner-safe retry deploy control. */}
       {isTaskManager && (
         <TaskManagerControls T={T} projectId={bot.id} repoUrl={repoUrl} live={live}
           autoMergeEnabled={detail?.auto_merge_enabled} hasBot={!!botRow} specOnly />
@@ -791,7 +868,7 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
         <SectionLabel T={T} right={specBody && specLink
           ? <button onClick={() => openExternal(specLink)} style={{ ...btnReset, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent }}>Open</button>
           : undefined
-        }>Spec</SectionLabel>
+        }>Build brief</SectionLabel>
         <Card T={T} pad={0}>
           {spec === 'loading' ? (
             <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -823,7 +900,30 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
         </Card>
       </div>
 
-      {/* auto-merge + retry deploy — hidden unless full controls are requested */}
+      {/* retry deploy stays owner-facing; auto-merge is reserved for full controls */}
+      {specOnly && hasBot && !live && (
+        <Card T={T} pad={0}>
+          <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+            <button onClick={() => void onRetryDeploy()} disabled={dpBusy} style={{
+              ...btnReset, width: '100%', height: 42, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              background: T.accentSoft, color: T.accent, fontFamily: T.font, fontSize: 14, fontWeight: 600,
+            }}>
+              {dpBusy ? <Spinner color={T.accent} size={15} /> : <TGIcon name="refresh" size={16} color={T.accent} stroke={2} />}
+              Retry deploy
+            </button>
+            {dpPending && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: T.font, fontSize: 12.5, color: T.accent, lineHeight: '17px' }}>
+                <Spinner color={T.accent} size={13} /> Deploy started - watching for it to come online...
+              </div>
+            )}
+            {dpError && (
+              <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.red, lineHeight: '17px' }}>{dpError}</div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* auto-merge + full deploy controls — hidden unless full controls are requested */}
       {!specOnly && (
       <Card T={T} pad={0}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px' }}>

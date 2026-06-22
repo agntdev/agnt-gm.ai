@@ -1,5 +1,5 @@
-// Spec — Stage 1: the generated spec from the real platform plan, with the
-// managed-bot "Create the bot" action (POST /builder/projects/{id}/publish).
+// Spec — the generated bot review plus managed-bot creation. This is the last
+// default step before the platform starts the cloud build.
 import { Theme, btnReset } from '../theme';
 import { Project, BotInitiate } from '../api/client';
 import { openTgLink } from '../telegram';
@@ -9,17 +9,17 @@ export function specCaps(p: Project): string[] {
   const caps = ['Understands natural-language messages and replies in context'];
   if (p.goal_of_project) caps.push(p.goal_of_project);
   if (p.needs_database) caps.push(`Reads and writes records to a managed ${p.database_kind || 'database'}`);
-  if (p.needs_backend) caps.push('Runs its own backend service behind a webhook');
+  if (p.needs_backend) caps.push('Runs with a hosted backend service');
   if (p.needs_frontend) caps.push('Ships a companion web UI alongside the bot');
   return caps;
 }
 
-export function specStack(p: Project): string[] {
-  const s = ['GitHub repo', 'Webhook mode'];
-  if (p.needs_database) s.push(p.database_kind || 'Database');
-  if (p.token_symbol) s.push(`$${p.token_symbol}`);
-  s.push('Dockerized');
-  return s;
+export function productionPlan(p: Project): string[] {
+  const plan = ['Managed Telegram bot', 'Cloud build', 'Hosted runtime'];
+  if (p.needs_database) plan.push(p.database_kind || 'Managed database');
+  if (p.needs_frontend) plan.push('Companion web UI');
+  plan.push('Production deploy');
+  return plan;
 }
 
 export function SpecScreen({ T, project, taskCount, created, creating, createError, botInit, botUsername, onCreate, onEdit }: {
@@ -29,16 +29,16 @@ export function SpecScreen({ T, project, taskCount, created, creating, createErr
   onCreate: () => void; onEdit: () => void;
 }) {
   const caps = specCaps(project);
-  const stack = specStack(project);
+  const plan = productionPlan(project);
   // real managed bot > platform suggestion > slug-derived placeholder
   const handle = botUsername || botInit?.suggested_username || `${project.slug.replace(/-/g, '_')}_bot`;
   const summary = project.short_description || project.about_of_project || project.goal_of_project || '';
 
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <Stepper T={T} steps={[0, 1]} current={0} />
+      <Stepper T={T} steps={[0, 1]} current={1} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
-        <Pill T={T} tone="accent">Stage 1 · General spec</Pill>
+        <Pill T={T} tone="accent">Review</Pill>
         <button onClick={onEdit} style={{ ...btnReset, color: T.accent, fontFamily: T.font, fontSize: 14, fontWeight: 500 }}>Edit idea</button>
       </div>
 
@@ -57,7 +57,7 @@ export function SpecScreen({ T, project, taskCount, created, creating, createErr
             <div style={{ fontFamily: T.mono, fontSize: 13.5, color: T.accent }}>@{handle}</div>
           </div>
           {created
-            ? <Pill T={T} tone="green"><Dot color={T.green} size={6} /> Live</Pill>
+            ? <Pill T={T} tone="green"><Dot color={T.green} size={6} /> Bot created</Pill>
             : <Pill T={T} tone="neutral">{botInit ? 'reserved' : 'available'}</Pill>}
         </div>
         {summary && (
@@ -76,17 +76,9 @@ export function SpecScreen({ T, project, taskCount, created, creating, createErr
               <div style={{ flex: 1 }}>
                 <div style={{ fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.text }}>Bot created & managed for you</div>
                 <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>
-                  {project.github_repo_url ? 'Repo created, tasks opened — no setup needed' : 'Token issued and secured — no setup needed'}
+                  Ready to start the cloud build - no setup needed
                 </div>
               </div>
-              {project.github_repo_url && (
-                <a href={project.github_repo_url} target="_blank" rel="noreferrer" style={{
-                  display: 'flex', alignItems: 'center', gap: 5, color: T.accent, textDecoration: 'none',
-                  fontFamily: T.font, fontSize: 13, fontWeight: 600,
-                }}>
-                  <TGIcon name="open" size={14} color={T.accent} stroke={2} /> Repo
-                </a>
-              )}
             </div>
           ) : botInit ? (
             <>
@@ -137,7 +129,7 @@ export function SpecScreen({ T, project, taskCount, created, creating, createErr
         </div>
       </Card>
 
-      <SpecBlock T={T} title="What it can do">
+      <SpecBlock T={T} title="What your bot will do">
         {caps.map((c, i) => (
           <div key={i} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '9px 0', borderTop: i ? `0.5px solid ${T.sep}` : 'none' }}>
             <TGIcon name="check" size={18} color={T.green} stroke={2.4} />
@@ -146,11 +138,11 @@ export function SpecScreen({ T, project, taskCount, created, creating, createErr
         ))}
       </SpecBlock>
 
-      <SpecBlock T={T} title="Suggested stack">
+      <SpecBlock T={T} title="Production plan">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {stack.map(s => (
+          {plan.map(s => (
             <span key={s} style={{
-              fontFamily: T.mono, fontSize: 13, color: T.text, padding: '7px 11px', borderRadius: 9,
+              fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.text, padding: '7px 11px', borderRadius: 9,
               background: T.dark ? 'rgba(255,255,255,0.05)' : '#f3f5f8', border: `0.5px solid ${T.sep}`,
             }}>{s}</span>
           ))}
@@ -159,7 +151,7 @@ export function SpecScreen({ T, project, taskCount, created, creating, createErr
 
       <div style={{ display: 'flex', gap: 10 }}>
         <MiniStat T={T} icon="clock" label="Build tasks" value={taskCount != null ? String(taskCount) : '—'} />
-        <MiniStat T={T} icon="server" label="Hosting" value="Included" />
+        <MiniStat T={T} icon="server" label="Build mode" value="Cloud" />
       </div>
     </div>
   );
