@@ -1,9 +1,7 @@
 // App.tsx — pipeline state machine + Telegram chrome wiring.
-// Flow: prompt → clarify (owner↔AI chat on a draft project) → spec (create
-//       the managed bot) → agent (choose builder + connect). "Start building"
-//       publishes the repo and lands on the bot's overview, where the real
-//       build (phases, tasks, deploys, logs) is watched — no separate
-//       build/review pipeline.
+// Flow: prompt → clarify (owner↔AI chat on a draft project) → review/create
+//       bot → cloud build. Agent setup remains available from the bot overview
+//       as an advanced path, but the default creator path ships with zero setup.
 import { useEffect, useRef, useState } from 'react';
 import { tgTheme, Theme } from './theme';
 import {
@@ -42,7 +40,7 @@ type StepId = typeof STEPS[number];
 
 const STAGE_SUB: Record<StepId, string> = {
   prompt: 'New bot', clarify: 'Tell me more',
-  spec: 'Spec · 1 of 2', agent: 'Connect · 2 of 2',
+  spec: 'Review bot', agent: 'Advanced builder',
 };
 
 const THEME_KEY = 'agentbot-theme';
@@ -228,7 +226,7 @@ export default function App() {
   const back = () => goTo(Math.max(0, step - 1), -1);
 
   // a stale "couldn't start the build" error shouldn't linger when you leave
-  // (or re-enter) the agent step
+  // (or re-enter) the review/build step
   useEffect(() => { if (id !== 'agent') setBuildError(null); }, [id]);
 
   // close the TaskDetail overlay whenever the open bot or view changes, so a
@@ -334,7 +332,7 @@ export default function App() {
   // POST /bot/initiate reserves the username, then we immediately open the
   // manager-bot deep link — Telegram's own pre-filled bot-creation window.
   // The platform's poller captures the created bot; we poll /bot until it
-  // lands. (Publishing the repo happens at "Start building" on the agent step.)
+  // lands. The default flow starts the cloud build directly from the review step.
   const createBot = async () => {
     if (!project || creatingBot || botCreated || botInit) return;
     setCreatingBot(true); setCreateError(null);
@@ -424,8 +422,7 @@ export default function App() {
 
   // resume an in-progress bot from My Bots. A published bot opens its
   // overview; an unfinished one re-enters the build pipeline at the right
-  // step. `target` forces a build step (e.g. "Connect agent" from the
-  // overview), bypassing the published→overview shortcut.
+  // step. `target` forces a build step, bypassing the published→overview shortcut.
   const resumeBuild = async (projectId: string, target?: StepId) => {
     const d = await getProject(projectId).catch(() => null);
     if (!d) return;
@@ -475,15 +472,16 @@ export default function App() {
       setIdea(snap.idea);
       setBotUsername(snap.botUsername); setBotCreated(snap.botCreated || !!snap.botUsername);
       setConnected(snap.connected); setAgentName(snap.agentName);
-      const idx = STEPS.indexOf(snap.step);
-      goTo(idx >= 0 ? idx : (snap.botUsername ? STEPS.indexOf('agent') : STEPS.indexOf('spec')), 1);
+      const savedStep = snap.step === 'agent' ? 'spec' : snap.step;
+      const idx = STEPS.indexOf(savedStep);
+      goTo(idx >= 0 ? idx : STEPS.indexOf('spec'), 1);
     } else {
       // no local snapshot — derive the furthest known step from the server
       setIdea(p.name);
       const bot = await getProjectBot(p.id).catch(() => null);
       if (bot?.bot_username) {
         setBotUsername(bot.bot_username); setBotCreated(true); setBotInit({});
-        goTo(STEPS.indexOf('agent'), 1);
+        goTo(STEPS.indexOf('spec'), 1);
       } else if (p.status === 'validating') {
         goTo(STEPS.indexOf('clarify'), 1);
       } else {
@@ -660,7 +658,7 @@ export default function App() {
   const editIdea = () => { resetPipeline(); localStorage.removeItem(PIPELINE_KEY); setChanged(true); goTo(0, -1); };
 
   // ── MainButton config per step ──
-  const mainBtn = ((): { label: string; disabled?: boolean; busy?: boolean; onClick?: () => void } | null => {
+  const mainBtn = ((): { label: string; disabled?: boolean; busy?: boolean; icon?: string; onClick?: () => void } | null => {
     switch (id) {
       case 'prompt': return {
         // outside Telegram there is no initData to authorize with — say so
@@ -681,8 +679,11 @@ export default function App() {
         // the spec card (with its own spinner) — don't duplicate it in the footer
         if (botInit && !botCreated) return null;
         return {
-          label: botCreated ? 'Connect agent' : 'Create the bot to continue',
-          disabled: !botCreated, onClick: next,
+          label: building ? 'Starting build…' : botCreated ? 'Start cloud build' : 'Create the bot to continue',
+          disabled: !botCreated || building,
+          busy: building,
+          icon: botCreated ? 'bolt' : undefined,
+          onClick: () => void startBuild(),
         };
       case 'agent': {
         const ready = buildMode === 'platform' || connected;
