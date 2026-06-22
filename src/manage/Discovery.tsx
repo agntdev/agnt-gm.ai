@@ -1,9 +1,9 @@
-// Discovery - a public feed of live production bots built on the platform.
+// Discovery - a public registry of live production bots built on the platform.
 // Tapping a row opens the live bot in Telegram. The list comes from
 // GET /builder/projects/discover; other users' bots cannot be enumerated
 // client-side, so an empty API response stays empty.
 import { useMemo, useState } from 'react';
-import { Theme, btnReset, hexA, toneFor } from '../theme';
+import { Theme, btnReset, hexA, toneFor, tile } from '../theme';
 import { Project } from '../api/client';
 import { openTgLink } from '../telegram';
 import { TGIcon, BotTile, Spinner } from '../ui';
@@ -24,23 +24,22 @@ export interface DiscoverBot {
 
 type Filter = 'all' | 'new' | 'active' | 'needs-work';
 
-interface DiscoveryPalette {
-  board: string;
-  boardText: string;
-  boardMuted: string;
+interface RegistryPalette {
+  page: string;
   panel: string;
-  panelAlt: string;
-  panelSoft: string;
+  panelMuted: string;
+  row: string;
+  input: string;
   edge: string;
   edgeStrong: string;
-  accent: string;
-  accentSoft: string;
+  ink: string;
+  muted: string;
+  live: string;
+  liveBg: string;
   blue: string;
-  blueSoft: string;
+  blueBg: string;
   amber: string;
-  amberSoft: string;
-  rail: string;
-  input: string;
+  amberBg: string;
 }
 
 // A bot with no username cannot be opened, so omit it from the feed.
@@ -64,7 +63,7 @@ export function discoverBotFromProject(p: Project): DiscoverBot | null {
 export function DiscoveryPage({ T, bots, loading }: {
   T: Theme; bots: DiscoverBot[]; loading: boolean;
 }) {
-  const C = discoveryPalette(T);
+  const C = registryPalette(T);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -85,271 +84,227 @@ export function DiscoveryPage({ T, bots, loading }: {
     queued: bots.reduce((sum, bot) => sum + Math.max(0, bot.openTasks ?? 0), 0),
   }), [bots]);
 
-  const boardSubtitle = loading
-    ? 'Indexing live bots'
-    : bots.length
-      ? `${bots.length} live bot${bots.length === 1 ? '' : 's'} ready to open in Telegram`
-      : 'Live bots appear here when they have a public handle';
-
   return (
     <div style={{
       padding: '12px 12px 24px',
       minHeight: '100%',
       display: 'flex',
       flexDirection: 'column',
-      gap: 12,
-      background:
-        `linear-gradient(180deg, ${hexA(C.blue, T.dark ? 0.1 : 0.05)} 0%, transparent 210px)`,
+      gap: 10,
+      background: C.page,
     }}>
       <section style={{
-        borderRadius: 20,
-        overflow: 'hidden',
-        background: C.board,
-        color: C.boardText,
+        background: C.panel,
         border: `1px solid ${C.edgeStrong}`,
-        boxShadow: T.dark ? '0 18px 40px rgba(0,0,0,0.25)' : '0 16px 32px rgba(15,22,32,0.09)',
+        borderRadius: 8,
+        overflow: 'hidden',
       }}>
         <div style={{
-          padding: '15px 15px 13px',
-          background:
-            `linear-gradient(135deg, ${hexA(C.blue, 0.24)}, transparent 42%), ` +
-            `repeating-linear-gradient(90deg, transparent 0 13px, ${hexA(C.edgeStrong, 0.28)} 13px 14px)`,
+          padding: '12px 12px 10px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 14,
+          alignItems: 'flex-start',
+          borderBottom: `1px solid ${C.edge}`,
         }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 7,
-                height: 24,
-                padding: '0 9px',
-                borderRadius: 999,
-                background: hexA(C.accent, 0.16),
-                color: C.accent,
-                fontFamily: T.mono,
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: 0.3,
-              }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: C.accent }} />
-                DISCOVERY
-              </div>
-              <div style={{
-                marginTop: 10,
-                fontFamily: T.font,
-                fontSize: 24,
-                lineHeight: '27px',
-                fontWeight: 800,
-                letterSpacing: -0.55,
-                color: C.boardText,
-              }}>
-                Bot signal board
-              </div>
-              <div style={{
-                marginTop: 6,
-                fontFamily: T.font,
-                fontSize: 13,
-                lineHeight: '18px',
-                color: C.boardMuted,
-                maxWidth: 260,
-              }}>
-                {boardSubtitle}
-              </div>
-            </div>
-
+          <div style={{ minWidth: 0 }}>
             <div style={{
-              width: 58,
-              height: 58,
-              borderRadius: 17,
-              background: hexA(C.blue, 0.18),
-              border: `1px solid ${hexA(C.blue, 0.45)}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
+              fontFamily: T.mono,
+              fontSize: 11,
+              fontWeight: 800,
+              color: C.live,
+              letterSpacing: 0,
+              textTransform: 'uppercase',
+            }}>Discovery Registry</div>
+            <div style={{
+              marginTop: 5,
+              fontFamily: T.font,
+              fontSize: 22,
+              lineHeight: '26px',
+              fontWeight: 800,
+              letterSpacing: 0,
+              color: C.ink,
+            }}>Live Telegram bots</div>
+            <div style={{
+              marginTop: 4,
+              fontFamily: T.font,
+              fontSize: 13,
+              lineHeight: '18px',
+              color: C.muted,
             }}>
-              <TGIcon name="compass" size={28} color={C.blue} stroke={2.1} />
+              {loading ? 'Indexing live bots' : bots.length ? `${bots.length} bots with public handles` : 'Public bots appear here after launch'}
             </div>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(44px, 1fr))',
+            gap: 6,
+            flexShrink: 0,
+          }}>
+            <MiniCount T={T} C={C} label="Live" value={loading ? '-' : String(metrics.live)} />
+            <MiniCount T={T} C={C} label="Maint." value={loading ? '-' : String(metrics.maintained)} />
+            <MiniCount T={T} C={C} label="Queue" value={loading ? '-' : String(metrics.queued)} />
           </div>
         </div>
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          borderTop: `1px solid ${hexA(C.edgeStrong, 0.72)}`,
-          background: hexA(T.dark ? '#ffffff' : '#0d1620', T.dark ? 0.035 : 0.03),
+          gridTemplateColumns: 'minmax(0, 1fr)',
+          gap: 8,
+          padding: 10,
+          background: C.panelMuted,
         }}>
-          <BoardMetric T={T} C={C} label="Live" value={loading ? '...' : String(metrics.live)} />
-          <BoardMetric T={T} C={C} label="Maintained" value={loading ? '...' : String(metrics.maintained)} />
-          <BoardMetric T={T} C={C} label="Queue" value={loading ? '...' : String(metrics.queued)} last />
+          <div style={{
+            minHeight: 42,
+            borderRadius: 8,
+            background: C.input,
+            border: `1px solid ${C.edge}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 9,
+            padding: '0 11px',
+          }}>
+            <TGIcon name="search" size={17} color={C.muted} stroke={2} />
+            <input
+              value={query}
+              onChange={e => setQuery(e.currentTarget.value)}
+              placeholder="Search name, handle, purpose"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                color: C.ink,
+                fontFamily: T.font,
+                fontSize: 14.5,
+              }}
+            />
+            {query && (
+              <button onClick={() => setQuery('')} style={{ ...btnReset, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <TGIcon name="close" size={16} color={C.muted} stroke={2.2} />
+              </button>
+            )}
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+            gap: 6,
+          }}>
+            <FilterButton T={T} C={C} active={filter === 'all'} label="All" onClick={() => setFilter('all')} />
+            <FilterButton T={T} C={C} active={filter === 'new'} label="New" onClick={() => setFilter('new')} />
+            <FilterButton T={T} C={C} active={filter === 'active'} label="Active" onClick={() => setFilter('active')} />
+            <FilterButton T={T} C={C} active={filter === 'needs-work'} label="Queue" onClick={() => setFilter('needs-work')} />
+          </div>
         </div>
       </section>
-
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr)',
-        gap: 8,
-      }}>
-        <div style={{
-          minHeight: 44,
-          borderRadius: 15,
-          background: C.input,
-          border: `1px solid ${C.edge}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 9,
-          padding: '0 12px',
-        }}>
-          <TGIcon name="search" size={18} color={T.hint} stroke={2} />
-          <input
-            value={query}
-            onChange={e => setQuery(e.currentTarget.value)}
-            placeholder="Search handles or purpose"
-            style={{
-              flex: 1,
-              minWidth: 0,
-              border: 'none',
-              outline: 'none',
-              background: 'transparent',
-              color: T.text,
-              fontFamily: T.font,
-              fontSize: 15,
-            }}
-          />
-          {query && (
-            <button onClick={() => setQuery('')} style={{ ...btnReset, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TGIcon name="close" size={17} color={T.hint} stroke={2.2} />
-            </button>
-          )}
-        </div>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-          gap: 7,
-        }}>
-          <FilterButton T={T} C={C} active={filter === 'all'} label="All" onClick={() => setFilter('all')} />
-          <FilterButton T={T} C={C} active={filter === 'new'} label="New" onClick={() => setFilter('new')} />
-          <FilterButton T={T} C={C} active={filter === 'active'} label="Active" onClick={() => setFilter('active')} />
-          <FilterButton T={T} C={C} active={filter === 'needs-work'} label="Queue" onClick={() => setFilter('needs-work')} />
-        </div>
-      </div>
 
       {!loading && bots.length === 0 && <EmptyDiscovery T={T} C={C} />}
       {!loading && bots.length > 0 && filteredBots.length === 0 && <NoMatches T={T} C={C} />}
       {loading && <LoadingRows T={T} C={C} />}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        border: `1px solid ${C.edgeStrong}`,
+        borderRadius: 8,
+        overflow: 'hidden',
+        background: C.row,
+      }}>
         {!loading && filteredBots.map((bot, index) => (
-          <DiscoveryRow key={bot.id} T={T} C={C} bot={bot} rank={index + 1} />
+          <DiscoveryRow
+            key={bot.id}
+            T={T}
+            C={C}
+            bot={bot}
+            rank={index + 1}
+            last={index === filteredBots.length - 1}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function DiscoveryRow({ T, C, bot, rank }: { T: Theme; C: DiscoveryPalette; bot: DiscoverBot; rank: number }) {
-  const signals = qualitySignals(bot);
+function DiscoveryRow({ T, C, bot, rank, last }: {
+  T: Theme; C: RegistryPalette; bot: DiscoverBot; rank: number; last: boolean;
+}) {
+  const tone = tile(bot.tone, T.dark);
   const age = timeAgo(bot.publishedAt || bot.createdAt);
   const buildMode = modeLabel(bot.buildMode);
-  const signal = signalColor(C, signals);
+  const queue = queueLabel(bot);
+  const queueTone = typeof bot.openTasks === 'number' && bot.openTasks > 0 ? 'amber' : 'neutral';
 
   return (
     <button
       onClick={() => openTgLink(`https://t.me/${bot.username}`)}
       style={{
         ...btnReset,
-        textAlign: 'left',
         width: '100%',
+        textAlign: 'left',
         display: 'grid',
-        gridTemplateColumns: '60px minmax(0, 1fr)',
-        borderRadius: 18,
-        background: C.panel,
-        border: `1px solid ${C.edge}`,
-        boxShadow: T.dark ? '0 8px 22px rgba(0,0,0,0.16)' : '0 8px 22px rgba(15,22,32,0.06)',
-        overflow: 'hidden',
+        gridTemplateColumns: '38px 46px minmax(0, 1fr) 30px',
+        gap: 10,
+        alignItems: 'start',
+        padding: '12px 10px 12px 0',
+        background: C.row,
+        borderBottom: last ? 'none' : `1px solid ${C.edge}`,
       }}
     >
       <div style={{
-        minHeight: 142,
-        background:
-          `linear-gradient(180deg, ${hexA(signal, 0.2)}, transparent), ` +
-          `linear-gradient(90deg, ${hexA(signal, 0.25)}, ${C.rail})`,
-        borderRight: `1px solid ${C.edge}`,
+        height: '100%',
+        minHeight: 96,
         display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '12px 0 10px',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        paddingTop: 3,
+        borderRight: `3px solid ${tone.fg}`,
       }}>
-        <div style={{
+        <span style={{
           fontFamily: T.mono,
-          fontSize: 10.5,
+          fontSize: 11,
           fontWeight: 800,
-          color: signal,
-          letterSpacing: 0.2,
-        }}>{String(rank).padStart(2, '0')}</div>
-        <BotTile T={T} name={bot.name} tone={bot.tone} size={42} radius={14} />
-        <div style={{ display: 'grid', gap: 4 }}>
-          {[0, 1, 2, 3].map(i => (
-            <span key={i} style={{
-              width: 18,
-              height: 3,
-              borderRadius: 999,
-              background: i < signals ? signal : hexA(T.hint, 0.22),
-            }} />
-          ))}
-        </div>
+          color: C.muted,
+          letterSpacing: 0,
+        }}>{String(rank).padStart(2, '0')}</span>
       </div>
 
-      <div style={{ minWidth: 0, padding: '13px 12px 12px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-              <div style={{
-                fontFamily: T.font,
-                fontSize: 16.5,
-                fontWeight: 800,
-                color: T.text,
-                letterSpacing: -0.28,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}>{bot.name}</div>
-              {isNew(bot) && <span style={{ width: 7, height: 7, borderRadius: 999, background: C.accent, flexShrink: 0 }} />}
-            </div>
-            <div style={{
-              fontFamily: T.mono,
-              fontSize: 12.4,
-              color: C.blue,
-              marginTop: 3,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}>@{bot.username}</div>
-          </div>
+      <BotTile T={T} name={bot.name} tone={bot.tone} size={42} radius={8} />
 
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
           <div style={{
-            width: 31,
-            height: 31,
-            borderRadius: 11,
-            background: C.blueSoft,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            border: `1px solid ${hexA(C.blue, 0.18)}`,
-          }}>
-            <TGIcon name="open" size={16} color={C.blue} stroke={2.1} />
-          </div>
+            fontFamily: T.font,
+            fontSize: 16,
+            fontWeight: 800,
+            color: C.ink,
+            letterSpacing: 0,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>{bot.name}</div>
+          {isNew(bot) && <span style={{ flexShrink: 0, width: 7, height: 7, borderRadius: 999, background: C.live }} />}
         </div>
 
         <div style={{
-          marginTop: 9,
+          marginTop: 2,
+          fontFamily: T.mono,
+          fontSize: 12.2,
+          lineHeight: '16px',
+          color: C.blue,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>@{bot.username}</div>
+
+        <div style={{
+          marginTop: 7,
           fontFamily: T.font,
-          fontSize: 13.3,
-          color: T.sub,
+          fontSize: 13,
           lineHeight: '18px',
+          color: T.sub,
           display: '-webkit-box',
           WebkitLineClamp: 2,
           WebkitBoxOrient: 'vertical',
@@ -357,111 +312,98 @@ function DiscoveryRow({ T, C, bot, rank }: { T: Theme; C: DiscoveryPalette; bot:
         }}>{bot.preview}</div>
 
         <div style={{
-          marginTop: 11,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          marginTop: 10,
+          display: 'flex',
+          flexWrap: 'wrap',
           gap: 6,
         }}>
-          <MiniMetric T={T} C={C} label="State" value="Live" tone="green" />
-          <MiniMetric T={T} C={C} label="Age" value={age || 'Live'} />
-          <MiniMetric T={T} C={C} label="Queue" value={queueLabel(bot)} tone={(bot.openTasks ?? 0) > 0 ? 'amber' : 'neutral'} />
+          <LedgerCell T={T} C={C} label="State" value="Live" tone="live" />
+          {age && <LedgerCell T={T} C={C} label="Age" value={age} />}
+          {buildMode && <LedgerCell T={T} C={C} label="Mode" value={buildMode.label} />}
+          <LedgerCell T={T} C={C} label="Queue" value={queue === 'Clear' ? 'Clear' : `Q ${queue}`} tone={queueTone} />
         </div>
+      </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
-          {buildMode && <Signal T={T} C={C} icon={buildMode.icon} label={buildMode.label} tone="blue" />}
-          {typeof bot.activeAgents === 'number' && bot.activeAgents > 0 && <Signal T={T} C={C} icon="cloud" label={`${bot.activeAgents} agent${bot.activeAgents === 1 ? '' : 's'}`} tone="blue" />}
-          {typeof bot.merged7d === 'number' && bot.merged7d > 0 && <Signal T={T} C={C} icon="code" label={`${bot.merged7d} merged`} tone="blue" />}
-          {isNew(bot) && <Signal T={T} C={C} icon="spark" label="new" tone="green" />}
-        </div>
+      <div style={{
+        width: 30,
+        height: 30,
+        borderRadius: 8,
+        background: C.blueBg,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: `1px solid ${hexA(C.blue, 0.22)}`,
+      }}>
+        <TGIcon name="open" size={15} color={C.blue} stroke={2.1} />
       </div>
     </button>
   );
 }
 
-function BoardMetric({ T, C, label, value, last }: { T: Theme; C: DiscoveryPalette; label: string; value: string; last?: boolean }) {
+function MiniCount({ T, C, label, value }: { T: Theme; C: RegistryPalette; label: string; value: string }) {
   return (
-    <div style={{ padding: '11px 12px 12px', borderRight: last ? 'none' : `1px solid ${hexA(C.edgeStrong, 0.7)}` }}>
-      <div style={{ fontFamily: T.mono, fontSize: 19, fontWeight: 850, color: C.boardText, lineHeight: '22px' }}>{value}</div>
-      <div style={{ fontFamily: T.font, fontSize: 11.5, color: C.boardMuted, marginTop: 1 }}>{label}</div>
+    <div style={{
+      minWidth: 0,
+      padding: '7px 8px',
+      borderRadius: 8,
+      background: C.panelMuted,
+      border: `1px solid ${C.edge}`,
+    }}>
+      <div style={{ fontFamily: T.mono, fontSize: 16, fontWeight: 850, color: C.ink, lineHeight: '18px', letterSpacing: 0 }}>{value}</div>
+      <div style={{ fontFamily: T.font, fontSize: 10.8, color: C.muted, marginTop: 1 }}>{label}</div>
     </div>
   );
 }
 
-function FilterButton({ T, C, active, label, onClick }: { T: Theme; C: DiscoveryPalette; active: boolean; label: string; onClick: () => void }) {
+function FilterButton({ T, C, active, label, onClick }: {
+  T: Theme; C: RegistryPalette; active: boolean; label: string; onClick: () => void;
+}) {
   return (
     <button onClick={onClick} style={{
       ...btnReset,
-      height: 35,
-      borderRadius: 12,
-      background: active ? C.board : C.panelAlt,
-      color: active ? C.accent : T.sub,
-      border: `1px solid ${active ? hexA(C.accent, 0.55) : C.edge}`,
+      height: 34,
+      borderRadius: 8,
+      background: active ? C.ink : C.input,
+      color: active ? (T.dark ? '#0e1621' : '#ffffff') : C.muted,
+      border: `1px solid ${active ? C.ink : C.edge}`,
       fontFamily: T.font,
       fontSize: 12.8,
-      fontWeight: 750,
-      boxShadow: active ? `0 8px 20px ${hexA(C.accent, 0.16)}` : 'none',
+      fontWeight: 800,
+      letterSpacing: 0,
     }}>{label}</button>
   );
 }
 
-function MiniMetric({ T, C, label, value, tone = 'neutral' }: {
-  T: Theme; C: DiscoveryPalette; label: string; value: string; tone?: 'neutral' | 'green' | 'amber';
+function LedgerCell({ T, C, label, value, tone = 'neutral' }: {
+  T: Theme; C: RegistryPalette; label: string; value: string; tone?: 'neutral' | 'live' | 'amber';
 }) {
-  const color = tone === 'green' ? C.accent : tone === 'amber' ? C.amber : T.text;
+  const fg = tone === 'live' ? C.live : tone === 'amber' ? C.amber : C.ink;
+  const bg = tone === 'live' ? C.liveBg : tone === 'amber' ? C.amberBg : C.panelMuted;
   return (
     <div style={{
       minWidth: 0,
-      borderRadius: 12,
-      padding: '8px 8px 7px',
-      background: C.panelSoft,
+      display: 'inline-flex',
+      alignItems: 'center',
+      borderRadius: 8,
+      padding: '5px 8px',
+      background: bg,
       border: `1px solid ${C.edge}`,
+      maxWidth: '100%',
     }}>
-      <div style={{ fontFamily: T.font, fontSize: 10.8, color: T.hint, lineHeight: '13px' }}>{label}</div>
       <div style={{
-        marginTop: 1,
         fontFamily: T.font,
-        fontSize: 12.3,
+        fontSize: 12,
         fontWeight: 800,
-        color,
+        color: fg,
         whiteSpace: 'nowrap',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
-      }}>{value}</div>
+      }} title={label}>{value}</div>
     </div>
   );
 }
 
-function Signal({ T, C, icon, label, tone = 'neutral' }: {
-  T: Theme; C: DiscoveryPalette; icon: string; label: string; tone?: 'neutral' | 'green' | 'blue' | 'amber';
-}) {
-  const palette = tone === 'green'
-    ? { bg: C.accentSoft, fg: C.accent }
-    : tone === 'blue'
-      ? { bg: C.blueSoft, fg: C.blue }
-      : tone === 'amber'
-        ? { bg: C.amberSoft, fg: C.amber }
-        : { bg: T.dark ? 'rgba(255,255,255,0.055)' : 'rgba(15,22,32,0.045)', fg: T.hint };
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 5,
-      minHeight: 23,
-      padding: '0 8px',
-      borderRadius: 9,
-      background: palette.bg,
-      color: palette.fg,
-      fontFamily: T.font,
-      fontSize: 11.4,
-      fontWeight: 750,
-    }}>
-      <TGIcon name={icon} size={13} color={palette.fg} stroke={2.1} />
-      {label}
-    </span>
-  );
-}
-
-function EmptyDiscovery({ T, C }: { T: Theme; C: DiscoveryPalette }) {
+function EmptyDiscovery({ T, C }: { T: Theme; C: RegistryPalette }) {
   const rows = [
     ['Live bot', 'Deployed and reachable'],
     ['Telegram handle', 'Real @username attached'],
@@ -469,26 +411,33 @@ function EmptyDiscovery({ T, C }: { T: Theme; C: DiscoveryPalette }) {
   ];
   return (
     <div style={{
-      padding: 16,
-      borderRadius: 18,
+      padding: 14,
+      borderRadius: 8,
       background: C.panel,
-      border: `1px solid ${C.edge}`,
-      boxShadow: T.shadow,
+      border: `1px solid ${C.edgeStrong}`,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 44, height: 44, borderRadius: 15, background: C.blueSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <TGIcon name="compass" size={22} color={C.blue} stroke={2} />
+        <div style={{
+          width: 42,
+          height: 42,
+          borderRadius: 8,
+          background: C.blueBg,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <TGIcon name="compass" size={21} color={C.blue} stroke={2} />
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 800, color: T.text, letterSpacing: -0.2 }}>No public bots yet</div>
-          <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint, marginTop: 2 }}>The directory opens when live bots have public handles.</div>
+          <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: 0 }}>No public bots yet</div>
+          <div style={{ fontFamily: T.font, fontSize: 13, color: C.muted, marginTop: 2 }}>The registry opens when live bots have public handles.</div>
         </div>
       </div>
-      <div style={{ display: 'grid', gap: 8, marginTop: 15 }}>
+      <div style={{ display: 'grid', gap: 7, marginTop: 14 }}>
         {rows.map(([label, value]) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 8, borderTop: `1px solid ${C.edge}` }}>
-            <div style={{ fontFamily: T.font, fontSize: 13.5, fontWeight: 700, color: T.text }}>{label}</div>
-            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, textAlign: 'right' }}>{value}</div>
+          <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 7, borderTop: `1px solid ${C.edge}` }}>
+            <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 750, color: C.ink }}>{label}</div>
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: C.muted, textAlign: 'right' }}>{value}</div>
           </div>
         ))}
       </div>
@@ -496,43 +445,48 @@ function EmptyDiscovery({ T, C }: { T: Theme; C: DiscoveryPalette }) {
   );
 }
 
-function NoMatches({ T, C }: { T: Theme; C: DiscoveryPalette }) {
+function NoMatches({ T, C }: { T: Theme; C: RegistryPalette }) {
   return (
     <div style={{
-      padding: 18,
-      borderRadius: 18,
+      padding: 15,
+      borderRadius: 8,
       background: C.panel,
-      border: `1px solid ${C.edge}`,
+      border: `1px solid ${C.edgeStrong}`,
       display: 'flex',
       alignItems: 'center',
       gap: 12,
     }}>
-      <div style={{ width: 40, height: 40, borderRadius: 14, background: C.blueSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 40, height: 40, borderRadius: 8, background: C.blueBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <TGIcon name="search" size={20} color={C.blue} stroke={2} />
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 800, color: T.text }}>No matching bots</div>
-        <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint, marginTop: 2 }}>Try another query or filter.</div>
+        <div style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 800, color: C.ink }}>No matching bots</div>
+        <div style={{ fontFamily: T.font, fontSize: 13, color: C.muted, marginTop: 2 }}>Try another query or filter.</div>
       </div>
     </div>
   );
 }
 
-function LoadingRows({ T, C }: { T: Theme; C: DiscoveryPalette }) {
+function LoadingRows({ T, C }: { T: Theme; C: RegistryPalette }) {
   return (
-    <div style={{ display: 'grid', gap: 10 }}>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      border: `1px solid ${C.edgeStrong}`,
+      borderRadius: 8,
+      overflow: 'hidden',
+      background: C.row,
+    }}>
       {[0, 1, 2].map(i => (
         <div key={i} style={{
-          minHeight: 116,
-          borderRadius: 18,
-          background: C.panel,
-          border: `1px solid ${C.edge}`,
+          minHeight: 104,
+          borderBottom: i === 2 ? 'none' : `1px solid ${C.edge}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}>
           {i === 1 ? <Spinner color={C.blue} size={20} /> : (
-            <div style={{ width: '82%', height: 44, borderRadius: 13, background: C.panelSoft }} />
+            <div style={{ width: '76%', height: 42, borderRadius: 8, background: C.panelMuted }} />
           )}
         </div>
       ))}
@@ -540,59 +494,43 @@ function LoadingRows({ T, C }: { T: Theme; C: DiscoveryPalette }) {
   );
 }
 
-function discoveryPalette(T: Theme): DiscoveryPalette {
+function registryPalette(T: Theme): RegistryPalette {
   if (T.dark) {
     return {
-      board: '#101923',
-      boardText: '#f5f7fa',
-      boardMuted: '#9eacba',
-      panel: '#151f2a',
-      panelAlt: '#111a24',
-      panelSoft: 'rgba(255,255,255,0.045)',
-      edge: 'rgba(130,154,174,0.16)',
-      edgeStrong: 'rgba(84,184,255,0.2)',
-      accent: '#37d69b',
-      accentSoft: 'rgba(55,214,155,0.15)',
-      blue: '#54b8ff',
-      blueSoft: 'rgba(84,184,255,0.14)',
-      amber: '#f0b35a',
-      amberSoft: 'rgba(240,179,90,0.15)',
-      rail: '#101720',
-      input: '#0f1720',
+      page: '#0e1621',
+      panel: '#151e28',
+      panelMuted: '#101923',
+      row: '#151e28',
+      input: '#0f1822',
+      edge: 'rgba(210,224,238,0.08)',
+      edgeStrong: 'rgba(210,224,238,0.13)',
+      ink: '#f3f6f8',
+      muted: '#8d9aa7',
+      live: '#52c48f',
+      liveBg: 'rgba(82,196,143,0.12)',
+      blue: '#65a9e8',
+      blueBg: 'rgba(101,169,232,0.12)',
+      amber: '#dca24a',
+      amberBg: 'rgba(220,162,74,0.12)',
     };
   }
   return {
-    board: '#17202b',
-    boardText: '#ffffff',
-    boardMuted: '#b8c4cf',
+    page: '#eef1f5',
     panel: '#ffffff',
-    panelAlt: '#f3f7fb',
-    panelSoft: 'rgba(23,32,43,0.045)',
-    edge: 'rgba(23,32,43,0.09)',
-    edgeStrong: 'rgba(42,139,217,0.22)',
-    accent: '#10996c',
-    accentSoft: 'rgba(16,153,108,0.1)',
-    blue: '#247cc9',
-    blueSoft: 'rgba(36,124,201,0.1)',
-    amber: '#b97816',
-    amberSoft: 'rgba(185,120,22,0.1)',
-    rail: '#f4f7fa',
+    panelMuted: '#f4f6f8',
+    row: '#ffffff',
     input: '#ffffff',
+    edge: 'rgba(13,22,32,0.08)',
+    edgeStrong: 'rgba(13,22,32,0.12)',
+    ink: '#0d1620',
+    muted: '#68737f',
+    live: '#178557',
+    liveBg: 'rgba(23,133,87,0.09)',
+    blue: '#236fae',
+    blueBg: 'rgba(35,111,174,0.09)',
+    amber: '#a46a14',
+    amberBg: 'rgba(164,106,20,0.09)',
   };
-}
-
-function qualitySignals(bot: DiscoverBot): number {
-  let score = 1; // live with a real handle
-  if (typeof bot.openTasks === 'number' && bot.openTasks === 0) score++;
-  if ((bot.activeAgents ?? 0) > 0 || (bot.merged7d ?? 0) > 0) score++;
-  if (isNew(bot)) score++;
-  return Math.min(score, 4);
-}
-
-function signalColor(C: DiscoveryPalette, score: number): string {
-  if (score >= 3) return C.accent;
-  if (score === 2) return C.blue;
-  return C.amber;
 }
 
 function modeLabel(mode?: string): { label: string; icon: string } | null {
@@ -603,7 +541,7 @@ function modeLabel(mode?: string): { label: string; icon: string } | null {
 }
 
 function queueLabel(bot: DiscoverBot): string {
-  if (typeof bot.openTasks !== 'number') return 'n/a';
+  if (typeof bot.openTasks !== 'number') return '-';
   if (bot.openTasks <= 0) return 'Clear';
   return String(bot.openTasks);
 }
