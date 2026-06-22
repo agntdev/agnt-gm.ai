@@ -112,18 +112,36 @@ export function TaskManagerInbox({ T, bot, onOpenTask }: {
       )}
 
       {state.reachable && state.items.length === 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '48px 24px' }}>
+        <Card T={T} pad={0}>
           {loaded
-            ? <>
-                <div style={{ width: 52, height: 52, borderRadius: 16, background: T.greenSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <TGIcon name="check" size={26} color={T.green} stroke={2.4} />
+            ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 15px' }}>
+                <div style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  background: T.dark ? 'rgba(255,255,255,0.055)' : 'rgba(15,22,32,0.045)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <TGIcon name="check" size={19} color={T.green} stroke={2.3} />
                 </div>
-                <span style={{ fontFamily: T.font, fontSize: 14.5, color: T.hint, textAlign: 'center', maxWidth: 260 }}>
-                  All clear — nothing needs you right now. New questions and failures will appear here.
-                </span>
-              </>
-            : <Spinner color={T.accent} size={22} />}
-        </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 650, color: T.text }}>Inbox is clear</div>
+                  <div style={{ fontFamily: T.font, fontSize: 12.8, color: T.hint, lineHeight: '17px', marginTop: 2 }}>
+                    Questions, failed tasks, and review holds will appear here.
+                  </div>
+                </div>
+              </div>
+            )
+            : (
+              <div style={{ minHeight: 72, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Spinner color={T.accent} size={20} />
+              </div>
+            )}
+        </Card>
       )}
 
       {state.items.map(it => (
