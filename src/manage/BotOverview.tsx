@@ -495,15 +495,25 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 
       {/* Show on Discovery — owner opt-out of the public Discover feed */}
       {live && botUsername && (
-        <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Show on Discovery</div>
-            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 2, lineHeight: '17px' }}>
-              Listed on the Discover page for everyone to find
-            </div>
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: -2 }}>
+          <div style={{
+            height: 34,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '0 8px 0 11px',
+            borderRadius: 999,
+            background: T.dark ? 'rgba(255,255,255,0.045)' : 'rgba(15,22,32,0.035)',
+            border: `0.5px solid ${T.sep}`,
+          }}>
+            <TGIcon name="compass" size={14} color={discoverable ? T.accent : T.hint} stroke={2} />
+            <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 650, color: T.sub }}>Discovery</span>
+            <span style={{ fontFamily: T.font, fontSize: 12, fontWeight: 600, color: discoverable ? T.accent : T.hint }}>
+              {discoverable ? 'Visible' : 'Hidden'}
+            </span>
+            <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
           </div>
-          <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} />
-        </Card>
+        </div>
       )}
 
       {/* task_manager: attention inbox — amber/red badge when something needs the
@@ -513,17 +523,26 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           ? <BlockedBadge T={T} state={blocked} onClick={onOpenInbox} />
           : (
             <button onClick={onOpenInbox} style={{
-              ...btnReset, width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px',
-              borderRadius: 14, background: T.cardBg, border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
+              ...btnReset, width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+              borderRadius: 13, background: T.cardBg, border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
             }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: T.greenSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <TGIcon name="check" size={17} color={T.green} stroke={2.2} />
+              <div style={{
+                width: 28,
+                height: 28,
+                borderRadius: 9,
+                background: T.dark ? 'rgba(255,255,255,0.055)' : 'rgba(15,22,32,0.045)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <TGIcon name="check" size={15} color={T.green} stroke={2.2} />
               </div>
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Inbox</div>
-                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>Nothing needs you right now</div>
+                <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 650, color: T.text }}>Inbox clear</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.2, color: T.hint, marginTop: 1 }}>No questions or failed tasks</div>
               </div>
-              <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />
+              <TGIcon name="chevRight" size={16} color={T.hint} stroke={2} />
             </button>
           )
       )}
@@ -964,15 +983,22 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
   );
 }
 
-function Switch({ T, on, onClick, busy }: { T: Theme; on: boolean; onClick: () => void; busy?: boolean }) {
+function Switch({ T, on, onClick, busy, size = 'regular' }: {
+  T: Theme; on: boolean; onClick: () => void; busy?: boolean; size?: 'regular' | 'compact';
+}) {
+  const compact = size === 'compact';
+  const trackW = compact ? 36 : 46;
+  const trackH = compact ? 22 : 28;
+  const knob = compact ? 16 : 22;
+  const inset = compact ? 3 : 3;
   return (
     <button onClick={busy ? undefined : onClick} aria-pressed={on} style={{
-      ...btnReset, width: 46, height: 28, borderRadius: 999, flexShrink: 0, position: 'relative',
+      ...btnReset, width: trackW, height: trackH, borderRadius: 999, flexShrink: 0, position: 'relative',
       background: on ? T.accent : (T.dark ? 'rgba(255,255,255,0.16)' : 'rgba(15,22,32,0.16)'),
       transition: 'background .2s', opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer',
     }}>
       <span style={{
-        position: 'absolute', top: 3, left: on ? 21 : 3, width: 22, height: 22, borderRadius: 999,
+        position: 'absolute', top: inset, left: on ? trackW - knob - inset : inset, width: knob, height: knob, borderRadius: 999,
         background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'left .2s',
       }} />
     </button>
