@@ -589,9 +589,13 @@ export default function App() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeBot = manageBot ? myBots.find(b => b.id === manageBot) ?? null : null;
   useEffect(() => {
-    if (tab === 'manage' && manageBot && manageView === 'chat' && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (!(tab === 'manage' && manageBot && manageView === 'chat')) return;
+    // defer to after paint: reading scrollHeight synchronously in the effect can
+    // grab a stale (too-short) height before the thread's bubbles/fonts settle,
+    // which leaves a long history parked near the top. Pin to bottom post-layout.
+    const pin = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; };
+    const r1 = requestAnimationFrame(() => { pin(); requestAnimationFrame(pin); });
+    return () => cancelAnimationFrame(r1);
   }, [tab, manageBot, manageView, manageChat.messages.length, manageChat.thinking]);
 
   // delete: real DELETE when the API grows it; local hide as the fallback
