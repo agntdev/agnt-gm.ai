@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { Theme, btnReset } from '../theme';
 import { TgUser } from '../telegram';
-import { TGIcon } from '../ui';
+import { TGIcon, Spinner } from '../ui';
 
 // Each example is a short button (title + blurb) that drops a rich, detailed
 // brief into the prompt box. That brief is what gets sent verbatim as the
@@ -61,9 +61,12 @@ function Avatar({ T, user }: { T: Theme; user?: TgUser | null }) {
   );
 }
 
-export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, error }: {
+export type StartBtn = { label: string; disabled?: boolean; busy?: boolean; onClick?: () => void };
+
+export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, error, startBtn }: {
   T: Theme; idea: string; setIdea: (v: string) => void; changed: boolean;
   user?: TgUser | null; onToggleTheme: () => void; error?: string | null;
+  startBtn?: StartBtn | null;
 }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { autoGrow(taRef.current); }, [idea]);
@@ -112,8 +115,26 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
             fontFamily: T.font, fontSize: 16, lineHeight: '23px', color: T.text, padding: 0, minHeight: 70,
           }}
         />
-        <div style={{ display: 'flex', alignItems: 'center', marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
           <span style={{ fontFamily: T.mono, fontSize: 12, color: T.hint }}>{idea.trim().length} chars</span>
+          {idea.trim() && startBtn && (
+            <button
+              onClick={startBtn.disabled || startBtn.busy ? undefined : startBtn.onClick}
+              disabled={startBtn.disabled}
+              style={{
+                ...btnReset, display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 13px', borderRadius: 999,
+                background: startBtn.disabled ? (T.dark ? '#243140' : '#dfe4ea') : T.accent,
+                color: startBtn.disabled ? T.hint : T.accentText,
+                fontFamily: T.font, fontSize: 13, fontWeight: 600, letterSpacing: 0.1,
+                cursor: startBtn.disabled ? 'default' : 'pointer',
+                animation: 'tgfade .2s', whiteSpace: 'nowrap',
+              }}
+            >
+              {startBtn.busy && <Spinner color={startBtn.disabled ? T.hint : T.accentText} size={14} />}
+              {startBtn.label}
+            </button>
+          )}
         </div>
       </div>
 
