@@ -724,7 +724,8 @@ export default function App() {
     switch (id) {
       case 'prompt': return (
         <PromptScreen T={T} idea={idea} setIdea={setIdea} changed={changed}
-          user={telegramUser()} onToggleTheme={toggleTheme} error={startError} />
+          user={telegramUser()} onToggleTheme={toggleTheme} error={startError}
+          startBtn={mainBtn} />
       );
       case 'clarify': return (
         <ClarifyScreen T={T} messages={clarifyChat.messages} thinking={clarifyChat.thinking}
@@ -840,6 +841,8 @@ export default function App() {
     ? <Composer T={T} draft={chatDraft} onChange={setChatDraft}
         onSend={() => { const t = chatDraft.trim(); if (t) { clarifyChat.send(t); setChatDraft(''); } }}
         disabled={false} placeholder="Type your answer…" />
+    : id === 'prompt'
+    ? null // prompt step renders its "Start generating" button inline (inside the textarea card)
     : (mainBtn ? <MainButton T={T} {...mainBtn} /> : null);
 
   const animKey = tab === 'manage' ? `m-${manageBot || 'list'}-${manageView}` : tab === 'discover' ? 'd-discover' : `b-${step}`;
