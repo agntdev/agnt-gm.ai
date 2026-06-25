@@ -2,6 +2,8 @@
 // The app renders its own header/MainButton (per the design), so this only
 // handles lifecycle, theme and viewport.
 
+interface SafeAreaInset { top: number; bottom: number; left: number; right: number }
+
 interface TelegramWebApp {
   ready(): void;
   expand(): void;
@@ -16,6 +18,14 @@ interface TelegramWebApp {
   openInvoice?(url: string, callback?: (status: InvoiceStatus) => void): void;
   initData?: string;
   platform?: string;
+  version?: string;
+  isVersionAtLeast?(version: string): boolean;
+  // ── fullscreen mode (Bot API 8.0+) ──
+  isFullscreen?: boolean;
+  requestFullscreen?(): void;
+  exitFullscreen?(): void;
+  safeAreaInset?: SafeAreaInset;        // device chrome (status bar / notch)
+  contentSafeAreaInset?: SafeAreaInset; // Telegram's own controls over the content
   initDataUnsafe?: { user?: { first_name?: string; last_name?: string; photo_url?: string } };
   BackButton?: {
     show(): void;
@@ -41,10 +51,42 @@ export const webApp: TelegramWebApp | undefined = window.Telegram?.WebApp;
 export const insideTelegram: boolean =
   !!webApp && (webApp.platform ?? 'unknown') !== 'unknown' && !!webApp.initData;
 
+// Fullscreen is a mobile-only Bot API 8.0 feature. Desktop/web clients fire
+// `fullscreenFailed` (UNSUPPORTED), so gate on platform + version up front.
+const FULLSCREEN_PLATFORMS = new Set(['android', 'ios']);
+
+function fullscreenCapable(): boolean {
+  return (
+    insideTelegram && !!webApp &&
+    FULLSCREEN_PLATFORMS.has(webApp.platform ?? '') &&
+    !!webApp.isVersionAtLeast?.('8.0') &&
+    typeof webApp.requestFullscreen === 'function'
+  );
+}
+
+// In fullscreen the native header is gone, so content sits under the status bar
+// and Telegram's floating close/menu controls. Expose the combined top inset as
+// a CSS variable the app root pads by; 0 whenever we're not in fullscreen.
+function syncFullscreenInset(): void {
+  if (!webApp) return;
+  const top = webApp.isFullscreen
+    ? (webApp.safeAreaInset?.top ?? 0) + (webApp.contentSafeAreaInset?.top ?? 0)
+    : 0;
+  document.documentElement.style.setProperty('--tg-fs-top', `${top}px`);
+}
+
 export function initTelegram(): void {
   if (!insideTelegram || !webApp) return;
   webApp.ready();
   webApp.expand();
+  if (!fullscreenCapable()) return;
+  try { webApp.requestFullscreen!(); } catch { /* older client raced the gate — ignore */ }
+  // insets land asynchronously (after fullscreenChanged) and can shift on
+  // rotation, so re-read them on every relevant event.
+  webApp.onEvent('fullscreenChanged', syncFullscreenInset);
+  webApp.onEvent('safeAreaChanged', syncFullscreenInset);
+  webApp.onEvent('contentSafeAreaChanged', syncFullscreenInset);
+  syncFullscreenInset();
 }
 
 export function telegramColorScheme(): 'light' | 'dark' | null {

@@ -852,7 +852,12 @@ export default function App() {
   const animKey = tab === 'manage' ? `m-${manageBot || 'list'}-${manageView}` : tab === 'discover' ? 'd-discover' : `b-${step}`;
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.pageBg, transition: 'background .3s' }}>
+    <div style={{
+      height: '100%', display: 'flex', flexDirection: 'column', background: T.pageBg, transition: 'background .3s',
+      // in Telegram fullscreen (mobile) clear the status bar + floating controls;
+      // 0 everywhere else (var is only set inside fullscreen) — see telegram.ts
+      paddingTop: 'var(--tg-fs-top, 0px)',
+    }}>
       <style>{`
         @keyframes tgspin { to { transform: rotate(360deg); } }
         @keyframes tgpulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
