@@ -176,9 +176,9 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
           )}
         </div>
       </div>
-      {bp.passes.length > 0 && (
+      {(bp.passes?.length ?? 0) > 0 && (
         <div style={{ borderTop: `0.5px solid ${T.sep}` }}>
-          {bp.passes.map((p, i) => {
+          {(bp.passes ?? []).map((p, i) => {
             const tone = PASS_TONE[p.status] || 'hint';
             const color = tone === 'green' ? T.green : tone === 'red' ? T.red : tone === 'accent' ? T.accent : T.hint;
             return (
