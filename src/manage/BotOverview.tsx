@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Theme, btnReset, hexA } from '../theme';
 import {
-  ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, ProjectSpec, BotInitiate,
+  ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, ProjectSpec, BotInitiate, BuildProgress as BuildProgressDTO,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
   botIsLive, retryDeploy, setAutoMerge, getProjectSpec, getCloudAgent, initiateBot, postFeedback,
 } from '../api/client';
@@ -119,6 +119,81 @@ function BuildProgress({ T, steps }: { T: Theme; steps: ProgressStep[] }) {
           );
         })}
       </div>
+    </Card>
+  );
+}
+
+// whole_bot 4-step mapping for the top stepper (blueprint→Plan, building→Build,
+// tests→Test, published→Live).
+function wholeBotSteps(bp: BuildProgressDTO | null, live: boolean): ProgressStep[] {
+  const ph = bp?.phase || (live ? 'published' : 'building');
+  const failed = ph === 'failed';
+  const done = live || ph === 'published';
+  return [
+    { label: 'Plan', state: 'done' },
+    { label: 'Build', state: failed ? 'failed' : done || ph === 'tests' ? 'done' : 'active' },
+    { label: 'Test', state: ph === 'tests' ? 'active' : done ? 'done' : 'todo' },
+    { label: 'Live', state: done ? 'done' : failed ? 'failed' : 'todo' },
+  ];
+}
+
+// approximate "~N min" from seconds (≈ — the pass count is variable).
+function fmtEta(sec: number): string {
+  if (!sec || sec <= 0) return '';
+  const m = Math.round(sec / 60);
+  if (m < 1) return '<1 min';
+  if (m < 60) return `~${m} min`;
+  return `~${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+const PASS_TONE: Record<string, 'green' | 'accent' | 'hint' | 'red'> = {
+  building: 'accent', merged: 'accent', reviewed: 'green', failed: 'red',
+};
+
+// whole_bot build card: stage label + approx ETA + progress bar + per-pass
+// timeline — the build screen's centerpiece while a whole_bot bot builds.
+function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
+  const eta = fmtEta(bp.eta_seconds);
+  const pct = Math.max(3, Math.min(100, bp.percent));
+  return (
+    <Card T={T} pad={0}>
+      <div style={{ padding: '14px 16px 13px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 650, color: T.text, lineHeight: '19px' }}>{bp.stage_label}</span>
+          {eta && <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, whiteSpace: 'nowrap' }}>{eta} left</span>}
+        </div>
+        <div style={{ marginTop: 11, height: 7, borderRadius: 999, background: T.dark ? 'rgba(255,255,255,0.1)' : 'rgba(15,22,32,0.08)', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: bp.stage === 'failed' ? T.red : T.accent, transition: 'width .5s ease' }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
+          <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>≈ {bp.percent}%</span>
+          {bp.pass_current > 0 && (
+            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>
+              {bp.merged_passes >= bp.pass_floor
+                ? `${bp.merged_passes} pass${bp.merged_passes === 1 ? '' : 'es'} accepted`
+                : `${bp.merged_passes} of ${bp.pass_floor} passes`}
+            </span>
+          )}
+        </div>
+      </div>
+      {bp.passes.length > 0 && (
+        <div style={{ borderTop: `0.5px solid ${T.sep}` }}>
+          {bp.passes.map((p, i) => {
+            const tone = PASS_TONE[p.status] || 'hint';
+            const color = tone === 'green' ? T.green : tone === 'red' ? T.red : tone === 'accent' ? T.accent : T.hint;
+            return (
+              <div key={p.pass_no} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: i ? `0.5px solid ${T.sep}` : 'none' }}>
+                {p.status === 'reviewed' && p.complete
+                  ? <TGIcon name="check" size={14} color={T.green} stroke={2.6} />
+                  : <Dot color={color} size={7} pulse={p.status === 'building'} />}
+                <span style={{ flex: 1, fontFamily: T.font, fontSize: 13, color: T.text }}>Pass {p.pass_no}</span>
+                <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{p.label}</span>
+                {p.pr_number != null && <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.accent }}>#{p.pr_number}</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 }
@@ -356,6 +431,11 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // the real go-live signal (NOT project.status): current_phase==='published'
   // OR the managed bot's container_state. Drives the feedback channel.
   const live = dag?.current_phase === 'published' || detail?.current_phase === 'published' || botIsLive(botRow);
+  // whole_bot N-pass build: no tasks/DAG — the build screen shows a stage/%/ETA
+  // card + pass timeline (from project.build_progress) instead of the task list.
+  const wholeBot = detail?.build_pipeline === 'whole_bot' || !!detail?.build_progress;
+  const bp = detail?.build_progress ?? null;
+  const wholeBotBuilding = wholeBot && !live;
   const pausedEffective = paused || !!botRow?.paused;
   const needsBot = isTaskManager && !botUsername;          // managed bot not provisioned yet
   const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
@@ -377,7 +457,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     if (decomposing) return { label: 'Planning build', tone: 'accent' as const, color: T.accent, pulse: true };
     return { label: bot.statusLabel || 'Building', tone: 'accent' as const, color: T.accent, pulse: true };
   })();
-  const progressSteps: ProgressStep[] = [
+  const progressSteps: ProgressStep[] = wholeBot ? wholeBotSteps(bp, live) : [
     { label: 'Plan', state: total > 0 || !decomposing ? 'done' : 'active' },
     { label: 'Build', state: latestDeployFailed ? 'failed' : allDone ? 'done' : (total > 0 || decomposing ? 'active' : 'todo') },
     { label: 'Test', state: testsFailed ? 'failed' : testResult ? 'done' : allDone ? 'active' : 'todo' },
@@ -390,7 +470,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // 2 rows once it does.
   type Stat = { value: string; label: string; tone?: 'green' };
   const buildStats: Stat[] = [
-    { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
+    wholeBot
+      ? { value: bp ? (bp.merged_passes >= bp.pass_floor ? String(bp.merged_passes) : `${bp.merged_passes}/${bp.pass_floor}`) : '—', label: 'Passes', tone: bp && bp.merged_passes >= bp.pass_floor ? 'green' : undefined }
+      : { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
     { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
     {
       value: latestDeploy?.deployed_at ? relTime(latestDeploy.deployed_at) : latestDeploy?.status || '—',
@@ -551,9 +633,17 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       <div>
         <SectionLabel T={T}>Build progress</SectionLabel>
         <BuildProgress T={T} steps={progressSteps} />
+        {wholeBotBuilding && bp && (
+          <div style={{ marginTop: 10 }}>
+            <WholeBotBuildCard T={T} bp={bp} />
+          </div>
+        )}
       </div>
 
-      {/* stats — compact 3-up grid; wraps to a 2nd row when analytics is live */}
+      {/* stats — compact 3-up grid; wraps to a 2nd row when analytics is live.
+          Hidden while a whole_bot is building (the build card above carries the
+          live status), shown once it's live (analytics + deploy stats). */}
+      {!wholeBotBuilding && (
       <Card T={T} pad={0}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
           {stats.map((s, i) => (
@@ -568,6 +658,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           ))}
         </div>
       </Card>
+      )}
 
       {/* agent summary → advanced add-an-agent sheet (cloud or local) */}
       <div>
@@ -604,7 +695,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           autoMergeEnabled={detail?.auto_merge_enabled} hasBot={!!botRow} specOnly />
       )}
 
-      {/* tasks — compact: phase stepper + one-line rows, expandable */}
+      {/* tasks — compact: phase stepper + one-line rows, expandable.
+          Hidden for whole_bot (no tasks — the build card above shows progress). */}
+      {!wholeBot && (
       <div>
         <SectionLabel T={T} right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -740,6 +833,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           )}
         </Card>
       </div>
+      )}
 
       {/* feedback now lives in the chat: once LIVE, a chat message routes to the
           feedback analyzer and the new tasks come back as tool-call messages

@@ -91,13 +91,38 @@ export interface Project {
   published_at?: string;
   build_mode?: string; // 'local_agent' | 'platform_agent' once the API ships it
   // ── task_manager flow (landing on the project DTO; absent for now — feature-detect) ──
-  build_pipeline?: 'phase' | 'task_manager' | string; // discriminator (gap #1 — absent today)
+  build_pipeline?: 'phase' | 'task_manager' | 'whole_bot' | string; // discriminator
   current_phase?: string;   // 'published' once the bot is actually live (gap #4 workaround)
   phase_status?: string;
   bot_go_live_at?: string;  // server-side only today (gap #4)
   decomposed_at?: string;
   auto_merge_enabled?: boolean;
   auto_merge_after_revalidation?: boolean;
+  // whole_bot build snapshot (stage label + approx %/ETA + pass timeline) — only
+  // present on the single-project detail endpoint for build_pipeline='whole_bot'.
+  build_progress?: BuildProgress;
+}
+
+// whole_bot N-pass build snapshot the build screen renders (a progress bar +
+// plain-language stage + approximate ETA + per-pass timeline). All approximate.
+export interface BuildProgress {
+  phase: string;          // building | tests | published | failed
+  stage: string;          // blueprint|building|reviewing|testing|deploying|live|failed
+  stage_label: string;    // human one-liner, e.g. "🔨 Building your bot — pass 2"
+  percent: number;        // 0..100, APPROXIMATE
+  eta_seconds: number;    // APPROXIMATE remaining; 0 when live/failed
+  pass_current: number;   // highest pass number reached
+  merged_passes: number;  // accepted passes
+  pass_floor: number;     // min passes before publish
+  passes: BuildProgressPass[];
+}
+
+export interface BuildProgressPass {
+  pass_no: number;
+  status: string;         // building|merged|reviewed|failed
+  pr_number?: number;
+  complete?: boolean;
+  label: string;          // short row label, e.g. "merged · complete ✓"
 }
 
 export interface ProjectDetail {
