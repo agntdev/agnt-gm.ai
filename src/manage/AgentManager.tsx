@@ -5,6 +5,7 @@
 import { useState, type ReactNode } from 'react';
 import { Theme, btnReset } from '../theme';
 import { runCloudAgent } from '../api/client';
+import { payAndAssignCloudAgent, STAR_COST } from '../api/stars';
 import { TGIcon, Spinner } from '../ui';
 
 export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudDeployed, onClose }: {
@@ -18,8 +19,14 @@ export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudD
   const deployCloud = async () => {
     if (deployed || busy) return; // max one cloud agent per bot
     setBusy(true); setError(false);
-    try { await runCloudAgent(project.id); setDeployed(true); onCloudDeployed(); }
-    catch { setError(true); }
+    try {
+      // Stars gate (10★): pay an invoice, then assign. Free no-op when charging
+      // is disabled — payAndAssignCloudAgent runs runCloudAgent directly.
+      const r = await payAndAssignCloudAgent(project.id, async () => { await runCloudAgent(project.id); });
+      if (r === 'ok') { setDeployed(true); onCloudDeployed(); }
+      else if (r === 'failed' || r === 'unconfirmed') setError(true);
+      // 'cancelled' → user closed the payment sheet; leave the option idle.
+    } catch { setError(true); }
     setBusy(false);
   };
 
@@ -47,7 +54,7 @@ export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudD
             title="Cloud agent"
             desc={deployed ? 'Deployed — running on our platform'
               : error ? "Couldn't deploy — tap to retry"
-              : 'We deploy and run one for you'}
+              : `We deploy and run one for you · ${STAR_COST.cloudAgent} ⭐`}
             tone={deployed ? 'green' : error ? 'amber' : 'hint'}
             onClick={deployCloud} disabled={deployed}
             right={busy ? <Spinner color={T.accent} size={18} />
