@@ -635,6 +635,44 @@ export function retryDeploy(idOrSlug: string): Promise<{ ok?: boolean; status?: 
   return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/deploy`);
 }
 
+// ── Telegram Stars payments (gate model) ─────────────────────────
+// Paid owner actions (deploy 1★ / cloud-agent 10★) are gated: mint a one-shot
+// invoice here, pay it via Telegram.WebApp.openInvoice, then re-call the action
+// (which atomically consumes the paid intent). See api/stars.ts for the
+// orchestration and docs/frontend on the backend. When charging is disabled the
+// invoice endpoints return payment_required=false → callers run the action free.
+export type StarPurpose = 'bot_deploy' | 'cloud_agent';
+
+export interface StarInvoice {
+  payment_required: boolean;
+  invoice_link?: string;
+  payment_id?: string;
+  star_cost?: number;
+  purpose?: StarPurpose;
+}
+
+export function createDeployInvoice(idOrSlug: string): Promise<StarInvoice> {
+  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/deploy/invoice`);
+}
+
+export function createCloudAgentInvoice(idOrSlug: string): Promise<StarInvoice> {
+  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/cloud-agent/invoice`);
+}
+
+export interface StarPayment {
+  id: string;
+  status: 'pending' | 'paid' | 'consumed';
+  star_cost: number;
+  purpose: StarPurpose;
+}
+
+// Poll a payment intent after openInvoice — the backend flips it to 'paid' once
+// the manager-bot feed delivers successful_payment (a few seconds after the
+// in-app payment).
+export function getStarPayment(id: string): Promise<StarPayment> {
+  return request('GET', `/builder/star-payments/${encodeURIComponent(id)}`);
+}
+
 // Spec doc. No public endpoint exists yet (gap #2) — 404/405 → null and the UI
 // falls back to linking docs/spec.md in the repo. Tolerant of the eventual shape.
 export interface ProjectSpec {

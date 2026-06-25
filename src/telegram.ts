@@ -13,6 +13,7 @@ interface TelegramWebApp {
   offEvent(event: string, cb: () => void): void;
   openLink?(url: string): void;
   openTelegramLink?(url: string): void;
+  openInvoice?(url: string, callback?: (status: InvoiceStatus) => void): void;
   initData?: string;
   platform?: string;
   initDataUnsafe?: { user?: { first_name?: string; last_name?: string; photo_url?: string } };
@@ -23,6 +24,9 @@ interface TelegramWebApp {
     offClick(cb: () => void): void;
   };
 }
+
+// Telegram.WebApp.openInvoice callback statuses.
+export type InvoiceStatus = 'paid' | 'cancelled' | 'failed' | 'pending';
 
 declare global {
   interface Window {
@@ -94,6 +98,20 @@ export function telegramUser(): TgUser | null {
 export function openExternal(url: string): void {
   if (webApp?.openLink) webApp.openLink(url);
   else window.open(url, '_blank', 'noopener');
+}
+
+// Open a Telegram Stars invoice (from createInvoiceLink on the backend) and
+// resolve with the payment outcome. Rejects when not running inside Telegram or
+// the client is too old to support openInvoice — callers should surface that as
+// "open in Telegram to pay".
+export function openInvoice(invoiceLink: string): Promise<InvoiceStatus> {
+  return new Promise((resolve, reject) => {
+    if (!insideTelegram || !webApp?.openInvoice) {
+      reject(new Error('openInvoice unavailable — open this bot inside Telegram to pay'));
+      return;
+    }
+    webApp.openInvoice(invoiceLink, (status) => resolve(status));
+  });
 }
 
 // t.me links stay inside Telegram (bot chats, the manager-bot deep link,
