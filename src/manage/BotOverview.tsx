@@ -168,7 +168,11 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
           <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>≈ {bp.percent}%</span>
           {bp.pass_current > 0 && (
-            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{bp.merged_passes} of {bp.pass_floor} passes accepted</span>
+            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>
+              {bp.merged_passes >= bp.pass_floor
+                ? `${bp.merged_passes} pass${bp.merged_passes === 1 ? '' : 'es'} accepted`
+                : `${bp.merged_passes} of ${bp.pass_floor} passes`}
+            </span>
           )}
         </div>
       </div>
@@ -467,7 +471,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   type Stat = { value: string; label: string; tone?: 'green' };
   const buildStats: Stat[] = [
     wholeBot
-      ? { value: bp ? `${bp.merged_passes}/${bp.pass_floor}` : '—', label: 'Passes', tone: bp && bp.merged_passes >= bp.pass_floor ? 'green' : undefined }
+      ? { value: bp ? (bp.merged_passes >= bp.pass_floor ? String(bp.merged_passes) : `${bp.merged_passes}/${bp.pass_floor}`) : '—', label: 'Passes', tone: bp && bp.merged_passes >= bp.pass_floor ? 'green' : undefined }
       : { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
     { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
     {
