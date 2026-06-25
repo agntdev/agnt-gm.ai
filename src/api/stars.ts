@@ -12,7 +12,6 @@
 import { openInvoice } from '../telegram';
 import {
   createCloudAgentInvoice,
-  createDeployInvoice,
   getStarPayment,
   type StarInvoice,
 } from './client';
@@ -22,10 +21,10 @@ import {
 // it in time (rare; the paid intent persists, so the next tap runs it free).
 export type PayResult = 'ok' | 'cancelled' | 'failed' | 'unconfirmed';
 
-// Display prices (mirror the backend defaults). The authoritative amount is
-// always shown in Telegram's native payment sheet; this is just for button
-// labels. If charging is disabled the action runs free regardless of this.
-export const STAR_COST = { deploy: 1, cloudAgent: 10 } as const;
+// Display price (mirrors the backend default). The authoritative amount is
+// always shown in Telegram's native payment sheet; this is just for the button
+// label. Only cloud-agent assignment is charged — deploy is free.
+export const STAR_COST = { cloudAgent: 10 } as const;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -64,11 +63,6 @@ async function payAndRun(invoice: StarInvoice, run: () => Promise<void>): Promis
   if (!paid) return 'unconfirmed';
   await run();
   return 'ok';
-}
-
-// Pay 1★ then deploy.
-export function payAndDeploy(projectId: string, run: () => Promise<void>): Promise<PayResult> {
-  return createDeployInvoice(projectId).then((inv) => payAndRun(inv, run));
 }
 
 // Pay 10★ then assign the cloud agent.

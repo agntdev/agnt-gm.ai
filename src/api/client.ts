@@ -661,11 +661,11 @@ export function retryDeploy(idOrSlug: string): Promise<{ ok?: boolean; status?: 
 }
 
 // ── Telegram Stars payments (gate model) ─────────────────────────
-// Paid owner actions (deploy 1★ / cloud-agent 10★) are gated: mint a one-shot
-// invoice here, pay it via Telegram.WebApp.openInvoice, then re-call the action
-// (which atomically consumes the paid intent). See api/stars.ts for the
-// orchestration and docs/frontend on the backend. When charging is disabled the
-// invoice endpoints return payment_required=false → callers run the action free.
+// Cloud-agent assignment (10★) is gated: mint a one-shot invoice here, pay it
+// via Telegram.WebApp.openInvoice, then re-call the action (which atomically
+// consumes the paid intent). See api/stars.ts. Deploy is FREE (no charge).
+// When charging is disabled the invoice endpoint returns payment_required=false
+// → the caller runs the action free.
 export type StarPurpose = 'bot_deploy' | 'cloud_agent';
 
 export interface StarInvoice {
@@ -674,10 +674,6 @@ export interface StarInvoice {
   payment_id?: string;
   star_cost?: number;
   purpose?: StarPurpose;
-}
-
-export function createDeployInvoice(idOrSlug: string): Promise<StarInvoice> {
-  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/deploy/invoice`);
 }
 
 export function createCloudAgentInvoice(idOrSlug: string): Promise<StarInvoice> {

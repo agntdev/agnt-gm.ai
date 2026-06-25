@@ -10,7 +10,6 @@ import {
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
   botIsLive, retryDeploy, setAutoMerge, getProjectSpec, getCloudAgent, initiateBot, postFeedback,
 } from '../api/client';
-import { payAndDeploy, STAR_COST } from '../api/stars';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
 import { MyBot } from './MyBots';
@@ -968,18 +967,10 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
   const onRetryDeploy = async () => {
     if (dpBusy) return;
     setDpBusy(true); setDpError(null);
-    try {
-      // Stars gate (1★): mint+pay an invoice, then deploy. Free no-op when
-      // charging is disabled — payAndDeploy runs retryDeploy directly.
-      const r = await payAndDeploy(projectId, async () => { await retryDeploy(projectId); });
-      if (r === 'ok') setDpPending(true);
-      else if (r === 'failed') setDpError('Payment failed — please try again.');
-      else if (r === 'unconfirmed') setDpError('Payment received — tap deploy again to start.');
-      // 'cancelled' → user closed the sheet; leave the card idle.
-    } catch (e) {
+    try { await retryDeploy(projectId); setDpPending(true); }
+    catch (e) {
       setDpPending(false);
-      setDpError(e instanceof ApiError ? (e.warning || `${e.message}${e.details ? ` — ${e.details}` : ''}`)
-        : (e instanceof Error ? e.message : 'network error — try again'));
+      setDpError(e instanceof ApiError ? (e.warning || `${e.message}${e.details ? ` — ${e.details}` : ''}`) : 'network error — try again');
     } finally { setDpBusy(false); }
   };
 
@@ -1031,7 +1022,7 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
               background: T.accentSoft, color: T.accent, fontFamily: T.font, fontSize: 14, fontWeight: 600,
             }}>
               {dpBusy ? <Spinner color={T.accent} size={15} /> : <TGIcon name="refresh" size={16} color={T.accent} stroke={2} />}
-              Retry deploy · {STAR_COST.deploy} ⭐
+              Retry deploy
             </button>
             {dpPending && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: T.font, fontSize: 12.5, color: T.accent, lineHeight: '17px' }}>
@@ -1068,7 +1059,7 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
               background: T.accentSoft, color: T.accent, fontFamily: T.font, fontSize: 14, fontWeight: 600,
             }}>
               {dpBusy ? <Spinner color={T.accent} size={15} /> : <TGIcon name="refresh" size={16} color={T.accent} stroke={2} />}
-              {(live ? 'Redeploy bot' : 'Retry deploy') + ` · ${STAR_COST.deploy} ⭐`}
+              {live ? 'Redeploy bot' : 'Retry deploy'}
             </button>
             {dpPending && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: T.font, fontSize: 12.5, color: T.accent, lineHeight: '17px' }}>
