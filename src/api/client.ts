@@ -114,7 +114,7 @@ export interface BuildProgress {
   pass_current: number;   // highest pass number reached
   merged_passes: number;  // accepted passes
   pass_floor: number;     // min passes before publish
-  passes: BuildProgressPass[];
+  passes?: BuildProgressPass[] | null; // null/absent before the first pass — always guard
 }
 
 export interface BuildProgressPass {
