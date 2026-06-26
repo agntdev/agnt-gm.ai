@@ -14,7 +14,7 @@ import {
   BuildMode, setBuildModeApi,
   listProjectsByAgent, authTelegram, setAuthToken,
   initiateBot, getProjectBot, BotInitiate,
-  setBotPaused,
+  setBotPaused, postFeedback,
   listDiscoverBots,
   setDiscoverable,
 } from './api/client';
@@ -619,7 +619,15 @@ export default function App() {
     const text = draft.trim();
     if (!manageBot || !text) return;
     setDraft('');
-    manageChat.send(text); // real chat — deploy/version logs come back as system messages
+    manageChat.send(text); // shows the owner's message; deploy/version logs stream back as system messages
+    // Shipping a change is the same logic as the old "Ship an update" box: the
+    // chat is now the single change input. task_manager bots already route a live
+    // chat message to the feedback analyzer on the backend, so only the other
+    // pipelines (whole_bot etc.) need the explicit ship-update call here — calling
+    // it for task_manager too would double-fire the rebuild.
+    if (activeBot && activeBot.isTaskManager !== true) {
+      void postFeedback(manageBot, text).catch(() => { /* 409 while a build runs / surfaced via build state on next poll */ });
+    }
   };
 
   // pause / resume the managed bot — optimistic (real PUT when the API ships)
