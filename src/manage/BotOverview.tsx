@@ -688,7 +688,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </button>
       </div>
 
-      {/* spec — the build brief / decomposed spec, for every bot */}
+      {/* blueprint — the build brief / decomposed spec, for every bot */}
       <SpecSection T={T} projectId={bot.id} repoUrl={repoUrl} />
 
       {/* task_manager: owner-safe retry deploy control. */}
@@ -900,8 +900,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   );
 }
 
-// Spec — the build brief / decomposed spec for the bot. Shown for every bot:
-// the real /spec endpoint if it exists, else a link to docs/spec.md in the repo.
+// Blueprint — the build brief / decomposed spec for the bot. Shown for every
+// bot: the real /spec endpoint if it exists, else a link to docs/blueprint.md.
 function SpecSection({ T, projectId, repoUrl }: { T: Theme; projectId: string; repoUrl?: string }) {
   const [spec, setSpec] = useState<ProjectSpec | null | 'loading'>('loading');
   const [specOpen, setSpecOpen] = useState(false);
@@ -915,18 +915,18 @@ function SpecSection({ T, projectId, repoUrl }: { T: Theme; projectId: string; r
   }, [projectId]);
   const specBody = spec && spec !== 'loading' ? (spec.body_md || spec.content || spec.markdown || '') : '';
   const specLink = (spec && spec !== 'loading' && spec.url)
-    || (repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/spec.md` : null);
+    || (repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/blueprint.md` : null);
   return (
     <div>
       <SectionLabel T={T} right={specBody && specLink
         ? <button onClick={() => openExternal(specLink)} style={{ ...btnReset, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent }}>Open</button>
         : undefined
-      }>Spec</SectionLabel>
+      }>Blueprint</SectionLabel>
       <Card T={T} pad={0}>
         {spec === 'loading' ? (
           <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 9 }}>
             <Spinner color={T.hint} size={14} />
-            <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>Loading spec…</span>
+            <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>Loading blueprint…</span>
           </div>
         ) : specBody ? (
           <div style={{ padding: '12px 14px' }}>
@@ -943,11 +943,11 @@ function SpecSection({ T, projectId, repoUrl }: { T: Theme; projectId: string; r
           </div>
         ) : specLink ? (
           <div style={{ padding: '12px 14px' }}>
-            <LinkChip T={T} label="View spec" onClick={() => openExternal(specLink)} />
+            <LinkChip T={T} label="View blueprint" onClick={() => openExternal(specLink)} />
           </div>
         ) : (
           <div style={{ padding: 14, fontFamily: T.font, fontSize: 13, color: T.hint, lineHeight: '18px' }}>
-            The spec appears here once your idea is decomposed.
+            The blueprint appears here once your idea is decomposed.
           </div>
         )}
       </Card>
