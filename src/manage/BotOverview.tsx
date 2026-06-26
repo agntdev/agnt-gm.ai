@@ -436,6 +436,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // card + pass timeline (from project.build_progress) instead of the task list.
   const wholeBot = detail?.build_pipeline === 'whole_bot' || !!detail?.build_progress;
   const bp = detail?.build_progress ?? null;
+  // whole_bot build that failed to converge — must override the stale "Live"
+  // label inherited from the My Bots list (which keys off project.status and
+  // can't see build_progress, a detail-only field).
+  const buildFailed = bp?.phase === 'failed' || bp?.stage === 'failed';
   const wholeBotBuilding = wholeBot && !live;
   const pausedEffective = paused || !!botRow?.paused;
   const needsBot = isTaskManager && !botUsername;          // managed bot not provisioned yet
@@ -451,7 +455,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     if (pausedEffective) return { label: `Paused · ${bot.version}`, tone: 'neutral' as const, color: T.hint, pulse: false };
     if (live) return { label: `Live${uptime ? ` · up ${uptime}` : ''} · ${bot.version}`, tone: 'green' as const, color: T.green, pulse: false };
     if (needsBot) return { label: 'Create bot to continue', tone: 'accent' as const, color: T.accent, pulse: true };
-    if (latestDeployFailed || testsFailed) return { label: 'Needs a fix', tone: 'neutral' as const, color: T.red, pulse: false };
+    if (latestDeployFailed || testsFailed || buildFailed) return { label: 'Needs a fix', tone: 'neutral' as const, color: T.red, pulse: false };
     if (blocked.items.length > 0) return { label: 'Needs you', tone: 'accent' as const, color: T.accent, pulse: true };
     if (latestDeployActive) return { label: 'Deploying', tone: 'accent' as const, color: T.accent, pulse: true };
     if (allDone && botUsername) return { label: 'Testing & deploy', tone: 'accent' as const, color: T.accent, pulse: true };
@@ -559,7 +563,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 
       {/* primary action — the Lovable-style feedback loop */}
       {(() => {
-        const label = live ? 'Ask for change' : latestDeployFailed || testsFailed ? 'Fix with agent' : 'Message agent';
+        const label = live ? 'Ask for change' : latestDeployFailed || testsFailed || buildFailed ? 'Fix with agent' : 'Message agent';
         return (
         <button onClick={onOpenChat} style={{
           ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
