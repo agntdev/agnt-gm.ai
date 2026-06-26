@@ -379,14 +379,18 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 
   // cloud-agent status from the API — the source of truth for "is a cloud agent
   // running", so a server-side deploy (or one made on another device) reflects
-  // even if this client never recorded it locally. Fetched once per bot.
+  // even if this client never recorded it locally. Re-fetched whenever a deploy
+  // is recorded (e.g. right after paying) so the verdict catches up instead of
+  // lagging until the page is reloaded. Reset to null first so a stale 'false'
+  // can't trip onCloudGone (below) and wipe the fresh deploy before we re-confirm.
   useEffect(() => {
     let cancelled = false;
+    setCloudApi(null);
     void getCloudAgent(bot.id)
       .then(c => { if (!cancelled) setCloudApi(c?.deployed ?? null); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [bot.id]);
+  }, [bot.id, cloudDeployed]);
 
   // sync the app/local cloud state to the API verdict: a real deployed agent
   // (cloudApi true) records it once; the API saying NO agent (false) clears a
@@ -418,13 +422,12 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const latestDeployFailed = deployFailed(latestDeploy);
   const latestDeployActive = deployActive(latestDeploy);
   const connected = link?.status === 'connected';
-  // a cloud agent is active if the API says so (GET /cloud-agent or platform
-  // build_mode) OR this client recorded the deploy — API wins over local state.
-  // ONLY show "Cloud agent" when the API actually confirms a deployed agent
-  // (GET /cloud-agent → deployed:true). No optimistic local flag, no build_mode —
-  // those produced a "running" agent that wasn't real. Until the API says so, the
-  // card reads "Add an agent" (or "Local agent" if a local one is connected).
-  const cloudActive = cloudApi === true;
+  // Show "Cloud agent" when the API confirms a deployed agent (GET /cloud-agent
+  // → deployed:true) OR this client just recorded a payment-confirmed deploy
+  // (cloudDeployed). The optimistic flag avoids the lag where the card stayed on
+  // "no agent" until refresh; the re-fetch above reconciles it to the API verdict.
+  // (build_mode is still NOT a trigger — that produced a fake "running" agent.)
+  const cloudActive = cloudApi === true || cloudDeployed;
   const agentClient = (link?.connected_client || '').split('/')[0];
   const handle = botUsername || bot.handle;
   const since = detail?.published_at || detail?.created_at;
