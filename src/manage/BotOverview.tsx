@@ -448,6 +448,11 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // can't see build_progress, a detail-only field).
   const buildFailed = bp?.phase === 'failed' || bp?.stage === 'failed';
   const wholeBotBuilding = wholeBot && !live;
+  // a whole_bot build/redeploy is actively in flight — the initial build, or a
+  // rebuild on a still-live bot (bp.phase building/tests). The backend rejects a
+  // new change until it's live again, so the "Ask for change" CTA is paused while
+  // this is true rather than letting the tap fail in chat.
+  const buildRunning = wholeBot && (wholeBotBuilding || bp?.phase === 'building' || bp?.phase === 'tests');
   const pausedEffective = paused || !!botRow?.paused;
   const needsBot = isTaskManager && !botUsername;          // managed bot not provisioned yet
   const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
@@ -568,8 +573,20 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </Card>
       )}
 
-      {/* primary action — the Lovable-style feedback loop */}
-      {(() => {
+      {/* primary action — the Lovable-style feedback loop. While a build is in
+          flight the change CTA is paused (the backend rejects changes mid-build);
+          it returns the moment the bot is live again. */}
+      {buildRunning ? (
+        <div style={{
+          width: '100%', minHeight: 54, borderRadius: 15, padding: '0 16px',
+          background: T.dark ? 'rgba(255,255,255,0.05)' : 'rgba(15,22,32,0.04)',
+          border: `1px solid ${T.sep}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          fontFamily: T.font, fontSize: 15.5, fontWeight: 600, color: T.sub, textAlign: 'center', lineHeight: '20px',
+        }}>
+          <Spinner color={T.hint} size={17} /> Building — you can ask for changes once it’s live
+        </div>
+      ) : (() => {
         const label = live ? 'Ask for change' : latestDeployFailed || testsFailed || buildFailed ? 'Fix with agent' : 'Message agent';
         return (
         <button onClick={onOpenChat} style={{
@@ -645,7 +662,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       <div>
         <SectionLabel T={T}>Build progress</SectionLabel>
         <BuildProgress T={T} steps={progressSteps} />
-        {wholeBotBuilding && bp && (
+        {buildRunning && bp && (
           <div style={{ marginTop: 10 }}>
             <WholeBotBuildCard T={T} bp={bp} />
           </div>
