@@ -13,7 +13,7 @@ import {
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
 import { MyBot } from './MyBots';
-import { ActivityTimeline, relTime } from './Activity';
+import { ActivityTimeline, relTime, withDeployments } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
 
 // human-readable count: 3100 → "3.1k", 12000 → "12k"
@@ -406,7 +406,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const blueprintUrl = repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/blueprint.md` : null;
 
   const sys = messages.filter(m => m.role === 'system');
-  const activity = [...sys].reverse().slice(0, 4);
+  const activity = [...withDeployments(sys, deploys)].reverse().slice(0, 4);
   // count only real work tasks (exclude epics = display-only containers, and
   // cancelled) so the overview total matches the board. Phase projects: count all.
   const countable = isTaskManager ? tasks.filter(t => t.node_kind !== 'epic' && t.status !== 'cancelled') : tasks;
