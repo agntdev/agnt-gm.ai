@@ -222,7 +222,6 @@ export default function App() {
   const cancelPoll = useRef<() => void>(() => {});
 
   const goTo = (i: number, d = 1) => { setDir(d); setStep(i); };
-  const next = () => goTo(Math.min(STEPS.length - 1, step + 1), 1);
   const back = () => goTo(Math.max(0, step - 1), -1);
 
   // a stale "couldn't start the build" error shouldn't linger when you leave
@@ -661,6 +660,17 @@ export default function App() {
   };
   const editIdea = () => { resetPipeline(); localStorage.removeItem(PIPELINE_KEY); setChanged(true); goTo(0, -1); };
 
+  // Spec ready → slide to the spec screen automatically. The chat already shows
+  // the inline "generating your spec…" loader, so there's no footer button to
+  // tap; a short beat lets the "Spec is ready" bubble land before the forward
+  // slide (dir=1).
+  useEffect(() => {
+    if (tab !== 'build' || id !== 'clarify' || gen !== 'ready') return;
+    const t = setTimeout(() => goTo(STEPS.indexOf('spec'), 1), 850);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, id, gen]);
+
   // ── MainButton config per step ──
   const mainBtn = ((): { label: string; disabled?: boolean; busy?: boolean; icon?: string; onClick?: () => void } | null => {
     switch (id) {
@@ -671,13 +681,11 @@ export default function App() {
         busy: starting,
         onClick: () => void startChatFlow(),
       };
-      case 'clarify': return {
-        // while drafting the footer is the chat composer (see below), so this
-        // only renders once the brief is accepted
-        label: gen === 'ready' ? 'Review spec' : 'Generating spec…',
-        disabled: gen !== 'ready', busy: gen === 'generating' && project?.status !== 'draft',
-        onClick: next,
-      };
+      // while drafting the footer is the chat composer (see below). Once the
+      // brief is accepted there's no footer button: the chat already shows the
+      // inline "generating your spec…" loader, and we auto-advance to the spec
+      // screen when it's ready (see the effect above).
+      case 'clarify': return null;
       case 'spec':
         // while the bot is being created in Telegram, the waiting state lives in
         // the spec card (with its own spinner) — don't duplicate it in the footer
