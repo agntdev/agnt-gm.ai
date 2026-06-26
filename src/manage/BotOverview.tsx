@@ -15,7 +15,6 @@ import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
 import { MyBot } from './MyBots';
 import { ActivityTimeline, relTime, withDeployments } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
-import { WholeBotUpdateComposer } from './WholeBotUpdateComposer';
 
 // human-readable count: 3100 → "3.1k", 12000 → "12k"
 function human(n?: number): string {
@@ -242,7 +241,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 }) {
   const seed = OV_CACHE.get(bot.id); // instant re-open from the last snapshot
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0); // bump → re-run the detail poll now (e.g. after shipping an update)
   const [detail, setDetail] = useState<Project | null>(seed?.detail ?? null);
   const [tasks, setTasks] = useState<TaskItem[]>(seed?.tasks ?? []);
   const [dag, setDag] = useState<DagInfo | null>(seed?.dag ?? null);
@@ -381,7 +379,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     };
     void tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [bot.id, refreshKey]);
+  }, [bot.id]);
 
   // cloud-agent status from the API — the source of truth for "is a cloud agent
   // running", so a server-side deploy (or one made on another device) reflects
@@ -654,12 +652,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         )}
       </div>
 
-      {/* whole_bot "Ship an update": only once a build round has FINISHED (live or
-          failed). Re-enters the building phase with the owner's change request; the
-          detail poll then flips wholeBotBuilding and the build card returns above. */}
-      {wholeBot && (live || buildFailed) && (
-        <WholeBotUpdateComposer T={T} bot={bot} onUpdated={() => setRefreshKey(k => k + 1)} />
-      )}
+      {/* shipping a change lives in the chat (the "Ask for change" button above),
+          same as task_manager bots — no separate composer here. A live chat
+          message routes to the build/feedback flow and the bot rebuilds. */}
 
       {/* stats — compact 3-up grid; wraps to a 2nd row when analytics is live.
           Hidden while a whole_bot is building (the build card above carries the
