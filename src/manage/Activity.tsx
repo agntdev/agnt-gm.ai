@@ -43,13 +43,18 @@ export function relTime(iso?: string): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
+// hoisted out of eventTone so they aren't recreated on every event (js-hoist-regexp)
+const RE_FAIL = /\bfail|error|crash|🔴|❌|✗/i;
+const RE_ESCALATE = /escalat|human|⚠️|🟠|blocked|needs? (a )?human/i;
+const RE_RESOLVE = /resolv|✅|🟢|passing|succeed|success|complete/i;
+
 // dot colour by event kind — matches the mock: resolved=green, command/ship=
 // blue, escalation=amber, failure=red.
 export function eventTone(m: ChatMessage, T: Theme): string {
   const c = m.content;
-  if (/\bfail|error|crash|🔴|❌|✗/i.test(c)) return T.red;
-  if (/escalat|human|⚠️|🟠|blocked|needs? (a )?human/i.test(c)) return T.amber;
-  if (/resolv|✅|🟢|passing|succeed|success|complete/i.test(c)) return T.green;
+  if (RE_FAIL.test(c)) return T.red;
+  if (RE_ESCALATE.test(c)) return T.amber;
+  if (RE_RESOLVE.test(c)) return T.green;
   return T.accent;
 }
 

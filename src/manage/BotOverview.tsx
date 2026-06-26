@@ -27,6 +27,10 @@ function human(n?: number): string {
   return String(n);
 }
 
+// hoisted so they aren't rebuilt on each scan iteration (js-hoist-regexp)
+const RE_TEST_COUNT = /(\d+)\s*\/\s*(\d+)\s*(?:tests?|cases?|passing)/i;
+const RE_COVERAGE = /(\d+)\s*%\s*cov/i;
+
 // latest test results — structured (data.kind=test) or parsed from a system
 // message like "38/38 passing · 94% cov"; null until CI results exist.
 function latestTests(sys: ChatMessage[]): { passed: number; total: number; coverage?: number } | null {
@@ -36,9 +40,9 @@ function latestTests(sys: ChatMessage[]): { passed: number; total: number; cover
     if (d?.kind === 'test' && typeof d.passed === 'number') {
       return { passed: d.passed, total: d.passed + (d.failed || 0), coverage: d.coverage_pct };
     }
-    const t = /(\d+)\s*\/\s*(\d+)\s*(?:tests?|cases?|passing)/i.exec(m.content);
+    const t = RE_TEST_COUNT.exec(m.content);
     if (t) {
-      const cov = /(\d+)\s*%\s*cov/i.exec(m.content);
+      const cov = RE_COVERAGE.exec(m.content);
       return { passed: +t[1], total: +t[2], coverage: cov ? +cov[1] : undefined };
     }
   }
