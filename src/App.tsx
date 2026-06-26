@@ -2,7 +2,7 @@
 // Flow: prompt → clarify (owner↔AI chat on a draft project) → review/create
 //       bot → cloud build. Agent setup remains available from the bot overview
 //       as an advanced path, but the default creator path ships with zero setup.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { tgTheme, Theme } from './theme';
 import {
   telegramColorScheme, onThemeChanged, syncChrome, telegramInitData, telegramUser,
@@ -19,21 +19,27 @@ import {
   setDiscoverable,
 } from './api/client';
 import { useChat } from './chat/Chat';
-import { TGHeader, MainButton, TabBar, Tab } from './ui';
+import { TGHeader, MainButton, TabBar, Tab, Spinner } from './ui';
 import { PromptScreen } from './screens/Prompt';
 import { ClarifyScreen, GenPhase } from './screens/Clarify';
 import { SpecScreen } from './screens/Spec';
 import { AgentScreen } from './screens/Agent';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
 import { DiscoveryPage, DiscoverBot, discoverBotFromProject } from './manage/Discovery';
-import { BotOverview } from './manage/BotOverview';
-import { DagBoard } from './manage/DagBoard';
-import { BoardView } from './manage/TaskManagerBoard';
-import { TaskManagerInbox } from './manage/TaskManagerInbox';
-import { TaskDetail } from './manage/TaskDetail';
-import { ActivityPage } from './manage/Activity';
-import { AgentManager } from './manage/AgentManager';
-import { ConnectAgent } from './manage/ConnectAgent';
+
+// Heavy manage-tab detail screens + overlays are reached only via navigation —
+// load them on demand (code-split) so they stay out of the initial bundle and
+// the mini-app opens faster. The build flow (prompt→clarify→spec→agent) and the
+// My Bots / Discover lists stay eager: they're the first paint and export
+// helpers used in App's data layer.
+const BotOverview = lazy(() => import('./manage/BotOverview').then(m => ({ default: m.BotOverview })));
+const DagBoard = lazy(() => import('./manage/DagBoard').then(m => ({ default: m.DagBoard })));
+const BoardView = lazy(() => import('./manage/TaskManagerBoard').then(m => ({ default: m.BoardView })));
+const TaskManagerInbox = lazy(() => import('./manage/TaskManagerInbox').then(m => ({ default: m.TaskManagerInbox })));
+const TaskDetail = lazy(() => import('./manage/TaskDetail').then(m => ({ default: m.TaskDetail })));
+const ActivityPage = lazy(() => import('./manage/Activity').then(m => ({ default: m.ActivityPage })));
+const AgentManager = lazy(() => import('./manage/AgentManager').then(m => ({ default: m.AgentManager })));
+const ConnectAgent = lazy(() => import('./manage/ConnectAgent').then(m => ({ default: m.ConnectAgent })));
 
 const STEPS = ['prompt', 'clarify', 'spec', 'agent'] as const;
 type StepId = typeof STEPS[number];
@@ -885,7 +891,13 @@ export default function App() {
         flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', position: 'relative',
         ['--scr-dx' as string]: dir > 0 ? '22px' : '-22px', animation: 'scrIn .32s cubic-bezier(.2,.8,.2,1)',
       }}>
-        {body}
+        <Suspense fallback={
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '48px 0' }}>
+            <Spinner color={T.accent} size={22} />
+          </div>
+        }>
+          {body}
+        </Suspense>
       </div>
       {footer}
       <TabBar T={T} tab={tab} onTab={(tb) => {
@@ -898,6 +910,7 @@ export default function App() {
 
       {/* "Add an agent" sheet — overlays everything, closed by scrim/back */}
       {agentSheet && activeBot && (
+        <Suspense fallback={null}>
         <AgentManager T={T} project={{ id: activeBot.id, name: activeBot.name }}
           cloudDeployed={cloudBots.has(activeBot.id)}
           onCloudDeployed={() => {
@@ -918,12 +931,15 @@ export default function App() {
             setManageView('connect');
           }}
           onClose={() => setAgentSheet(false)} />
+        </Suspense>
       )}
 
       {/* task_manager: per-task detail panel — overlay opened from the board/inbox */}
       {detailTask && manageBot && (
-        <TaskDetail T={T} projectId={manageBot} slug={detailTask}
-          onClose={() => setDetailTask(null)} />
+        <Suspense fallback={null}>
+          <TaskDetail T={T} projectId={manageBot} slug={detailTask}
+            onClose={() => setDetailTask(null)} />
+        </Suspense>
       )}
     </div>
   );
