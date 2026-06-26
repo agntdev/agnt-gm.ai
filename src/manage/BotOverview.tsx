@@ -659,9 +659,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       </Card>
       )}
 
-      {/* agent summary → advanced add-an-agent sheet (cloud or local) */}
+      {/* assigned builder agent summary → add-an-agent sheet (cloud or local) */}
       <div>
-        <SectionLabel T={T}>Advanced</SectionLabel>
+        <SectionLabel T={T}>Builder</SectionLabel>
         <button onClick={onManageAgents} style={{ ...btnReset, width: '100%', textAlign: 'left' }}>
           <Card T={T} pad={0}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
@@ -688,9 +688,12 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </button>
       </div>
 
-      {/* task_manager: show the build brief and owner-safe retry deploy control. */}
+      {/* spec — the build brief / decomposed spec, for every bot */}
+      <SpecSection T={T} projectId={bot.id} repoUrl={repoUrl} />
+
+      {/* task_manager: owner-safe retry deploy control. */}
       {isTaskManager && (
-        <TaskManagerControls T={T} projectId={bot.id} repoUrl={repoUrl} live={live}
+        <TaskManagerControls T={T} projectId={bot.id} live={live}
           autoMergeEnabled={detail?.auto_merge_enabled} hasBot={!!botRow} specOnly />
       )}
 
@@ -838,29 +841,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           feedback analyzer and the new tasks come back as tool-call messages
           (agent conversation behavior) — no separate composer here */}
 
-      {/* tests — real when CI results land; honest placeholder until then */}
-      <div>
-        <SectionLabel T={T}>Tests</SectionLabel>
-        {(() => {
-          const tr = latestTests(sys);
-          if (!tr) return (
-            <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-              <TGIcon name="beaker" size={19} color={T.hint} stroke={1.8} />
-              <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.hint, lineHeight: '18px' }}>
-                No test results yet — they appear when CI runs land on the build.
-              </span>
-            </Card>
-          );
-          const allPass = tr.passed >= tr.total;
-          return (
-            <div style={{ display: 'flex', gap: 10 }}>
-              <StatTile T={T} value={`${tr.passed}/${tr.total}`} label="Tests passing" good={allPass} />
-              <StatTile T={T} value={tr.coverage != null ? `${tr.coverage}%` : '—'} label="Coverage" />
-            </div>
-          );
-        })()}
-      </div>
-
       {/* recent activity — moved to the bottom; timeline preview + view all */}
       <div>
         <SectionLabel T={T} right={
@@ -920,15 +900,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   );
 }
 
-// ── task_manager owner controls (spec · auto-merge · retry deploy) ──
-// Only rendered for task_manager bots. Reuses the file's Card/LinkChip/Switch
-// + the client helpers; all owner-only POST/PATCH, optimistic with verbatim
-// error text (409/503 are actionable — surfaced as-is).
-function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, hasBot, specOnly }: {
-  T: Theme; projectId: string; repoUrl?: string; live: boolean;
-  autoMergeEnabled?: boolean; hasBot: boolean; specOnly?: boolean;
-}) {
-  // Spec doc (gap #2): real endpoint if it exists, else link docs/spec.md in the repo.
+// Spec — the build brief / decomposed spec for the bot. Shown for every bot:
+// the real /spec endpoint if it exists, else a link to docs/spec.md in the repo.
+function SpecSection({ T, projectId, repoUrl }: { T: Theme; projectId: string; repoUrl?: string }) {
   const [spec, setSpec] = useState<ProjectSpec | null | 'loading'>('loading');
   const [specOpen, setSpecOpen] = useState(false);
   useEffect(() => {
@@ -942,7 +916,53 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
   const specBody = spec && spec !== 'loading' ? (spec.body_md || spec.content || spec.markdown || '') : '';
   const specLink = (spec && spec !== 'loading' && spec.url)
     || (repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/spec.md` : null);
+  return (
+    <div>
+      <SectionLabel T={T} right={specBody && specLink
+        ? <button onClick={() => openExternal(specLink)} style={{ ...btnReset, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent }}>Open</button>
+        : undefined
+      }>Spec</SectionLabel>
+      <Card T={T} pad={0}>
+        {spec === 'loading' ? (
+          <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 9 }}>
+            <Spinner color={T.hint} size={14} />
+            <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>Loading spec…</span>
+          </div>
+        ) : specBody ? (
+          <div style={{ padding: '12px 14px' }}>
+            <div style={{
+              fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '19px',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              maxHeight: specOpen ? 420 : 96, overflowY: specOpen ? 'auto' : 'hidden',
+            }}>{specBody}</div>
+            {specBody.length > 220 && (
+              <button onClick={() => setSpecOpen(v => !v)} style={{
+                ...btnReset, marginTop: 8, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent,
+              }}>{specOpen ? 'Show less' : 'Read more'}</button>
+            )}
+          </div>
+        ) : specLink ? (
+          <div style={{ padding: '12px 14px' }}>
+            <LinkChip T={T} label="View spec" onClick={() => openExternal(specLink)} />
+          </div>
+        ) : (
+          <div style={{ padding: 14, fontFamily: T.font, fontSize: 13, color: T.hint, lineHeight: '18px' }}>
+            The spec appears here once your idea is decomposed.
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
 
+// ── task_manager owner controls (auto-merge · retry deploy) ──
+// Only rendered for task_manager bots. Reuses the file's Card/Switch
+// + the client helpers; all owner-only POST/PATCH, optimistic with verbatim
+// error text (409/503 are actionable — surfaced as-is).
+function TaskManagerControls({ T, projectId, live, autoMergeEnabled, hasBot, specOnly }: {
+  T: Theme; projectId: string; live: boolean;
+  autoMergeEnabled?: boolean; hasBot: boolean; specOnly?: boolean;
+}) {
   // Auto-merge (§6.6): seed from the project DTO; optimistic flip, revert on error.
   const [amOn, setAmOn] = useState(autoMergeEnabled ?? true);
   const [amBusy, setAmBusy] = useState(false);
@@ -976,43 +996,6 @@ function TaskManagerControls({ T, projectId, repoUrl, live, autoMergeEnabled, ha
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* spec */}
-      <div>
-        <SectionLabel T={T} right={specBody && specLink
-          ? <button onClick={() => openExternal(specLink)} style={{ ...btnReset, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent }}>Open</button>
-          : undefined
-        }>Build brief</SectionLabel>
-        <Card T={T} pad={0}>
-          {spec === 'loading' ? (
-            <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 9 }}>
-              <Spinner color={T.hint} size={14} />
-              <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>Loading spec…</span>
-            </div>
-          ) : specBody ? (
-            <div style={{ padding: '12px 14px' }}>
-              <div style={{
-                fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '19px',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                maxHeight: specOpen ? 420 : 96, overflowY: specOpen ? 'auto' : 'hidden',
-              }}>{specBody}</div>
-              {specBody.length > 220 && (
-                <button onClick={() => setSpecOpen(v => !v)} style={{
-                  ...btnReset, marginTop: 8, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent,
-                }}>{specOpen ? 'Show less' : 'Read more'}</button>
-              )}
-            </div>
-          ) : specLink ? (
-            <div style={{ padding: '12px 14px' }}>
-              <LinkChip T={T} label="View spec" onClick={() => openExternal(specLink)} />
-            </div>
-          ) : (
-            <div style={{ padding: 14, fontFamily: T.font, fontSize: 13, color: T.hint, lineHeight: '18px' }}>
-              The spec appears here once your idea is decomposed.
-            </div>
-          )}
-        </Card>
-      </div>
-
       {/* retry deploy stays owner-facing; auto-merge is reserved for full controls */}
       {specOnly && hasBot && !live && (
         <Card T={T} pad={0}>
@@ -1109,14 +1092,5 @@ function LinkChip({ T, label, onClick }: { T: Theme; label: string; onClick: () 
       <TGIcon name="open" size={13} color={T.accent} stroke={2} />
       {label}
     </button>
-  );
-}
-
-function StatTile({ T, value, label, good }: { T: Theme; value: string; label: string; good?: boolean }) {
-  return (
-    <Card T={T} pad={13} style={{ flex: 1 }}>
-      <div style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: good ? T.green : T.text, letterSpacing: -0.4 }}>{value}</div>
-      <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 2, lineHeight: '15px' }}>{label}</div>
-    </Card>
   );
 }
