@@ -6,9 +6,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Theme, btnReset, hexA } from '../theme';
 import {
-  ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, ProjectSpec, BotInitiate, BuildProgress as BuildProgressDTO,
+  ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, BotInitiate, BuildProgress as BuildProgressDTO,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  botIsLive, retryDeploy, setAutoMerge, getProjectSpec, getCloudAgent, initiateBot, postFeedback,
+  botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
@@ -402,6 +402,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   }, [cloudApi, cloudDeployed]);
 
   const repoUrl = detail?.github_repo_url;
+  // the bot's blueprint (build brief) lives in the repo; the "Spec" action links it
+  const blueprintUrl = repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/blueprint.md` : null;
 
   const sys = messages.filter(m => m.role === 'system');
   const activity = [...sys].reverse().slice(0, 4);
@@ -500,6 +502,28 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             <Dot color={statusState.color} size={6} pulse={statusState.pulse} /> {statusState.label}
           </Pill>
         </div>
+
+        {/* Show on Discovery — owner opt-out of the public Discover feed */}
+        {live && botUsername && (
+          <div style={{
+            marginTop: 5,
+            height: 34,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '0 8px 0 11px',
+            borderRadius: 999,
+            background: T.dark ? 'rgba(255,255,255,0.045)' : 'rgba(15,22,32,0.035)',
+            border: `0.5px solid ${T.sep}`,
+          }}>
+            <TGIcon name="compass" size={14} color={discoverable ? T.accent : T.hint} stroke={2} />
+            <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 650, color: T.sub }}>Discovery</span>
+            <span style={{ fontFamily: T.font, fontSize: 12, fontWeight: 600, color: discoverable ? T.accent : T.hint }}>
+              {discoverable ? 'Visible' : 'Hidden'}
+            </span>
+            <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
+          </div>
+        )}
       </div>
 
       {/* task_manager: create the managed Telegram bot (the step that used to live
@@ -535,7 +559,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 
       {/* primary action — the Lovable-style feedback loop */}
       {(() => {
-        const label = live ? 'Ask for change' : latestDeployFailed || testsFailed ? 'Fix with builder' : 'Message builder';
+        const label = live ? 'Ask for change' : latestDeployFailed || testsFailed ? 'Fix with agent' : 'Message agent';
         return (
         <button onClick={onOpenChat} style={{
           ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
@@ -547,7 +571,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         );
       })()}
 
-      {/* secondary actions */}
+      {/* secondary actions — Test bot · Spec · Code */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px 28px', marginTop: -4 }}>
         {(() => {
           const canTest = !!botUsername && live && !pausedEffective;
@@ -560,12 +584,13 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </button>
           );
         })()}
-        <button disabled={!botUsername} onClick={botUsername ? onTogglePause : undefined} style={{
-          ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text,
-          opacity: botUsername ? 1 : 0.45, cursor: botUsername ? 'pointer' : 'default',
-        }}>
-          <TGIcon name={pausedEffective ? 'play' : 'pause'} size={16} color={T.sub} stroke={2} /> {pausedEffective ? 'Resume' : 'Pause'}
-        </button>
+        {blueprintUrl && (
+          <button onClick={() => openExternal(blueprintUrl)} style={{
+            ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
+          }}>
+            <TGIcon name="link" size={17} color={T.accent} stroke={2} /> Spec
+          </button>
+        )}
         {repoUrl && (
           <button onClick={() => openExternal(repoUrl)} style={{
             ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
@@ -574,29 +599,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           </button>
         )}
       </div>
-
-      {/* Show on Discovery — owner opt-out of the public Discover feed */}
-      {live && botUsername && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: -2 }}>
-          <div style={{
-            height: 34,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '0 8px 0 11px',
-            borderRadius: 999,
-            background: T.dark ? 'rgba(255,255,255,0.045)' : 'rgba(15,22,32,0.035)',
-            border: `0.5px solid ${T.sep}`,
-          }}>
-            <TGIcon name="compass" size={14} color={discoverable ? T.accent : T.hint} stroke={2} />
-            <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 650, color: T.sub }}>Discovery</span>
-            <span style={{ fontFamily: T.font, fontSize: 12, fontWeight: 600, color: discoverable ? T.accent : T.hint }}>
-              {discoverable ? 'Visible' : 'Hidden'}
-            </span>
-            <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
-          </div>
-        </div>
-      )}
 
       {/* task_manager: attention inbox — amber/red badge when something needs the
           owner, else a neutral "all clear" entry point */}
@@ -688,8 +690,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </button>
       </div>
 
-      {/* blueprint — the build brief / decomposed spec, for every bot */}
-      <SpecSection T={T} projectId={bot.id} repoUrl={repoUrl} />
+      {/* blueprint is reachable via the "Spec" action under the message button */}
 
       {/* task_manager: owner-safe retry deploy control. */}
       {isTaskManager && (
@@ -896,61 +897,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           </div>
         </Card>
       )}
-    </div>
-  );
-}
-
-// Blueprint — the build brief / decomposed spec for the bot. Shown for every
-// bot: the real /spec endpoint if it exists, else a link to docs/blueprint.md.
-function SpecSection({ T, projectId, repoUrl }: { T: Theme; projectId: string; repoUrl?: string }) {
-  const [spec, setSpec] = useState<ProjectSpec | null | 'loading'>('loading');
-  const [specOpen, setSpecOpen] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    setSpec('loading');
-    getProjectSpec(projectId)
-      .then(s => { if (!cancelled) setSpec(s); })
-      .catch(() => { if (!cancelled) setSpec(null); });
-    return () => { cancelled = true; };
-  }, [projectId]);
-  const specBody = spec && spec !== 'loading' ? (spec.body_md || spec.content || spec.markdown || '') : '';
-  const specLink = (spec && spec !== 'loading' && spec.url)
-    || (repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/blueprint.md` : null);
-  return (
-    <div>
-      <SectionLabel T={T} right={specBody && specLink
-        ? <button onClick={() => openExternal(specLink)} style={{ ...btnReset, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent }}>Open</button>
-        : undefined
-      }>Blueprint</SectionLabel>
-      <Card T={T} pad={0}>
-        {spec === 'loading' ? (
-          <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 9 }}>
-            <Spinner color={T.hint} size={14} />
-            <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>Loading blueprint…</span>
-          </div>
-        ) : specBody ? (
-          <div style={{ padding: '12px 14px' }}>
-            <div style={{
-              fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '19px',
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              maxHeight: specOpen ? 420 : 96, overflowY: specOpen ? 'auto' : 'hidden',
-            }}>{specBody}</div>
-            {specBody.length > 220 && (
-              <button onClick={() => setSpecOpen(v => !v)} style={{
-                ...btnReset, marginTop: 8, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent,
-              }}>{specOpen ? 'Show less' : 'Read more'}</button>
-            )}
-          </div>
-        ) : specLink ? (
-          <div style={{ padding: '12px 14px' }}>
-            <LinkChip T={T} label="View blueprint" onClick={() => openExternal(specLink)} />
-          </div>
-        ) : (
-          <div style={{ padding: 14, fontFamily: T.font, fontSize: 13, color: T.hint, lineHeight: '18px' }}>
-            The blueprint appears here once your idea is decomposed.
-          </div>
-        )}
-      </Card>
     </div>
   );
 }
