@@ -455,6 +455,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const buildRunning = wholeBot && (wholeBotBuilding || bp?.phase === 'building' || bp?.phase === 'tests');
   const pausedEffective = paused || !!botRow?.paused;
   const needsBot = isTaskManager && !botUsername;          // managed bot not provisioned yet
+  // non-task_manager bot with no Telegram bot connected yet and not live — suggest
+  // wiring it up. `!!detail` gates the flash before the first poll lands; task_manager
+  // bots keep their own (stronger) "Create your bot" card above instead.
+  const suggestConnect = !isTaskManager && !!detail && !live && !botUsername;
   const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
   const testResult = latestTests(sys);
   const testsFailed = !!testResult && testResult.passed < testResult.total;
@@ -563,6 +567,39 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>Create your bot</div>
                 <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>Set up the Telegram bot while your tasks build</div>
+              </div>
+              <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
+            </button>
+          )}
+          {createBotErr && (
+            <div style={{ padding: '0 16px 12px', fontFamily: T.font, fontSize: 12.5, color: T.amber, lineHeight: '17px' }}>{createBotErr}</div>
+          )}
+        </Card>
+      )}
+
+      {/* non-task_manager bot with no Telegram bot connected yet — suggest hooking
+          it up so it can go live. Same managed-bot provisioning flow as the
+          task_manager card above (POST /bot/initiate → manager-bot deep link).
+          Gated on `detail` so it can't flash before we know the live state, and on
+          `!live` so a published/serving bot never sees it. */}
+      {suggestConnect && (
+        <Card T={T} pad={0} style={{ border: `1px solid ${T.accentBorder}` }}>
+          {botInit ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
+              <Spinner color={T.accent} size={18} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Finishing in Telegram…</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>Create the bot in the window that opened — it'll appear here once it's set up.</div>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => void createBot()} style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {creatingBot ? <Spinner color={T.accent} size={18} /> : <TGIcon name="send" size={19} color={T.accent} stroke={1.9} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>Connect your bot</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>Set it up on Telegram so it can go live</div>
               </div>
               <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
             </button>
