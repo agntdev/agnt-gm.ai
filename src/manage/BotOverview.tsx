@@ -155,9 +155,13 @@ const PASS_TONE: Record<string, 'green' | 'accent' | 'hint' | 'red'> = {
 
 // whole_bot build card: stage label + approx ETA + progress bar + per-pass
 // timeline — the build screen's centerpiece while a whole_bot bot builds.
-function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
+function WholeBotBuildCard({ T, bp, onAssignAgent }: { T: Theme; bp: BuildProgressDTO; onAssignAgent?: () => void }) {
   const eta = fmtEta(bp.eta_seconds);
   const pct = Math.max(3, Math.min(100, bp.percent));
+  // awaiting_agent: the build can't start/continue until the owner assigns a
+  // builder agent — make the card actionable so they're one tap from doing it,
+  // instead of staring at a stalled progress bar.
+  const awaitingAgent = bp.stage === 'awaiting_agent';
   return (
     <Card T={T} pad={0}>
       <div style={{ padding: '14px 16px 13px' }}>
@@ -179,6 +183,15 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
           )}
         </div>
       </div>
+      {awaitingAgent && onAssignAgent && (
+        <button onClick={onAssignAgent} style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderTop: `0.5px solid ${T.sep}` }}>
+          <div style={{ width: 30, height: 30, borderRadius: 9, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <TGIcon name="cloud" size={16} color={T.accent} stroke={1.9} />
+          </div>
+          <span style={{ flex: 1, fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.accent }}>Assign a builder agent</span>
+          <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
+        </button>
+      )}
       {(bp.passes?.length ?? 0) > 0 && (
         <div style={{ borderTop: `0.5px solid ${T.sep}` }}>
           {(bp.passes ?? []).map((p, i) => {
@@ -701,7 +714,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         <BuildProgress T={T} steps={progressSteps} />
         {buildRunning && bp && (
           <div style={{ marginTop: 10 }}>
-            <WholeBotBuildCard T={T} bp={bp} />
+            <WholeBotBuildCard T={T} bp={bp} onAssignAgent={onManageAgents} />
           </div>
         )}
       </div>
