@@ -260,10 +260,11 @@ interface OvSnap {
 }
 const OV_CACHE = new Map<string, OvSnap>();
 
-export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause, discoverable, onToggleDiscoverable }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, onViewLogs, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause, discoverable, onToggleDiscoverable }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
   onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
+  onViewLogs: () => void;       // open the runtime-logs sheet (hosted in App)
   onCloudDetected?: () => void; // API revealed a cloud agent this client hadn't recorded
   onCloudGone?: () => void;     // API says no cloud agent — clear a stale local mark
   cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
@@ -715,6 +716,15 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
           }}>
             <TGIcon name="code" size={17} color={T.accent} stroke={2} /> Code
+          </button>
+        )}
+        {/* Runtime logs — meaningful once a bot exists; the sheet's empty state
+            covers the "created but not deployed yet" case. */}
+        {botUsername && (
+          <button onClick={onViewLogs} style={{
+            ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
+          }}>
+            <TGIcon name="server" size={17} color={T.accent} stroke={2} /> Logs
           </button>
         )}
       </div>

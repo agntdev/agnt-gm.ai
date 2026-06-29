@@ -38,6 +38,7 @@ const TaskManagerInbox = lazy(() => import('./manage/TaskManagerInbox').then(m =
 const TaskDetail = lazy(() => import('./manage/TaskDetail').then(m => ({ default: m.TaskDetail })));
 const ActivityPage = lazy(() => import('./manage/Activity').then(m => ({ default: m.ActivityPage })));
 const AgentManager = lazy(() => import('./manage/AgentManager').then(m => ({ default: m.AgentManager })));
+const BotLogs = lazy(() => import('./manage/BotLogs').then(m => ({ default: m.BotLogs })));
 const ConnectAgent = lazy(() => import('./manage/ConnectAgent').then(m => ({ default: m.ConnectAgent })));
 
 const STEPS = ['prompt', 'clarify', 'agent'] as const;
@@ -213,6 +214,7 @@ export default function App() {
   const [discoverOptOut, setDiscoverOptOut] = useState<Set<string>>(loadDiscoverOptOut);
   const [cloudBots, setCloudBots] = useState<Set<string>>(loadCloud);
   const [agentSheet, setAgentSheet] = useState(false); // "Add an agent" bottom sheet
+  const [logsSheet, setLogsSheet] = useState(false);   // bot runtime-logs viewer sheet
   const [draft, setDraft] = useState('');
 
   // Discover tab — server-side feed of live bots (everyone's). Empty until the
@@ -232,7 +234,7 @@ export default function App() {
 
   // close the TaskDetail overlay whenever the open bot or view changes, so a
   // stale slug never bleeds across bots/screens
-  useEffect(() => { setDetailTask(null); }, [manageBot, manageView]);
+  useEffect(() => { setDetailTask(null); setLogsSheet(false); }, [manageBot, manageView]);
 
   // ── the clarify chat (real, on the draft project) ──
   const clarifyChat = useChat(project?.id ?? null, tab === 'build' && id === 'clarify', true);
@@ -695,6 +697,7 @@ export default function App() {
   const closeChat = () => {
     setDir(-1);
     if (detailTask) { setDetailTask(null); return; } // close the TaskDetail overlay first
+    if (logsSheet) { setLogsSheet(false); return; }
     if (agentSheet) { setAgentSheet(false); return; }
     if (manageView !== 'overview') setManageView('overview');
     else setManageBot(null);
@@ -785,6 +788,7 @@ export default function App() {
             onOpenInbox={() => { setDir(1); setManageView('inbox'); }}
             onViewActivity={() => { setDir(1); setManageView('activity'); }}
             onManageAgents={() => setAgentSheet(true)}
+            onViewLogs={() => setLogsSheet(true)}
             onCloudDetected={() => markCloudDeployed(activeBot.id)}
             onCloudGone={() => setCloudBots(prev => {
               if (!prev.has(activeBot.id)) return prev;
@@ -869,6 +873,7 @@ export default function App() {
       <TabBar T={T} tab={tab} onTab={(tb) => {
         setDir(1);
         setAgentSheet(false); // never leave the sheet hanging over another tab
+        setLogsSheet(false);
         // tapping My Bots pops to its root (the list), not the last-open bot
         if (tb === 'manage') { setManageBot(null); setManageView('overview'); }
         setTab(tb);
@@ -897,6 +902,14 @@ export default function App() {
             setManageView('connect');
           }}
           onClose={() => setAgentSheet(false)} />
+        </Suspense>
+      )}
+
+      {/* Bot runtime-logs viewer — overlays everything, closed by scrim/back/Esc */}
+      {logsSheet && activeBot && (
+        <Suspense fallback={null}>
+          <BotLogs T={T} projectId={activeBot.id} app={activeBot.handle}
+            onClose={() => setLogsSheet(false)} />
         </Suspense>
       )}
 

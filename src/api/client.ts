@@ -486,6 +486,22 @@ export function listDeployments(idOrSlug: string): Promise<{ deployments: Deploy
   return request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/deployments`);
 }
 
+// ── Bot runtime logs (owner-only; live bot's recent stderr/stdout) ──
+// The deployed Fly app's recent runtime output (crash traces, grammY errors).
+// available:false + logs:'' means no Fly app is deployed yet → the UI shows an
+// empty state rather than an error. 404 = not found / not owner; 500 = fetch
+// failed (surface the message). Owner-authed like every other builder endpoint.
+export interface BotLogs {
+  logs: string;
+  app: string;
+  fetched_at: string; // RFC3339
+  available: boolean;
+}
+
+export function getBotLogs(idOrSlug: string): Promise<BotLogs> {
+  return request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/bot-logs`);
+}
+
 // ── Agent link: one-time connect code → delegate key (CLI side) ──
 // Mint is owner-scoped; the CLI exchanges the code via /auth/agent-link/claim.
 // The mini-app only mints and polls — the code IS the credential.
