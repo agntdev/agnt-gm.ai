@@ -59,7 +59,7 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
         <Bubble T={T} from="bot" animateIn>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <TGIcon name="spark" size={17} color={T.accent} />
-            Spec is ready — review it below.
+            Your bot’s ready — opening it now…
           </div>
         </Bubble>
       )}

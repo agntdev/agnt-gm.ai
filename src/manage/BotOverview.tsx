@@ -8,7 +8,7 @@ import { Theme, btnReset, hexA } from '../theme';
 import {
   ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, BotInitiate, BuildProgress as BuildProgressDTO,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback,
+  botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
@@ -132,9 +132,13 @@ function wholeBotSteps(bp: BuildProgressDTO | null, live: boolean): ProgressStep
   const ph = bp?.phase || (live ? 'published' : 'building');
   const failed = ph === 'failed';
   const done = live || ph === 'published';
+  // awaiting_agent: the build hasn't actually started — no builder agent is
+  // assigned yet. Don't pulse Build as "in progress"; it's still queued behind
+  // the assign step, so leave it as a not-started 'todo'.
+  const awaitingAgent = bp?.stage === 'awaiting_agent' && !done;
   return [
     { label: 'Plan', state: 'done' },
-    { label: 'Build', state: failed ? 'failed' : done || ph === 'tests' ? 'done' : 'active' },
+    { label: 'Build', state: failed ? 'failed' : done || ph === 'tests' ? 'done' : awaitingAgent ? 'todo' : 'active' },
     { label: 'Test', state: ph === 'tests' ? 'active' : done ? 'done' : 'todo' },
     { label: 'Live', state: done ? 'done' : failed ? 'failed' : 'todo' },
   ];
@@ -153,20 +157,39 @@ const PASS_TONE: Record<string, 'green' | 'accent' | 'hint' | 'red'> = {
   building: 'accent', merged: 'accent', reviewed: 'green', failed: 'red',
 };
 
-// whole_bot build card: stage label + approx ETA + progress bar + per-pass
-// timeline — the build screen's centerpiece while a whole_bot bot builds.
-function WholeBotBuildCard({ T, bp, onAssignAgent }: { T: Theme; bp: BuildProgressDTO; onAssignAgent?: () => void }) {
+// one clean status word from the build stage (preferred) or phase — the card
+// headline. We deliberately drop the "N of M passes" floor counter (it reads as
+// a regression on a change/rebuild, where the count resets); the iteration
+// number rides alongside, small + gray, as a secondary detail.
+function buildStatusLabel(bp: BuildProgressDTO): string {
+  switch (bp.stage) {
+    case 'blueprint': return 'Planning';
+    case 'building': return 'Building';
+    case 'reviewing': return 'Reviewing';
+    case 'testing': return 'Testing';
+    case 'deploying': return 'Deploying';
+    case 'live': return 'Live';
+    case 'failed': return 'Failed';
+    case 'awaiting_agent': return 'Waiting for agent';
+  }
+  switch (bp.phase) {
+    case 'tests': return 'Testing';
+    case 'published': return 'Live';
+    case 'failed': return 'Failed';
+    default: return 'Building';
+  }
+}
+
+// whole_bot build card: status headline + approx ETA + progress bar + per-
+// iteration timeline — the build screen's centerpiece while a whole_bot builds.
+function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
   const eta = fmtEta(bp.eta_seconds);
   const pct = Math.max(3, Math.min(100, bp.percent));
-  // awaiting_agent: the build can't start/continue until the owner assigns a
-  // builder agent — make the card actionable so they're one tap from doing it,
-  // instead of staring at a stalled progress bar.
-  const awaitingAgent = bp.stage === 'awaiting_agent';
   return (
     <Card T={T} pad={0}>
       <div style={{ padding: '14px 16px 13px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
-          <span style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 650, color: T.text, lineHeight: '19px' }}>{bp.stage_label}</span>
+          <span style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 650, color: T.text, lineHeight: '19px' }}>{buildStatusLabel(bp)}</span>
           {eta && <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, whiteSpace: 'nowrap' }}>{eta} left</span>}
         </div>
         <div style={{ marginTop: 11, height: 7, borderRadius: 999, background: T.dark ? 'rgba(255,255,255,0.1)' : 'rgba(15,22,32,0.08)', overflow: 'hidden' }}>
@@ -175,23 +198,10 @@ function WholeBotBuildCard({ T, bp, onAssignAgent }: { T: Theme; bp: BuildProgre
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
           <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>≈ {bp.percent}%</span>
           {bp.pass_current > 0 && (
-            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>
-              {bp.merged_passes >= bp.pass_floor
-                ? `${bp.merged_passes} pass${bp.merged_passes === 1 ? '' : 'es'} accepted`
-                : `${bp.merged_passes} of ${bp.pass_floor} passes`}
-            </span>
+            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>iteration {bp.pass_current}</span>
           )}
         </div>
       </div>
-      {awaitingAgent && onAssignAgent && (
-        <button onClick={onAssignAgent} style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderTop: `0.5px solid ${T.sep}` }}>
-          <div style={{ width: 30, height: 30, borderRadius: 9, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <TGIcon name="cloud" size={16} color={T.accent} stroke={1.9} />
-          </div>
-          <span style={{ flex: 1, fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.accent }}>Assign a builder agent</span>
-          <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
-        </button>
-      )}
       {(bp.passes?.length ?? 0) > 0 && (
         <div style={{ borderTop: `0.5px solid ${T.sep}` }}>
           {(bp.passes ?? []).map((p, i) => {
@@ -202,7 +212,7 @@ function WholeBotBuildCard({ T, bp, onAssignAgent }: { T: Theme; bp: BuildProgre
                 {p.status === 'reviewed' && p.complete
                   ? <TGIcon name="check" size={14} color={T.green} stroke={2.6} />
                   : <Dot color={color} size={7} pulse={p.status === 'building'} />}
-                <span style={{ flex: 1, fontFamily: T.font, fontSize: 13, color: T.text }}>Pass {p.pass_no}</span>
+                <span style={{ flex: 1, fontFamily: T.font, fontSize: 13, color: T.text }}>Iteration {p.pass_no}</span>
                 <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{p.label}</span>
                 {p.pr_number != null && <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.accent }}>#{p.pr_number}</span>}
               </div>
@@ -339,12 +349,20 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     const tick = async () => {
       const b = await getProjectBot(bot.id).catch(() => null);
       if (cancelled) return;
-      if (b?.bot_username) { setBotRow(b); setBotUsername(b.bot_username); return; }
+      if (b?.bot_username) {
+        setBotRow(b); setBotUsername(b.bot_username);
+        // build trigger: creating the bot is the last onboarding step (the agent
+        // was assigned first), so publish now to kick off the build. task_manager
+        // projects auto-build, so a publish there 409s — skip it. Errors mean it's
+        // already building/published; the status poll reconciles either way.
+        if (!isTaskManager) void publishProject(bot.id).catch(() => { /* already building */ });
+        return;
+      }
       timer = setTimeout(tick, 5000);
     };
     void tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [botInit, botUsername, bot.id]);
+  }, [botInit, botUsername, bot.id, isTaskManager]);
 
   useEffect(() => {
     let cancelled = false;
@@ -472,6 +490,14 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // wiring it up. `!!detail` gates the flash before the first poll lands; task_manager
   // bots keep their own (stronger) "Create your bot" card above instead.
   const suggestConnect = !isTaskManager && !!detail && !live && !botUsername;
+  // onboarding sequence on the overview: assign a builder agent FIRST, then
+  // create the bot. `agentAssigned` gates the create step; `needsCreate` is the
+  // pre-bot state (either pipeline) that shows the two-step onboarding card.
+  const agentAssigned = cloudActive || connected;
+  const needsCreate = needsBot || suggestConnect;
+  // awaiting_agent: a build is queued but can't start until a builder agent is
+  // assigned — it is NOT "building", so it must not read as a running build.
+  const awaitingAgent = wholeBot && bp?.stage === 'awaiting_agent';
   const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
   const testResult = latestTests(sys);
   const testsFailed = !!testResult && testResult.passed < testResult.total;
@@ -505,7 +531,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   type Stat = { value: string; label: string; tone?: 'green' };
   const buildStats: Stat[] = [
     wholeBot
-      ? { value: bp ? (bp.merged_passes >= bp.pass_floor ? String(bp.merged_passes) : `${bp.merged_passes}/${bp.pass_floor}`) : '—', label: 'Passes', tone: bp && bp.merged_passes >= bp.pass_floor ? 'green' : undefined }
+      ? { value: bp && bp.pass_current > 0 ? String(bp.pass_current) : '—', label: bp && bp.pass_current === 1 ? 'Iteration' : 'Iterations', tone: bp && (live || bp.phase === 'published') ? 'green' : undefined }
       : { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
     { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
     {
@@ -559,63 +585,56 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         )}
       </div>
 
-      {/* task_manager: create the managed Telegram bot (the step that used to live
-          in the spec wizard) — shown until the bot is provisioned, so the owner
-          can set it up while the DAG decomposes in the background */}
-      {needsBot && (
+      {/* Onboarding (either pipeline) before the bot exists: a two-step sequence —
+          (1) assign a builder agent, then (2) create the bot, which is locked
+          until an agent is assigned. Creating the bot publishes the project and
+          kicks off the build (see the create poll above). Replaces the old
+          spec-wizard "create bot" step now that there's no review screen. */}
+      {needsCreate && (
         <Card T={T} pad={0} style={{ border: `1px solid ${T.accentBorder}` }}>
           {botInit ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
               <Spinner color={T.accent} size={18} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Finishing in Telegram…</div>
-                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>Create the bot in the window that opened — it'll appear here once it's set up.</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>Create the bot in the window that opened — your bot starts building once it’s set up.</div>
               </div>
             </div>
           ) : (
-            <button onClick={() => void createBot()} style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {creatingBot ? <Spinner color={T.accent} size={18} /> : <TGIcon name="send" size={19} color={T.accent} stroke={1.9} />}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>Create your bot</div>
-                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>Set up the Telegram bot while your tasks build</div>
-              </div>
-              <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
-            </button>
-          )}
-          {createBotErr && (
-            <div style={{ padding: '0 16px 12px', fontFamily: T.font, fontSize: 12.5, color: T.amber, lineHeight: '17px' }}>{createBotErr}</div>
-          )}
-        </Card>
-      )}
-
-      {/* non-task_manager bot with no Telegram bot connected yet — suggest hooking
-          it up so it can go live. Same managed-bot provisioning flow as the
-          task_manager card above (POST /bot/initiate → manager-bot deep link).
-          Gated on `detail` so it can't flash before we know the live state, and on
-          `!live` so a published/serving bot never sees it. */}
-      {suggestConnect && (
-        <Card T={T} pad={0} style={{ border: `1px solid ${T.accentBorder}` }}>
-          {botInit ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
-              <Spinner color={T.accent} size={18} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Finishing in Telegram…</div>
-                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>Create the bot in the window that opened — it'll appear here once it's set up.</div>
-              </div>
-            </div>
-          ) : (
-            <button onClick={() => void createBot()} style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {creatingBot ? <Spinner color={T.accent} size={18} /> : <TGIcon name="send" size={19} color={T.accent} stroke={1.9} />}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>Connect your bot</div>
-                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>Set it up on Telegram so it can go live</div>
-              </div>
-              <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
-            </button>
+            <>
+              {/* Step 1 — assign a builder agent (cloud or local) */}
+              <button onClick={onManageAgents} style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
+                <div style={{ width: 38, height: 38, borderRadius: 11, background: agentAssigned ? hexA(T.green, 0.14) : T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {agentAssigned ? <TGIcon name="check" size={19} color={T.green} stroke={2.6} /> : <TGIcon name="cloud" size={19} color={T.accent} stroke={1.9} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 700, color: T.hint, letterSpacing: 0.4, textTransform: 'uppercase' }}>Step 1</div>
+                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text, marginTop: 1 }}>Assign a builder agent</div>
+                  <div style={{ fontFamily: T.font, fontSize: 12.5, color: agentAssigned ? T.green : T.hint, marginTop: 1 }}>
+                    {agentAssigned ? (cloudActive ? 'Cloud agent ready' : `${agentClient || 'Local agent'} connected`) : 'Cloud, or connect your own local agent'}
+                  </div>
+                </div>
+                {!agentAssigned && <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />}
+              </button>
+              {/* Step 2 — create the bot, locked until an agent is assigned */}
+              <button
+                onClick={() => { if (agentAssigned) void createBot(); }}
+                disabled={!agentAssigned || creatingBot}
+                style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px', borderTop: `0.5px solid ${T.sep}`, cursor: agentAssigned ? 'pointer' : 'default', opacity: agentAssigned ? 1 : 0.55 }}
+              >
+                <div style={{ width: 38, height: 38, borderRadius: 11, background: agentAssigned ? T.accentSoft : (T.dark ? 'rgba(255,255,255,0.055)' : 'rgba(15,22,32,0.045)'), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {creatingBot ? <Spinner color={T.accent} size={18} /> : <TGIcon name="send" size={19} color={agentAssigned ? T.accent : T.hint} stroke={1.9} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 700, color: T.hint, letterSpacing: 0.4, textTransform: 'uppercase' }}>Step 2</div>
+                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: agentAssigned ? T.text : T.hint, marginTop: 1 }}>Create the bot</div>
+                  <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>
+                    {agentAssigned ? 'Set it up on Telegram — no BotFather or tokens' : 'Assign a builder agent first'}
+                  </div>
+                </div>
+                {agentAssigned && <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />}
+              </button>
+            </>
           )}
           {createBotErr && (
             <div style={{ padding: '0 16px 12px', fontFamily: T.font, fontSize: 12.5, color: T.amber, lineHeight: '17px' }}>{createBotErr}</div>
@@ -625,8 +644,19 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 
       {/* primary action — the Lovable-style feedback loop. While a build is in
           flight the change CTA is paused (the backend rejects changes mid-build);
-          it returns the moment the bot is live again. */}
-      {buildRunning ? (
+          it returns the moment the bot is live again. awaiting_agent is NOT a
+          running build — the build can't start until a builder agent is assigned,
+          so make it the action (one tap to the agents sheet) instead of a stalled
+          "Building" spinner. */}
+      {awaitingAgent ? (
+        <button onClick={onManageAgents} style={{
+          ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          fontFamily: T.font, fontSize: 17, fontWeight: 600, boxShadow: `0 6px 18px ${hexA(T.accent, 0.32)}`,
+        }}>
+          <TGIcon name="cloud" size={20} color="#fff" stroke={2} /> Assign a builder agent
+        </button>
+      ) : buildRunning ? (
         <div style={{
           width: '100%', minHeight: 54, borderRadius: 15, padding: '0 16px',
           background: T.dark ? 'rgba(255,255,255,0.05)' : 'rgba(15,22,32,0.04)',
@@ -714,7 +744,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         <BuildProgress T={T} steps={progressSteps} />
         {buildRunning && bp && (
           <div style={{ marginTop: 10 }}>
-            <WholeBotBuildCard T={T} bp={bp} onAssignAgent={onManageAgents} />
+            <WholeBotBuildCard T={T} bp={bp} />
           </div>
         )}
       </div>

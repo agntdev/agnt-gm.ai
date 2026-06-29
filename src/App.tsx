@@ -6,14 +6,14 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { tgTheme, Theme } from './theme';
 import {
   telegramColorScheme, onThemeChanged, syncChrome, telegramInitData, telegramUser,
-  insideTelegram, backButtonOnClick, backButtonVisible, openTgLink,
+  insideTelegram, backButtonOnClick, backButtonVisible,
 } from './telegram';
 import {
   ApiError, Project,
   startChat, getProject, getProjectPipeline, publishProject, deleteProject,
   BuildMode, setBuildModeApi,
   listProjectsByAgent, authTelegram, setAuthToken,
-  initiateBot, getProjectBot, BotInitiate,
+  getProjectBot, BotInitiate,
   setBotPaused,
   listDiscoverBots,
   setDiscoverable,
@@ -22,7 +22,6 @@ import { useChat } from './chat/Chat';
 import { TGHeader, MainButton, TabBar, Tab, Spinner } from './ui';
 import { PromptScreen } from './screens/Prompt';
 import { ClarifyScreen, GenPhase } from './screens/Clarify';
-import { SpecScreen } from './screens/Spec';
 import { AgentScreen } from './screens/Agent';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
 import { DiscoveryPage, DiscoverBot, discoverBotFromProject } from './manage/Discovery';
@@ -41,12 +40,12 @@ const ActivityPage = lazy(() => import('./manage/Activity').then(m => ({ default
 const AgentManager = lazy(() => import('./manage/AgentManager').then(m => ({ default: m.AgentManager })));
 const ConnectAgent = lazy(() => import('./manage/ConnectAgent').then(m => ({ default: m.ConnectAgent })));
 
-const STEPS = ['prompt', 'clarify', 'spec', 'agent'] as const;
+const STEPS = ['prompt', 'clarify', 'agent'] as const;
 type StepId = typeof STEPS[number];
 
 const STAGE_SUB: Record<StepId, string> = {
   prompt: 'New bot', clarify: 'Tell me more',
-  spec: 'Review bot', agent: 'Advanced builder',
+  agent: 'Advanced builder',
 };
 
 const THEME_KEY = 'agentbot-theme';
@@ -192,12 +191,9 @@ export default function App() {
 
   // real platform state
   const [project, setProject] = useState<Project | null>(null);
-  const [taskCount, setTaskCount] = useState<number | null>(null);
   const [gen, setGen] = useState<GenPhase>('idle');
   const [genError, setGenError] = useState<string | null>(null);
   const [botCreated, setBotCreated] = useState(false);
-  const [creatingBot, setCreatingBot] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [botInit, setBotInit] = useState<BotInitiate | null>(null); // deep link issued, waiting for Telegram
   const [botUsername, setBotUsername] = useState<string | null>(null); // the real managed bot
   const [connected, setConnected] = useState(false);
@@ -270,9 +266,14 @@ export default function App() {
   // a task_manager project auto-decomposes — so drop the owner onto the bot's
   // OVERVIEW, which shows the create-your-bot step and a "building" loader while
   // the DAG decomposes in the background (the board is one tap away).
-  const handoffTaskManager = (p: Project) => {
+  // drop the owner onto the bot's OVERVIEW page. The overview drives the rest of
+  // onboarding (assign a builder agent → create the bot → build) — there is no
+  // separate spec/review screen anymore. Used both for the task_manager handoff
+  // and the whole_bot/phase path once the idea (plan) is ready.
+  const handoffToOverview = (p: Project, isTaskManager = false) => {
     cancelPoll.current();
-    const bot = { ...botFromProject(p), isTaskManager: true }; // verdict known — overview renders the tm surface immediately
+    const base = botFromProject(p);
+    const bot = isTaskManager ? { ...base, isTaskManager: true } : base; // verdict known — overview renders the tm surface immediately
     setMyBots(prev => prev.some(b => b.id === p.id) ? prev : [bot, ...prev]);
     resetPipeline();
     localStorage.removeItem(PIPELINE_KEY);
@@ -280,6 +281,7 @@ export default function App() {
     setManageBot(p.id); setManageView('overview'); setDir(1); setTab('manage');
     void refreshMyBots(p.id);
   };
+  const handoffTaskManager = (p: Project) => handoffToOverview(p, true);
 
   // status poll: draft (chatting) → validating (plan-gen) → ready_to_publish.
   // No timeout while drafting — the owner chats at their own pace.
@@ -333,30 +335,9 @@ export default function App() {
     }
   };
 
-  // ── Stage 1: "Create the bot" = managed-bot creation, nothing else ──
-  // POST /bot/initiate reserves the username, then we immediately open the
-  // manager-bot deep link — Telegram's own pre-filled bot-creation window.
-  // The platform's poller captures the created bot; we poll /bot until it
-  // lands. The default flow starts the cloud build directly from the review step.
-  const createBot = async () => {
-    if (!project || creatingBot || botCreated || botInit) return;
-    setCreatingBot(true); setCreateError(null);
-    try {
-      const init = await initiateBot(project.id);
-      setBotInit(init);
-      if (init.deep_link) openTgLink(init.deep_link); // system Telegram window
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        setBotInit({}); // bot already exists — just poll for the row
-      } else {
-        setCreateError(e instanceof ApiError
-          ? `Couldn't create the bot — ${e.message}${e.details ? ` (${e.details})` : ''}`
-          : "Couldn't create the bot — network error. Tap to retry.");
-      }
-    } finally {
-      setCreatingBot(false);
-    }
-  };
+  // Managed-bot creation now lives on the bot overview page (BotOverview owns the
+  // initiate + deep-link + poll flow). App only tracks botInit/botCreated for the
+  // build-pipeline snapshot + the resume path below.
 
   // poll until the managed-bot poller captures the bot created in Telegram
   useEffect(() => {
@@ -477,21 +458,20 @@ export default function App() {
       setIdea(snap.idea);
       setBotUsername(snap.botUsername); setBotCreated(snap.botCreated || !!snap.botUsername);
       setConnected(snap.connected); setAgentName(snap.agentName);
-      const savedStep = snap.step === 'agent' ? 'spec' : snap.step;
-      const idx = STEPS.indexOf(savedStep);
-      goTo(idx >= 0 ? idx : STEPS.indexOf('spec'), 1);
+      // only the early build-pipeline steps live on the build tab now; anything
+      // past clarify (the old spec/agent steps) is driven from the bot overview.
+      if (snap.step === 'prompt' || snap.step === 'clarify') goTo(STEPS.indexOf(snap.step), 1);
+      else handoffToOverview(p);
+    } else if (p.status === 'validating') {
+      // still decomposing/plan-gen — stay in the chat
+      setIdea(p.name);
+      goTo(STEPS.indexOf('clarify'), 1);
     } else {
-      // no local snapshot — derive the furthest known step from the server
+      // plan ready (or a bot already exists) → straight to the overview
       setIdea(p.name);
       const bot = await getProjectBot(p.id).catch(() => null);
-      if (bot?.bot_username) {
-        setBotUsername(bot.bot_username); setBotCreated(true); setBotInit({});
-        goTo(STEPS.indexOf('spec'), 1);
-      } else if (p.status === 'validating') {
-        goTo(STEPS.indexOf('clarify'), 1);
-      } else {
-        goTo(STEPS.indexOf('spec'), 1);
-      }
+      if (bot?.bot_username) { setBotUsername(bot.bot_username); setBotCreated(true); setBotInit({}); }
+      handoffToOverview(p);
     }
   };
 
@@ -662,24 +642,23 @@ export default function App() {
   // ── restart / edit loops ──
   const resetPipeline = () => {
     cancelPoll.current();
-    setProject(null); setTaskCount(null); setGen('idle'); setGenError(null); setChatDraft('');
-    setBotCreated(false); setCreatingBot(false); setCreateError(null);
+    setProject(null); setGen('idle'); setGenError(null); setChatDraft('');
+    setBotCreated(false);
     setBotInit(null); setBotUsername(null);
     setBuilding(false); setBuildError(null);
     setConnected(false); setAgentName(null);
   };
-  const editIdea = () => { resetPipeline(); localStorage.removeItem(PIPELINE_KEY); setChanged(true); goTo(0, -1); };
 
-  // Spec ready → slide to the spec screen automatically. The chat already shows
-  // the inline "generating your spec…" loader, so there's no footer button to
-  // tap; a short beat lets the "Spec is ready" bubble land before the forward
-  // slide (dir=1).
+  // Plan ready → hand straight off to the bot's OVERVIEW page (no review screen).
+  // The chat already shows the inline "generating…" loader, so there's no footer
+  // button to tap; a short beat lets the "ready" bubble land before the forward
+  // slide (dir=1). The overview then drives assign-agent → create-bot → build.
   useEffect(() => {
-    if (tab !== 'build' || id !== 'clarify' || gen !== 'ready') return;
-    const t = setTimeout(() => goTo(STEPS.indexOf('spec'), 1), 850);
+    if (tab !== 'build' || id !== 'clarify' || gen !== 'ready' || !project) return;
+    const t = setTimeout(() => handoffToOverview(project), 850);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, id, gen]);
+  }, [tab, id, gen, project?.id]);
 
   // ── MainButton config per step ──
   const mainBtn = ((): { label: string; disabled?: boolean; busy?: boolean; icon?: string; onClick?: () => void } | null => {
@@ -693,20 +672,9 @@ export default function App() {
       };
       // while drafting the footer is the chat composer (see below). Once the
       // brief is accepted there's no footer button: the chat already shows the
-      // inline "generating your spec…" loader, and we auto-advance to the spec
-      // screen when it's ready (see the effect above).
+      // inline "generating…" loader, and we auto-advance to the bot overview
+      // when the plan is ready (see the effect above).
       case 'clarify': return null;
-      case 'spec':
-        // while the bot is being created in Telegram, the waiting state lives in
-        // the spec card (with its own spinner) — don't duplicate it in the footer
-        if (botInit && !botCreated) return null;
-        return {
-          label: building ? 'Starting build…' : botCreated ? 'Start cloud build' : 'Create the bot to continue',
-          disabled: !botCreated || building,
-          busy: building,
-          icon: botCreated ? 'bolt' : undefined,
-          onClick: () => void startBuild(),
-        };
       case 'agent': {
         const ready = buildMode === 'platform' || connected;
         return {
@@ -755,12 +723,6 @@ export default function App() {
           onOption={(label) => clarifyChat.send(label)}
           onRetry={() => { if (project) { setGen('generating'); setGenError(null); pollPlan(project.id); } }} />
       );
-      case 'spec': return project ? (
-        <SpecScreen T={T} project={project} taskCount={taskCount}
-          created={botCreated} creating={creatingBot} createError={createError}
-          botInit={botInit} botUsername={botUsername}
-          onCreate={createBot} onEdit={editIdea} />
-      ) : null;
       case 'agent': return (
         <AgentScreen T={T} connected={connected} agentName={agentName} project={project}
           mode={buildMode} onMode={chooseBuildMode} error={buildError}
