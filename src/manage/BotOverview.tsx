@@ -144,15 +144,6 @@ function wholeBotSteps(bp: BuildProgressDTO | null, live: boolean): ProgressStep
   ];
 }
 
-// approximate "~N min" from seconds (≈ — the pass count is variable).
-function fmtEta(sec: number): string {
-  if (!sec || sec <= 0) return '';
-  const m = Math.round(sec / 60);
-  if (m < 1) return '<1 min';
-  if (m < 60) return `~${m} min`;
-  return `~${Math.floor(m / 60)}h ${m % 60}m`;
-}
-
 const PASS_TONE: Record<string, 'green' | 'accent' | 'hint' | 'red'> = {
   building: 'accent', merged: 'accent', reviewed: 'green', failed: 'red',
 };
@@ -183,14 +174,20 @@ function buildStatusLabel(bp: BuildProgressDTO): string {
 // whole_bot build card: status headline + approx ETA + progress bar + per-
 // iteration timeline — the build screen's centerpiece while a whole_bot builds.
 function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
-  const eta = fmtEta(bp.eta_seconds);
   const pct = Math.max(3, Math.min(100, bp.percent));
+  // the iteration timeline can grow long (10+ rows) — keep it tidy by showing
+  // only the most recent few, with a tap to expand the rest.
+  const [showAllIters, setShowAllIters] = useState(false);
+  const ITER_VISIBLE = 3;
+  const allIters = bp.passes ?? [];
+  const hiddenIters = allIters.length - ITER_VISIBLE;
+  const visibleIters = showAllIters || hiddenIters <= 0 ? allIters : allIters.slice(-ITER_VISIBLE);
+  const showIterToggle = hiddenIters > 0;
   return (
     <Card T={T} pad={0}>
       <div style={{ padding: '14px 16px 13px' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
           <span style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 650, color: T.text, lineHeight: '19px' }}>{buildStatusLabel(bp)}</span>
-          {eta && <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, whiteSpace: 'nowrap' }}>{eta} left</span>}
         </div>
         <div style={{ marginTop: 11, height: 7, borderRadius: 999, background: T.dark ? 'rgba(255,255,255,0.1)' : 'rgba(15,22,32,0.08)', overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: bp.stage === 'failed' ? T.red : T.accent, transition: 'width .5s ease' }} />
@@ -202,13 +199,23 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
           )}
         </div>
       </div>
-      {(bp.passes?.length ?? 0) > 0 && (
+      {allIters.length > 0 && (
         <div style={{ borderTop: `0.5px solid ${T.sep}` }}>
-          {(bp.passes ?? []).map((p, i) => {
+          {showIterToggle && (
+            <button onClick={() => setShowAllIters(v => !v)} style={{ ...btnReset, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px' }}>
+              <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.accent }}>
+                {showAllIters ? 'Show fewer' : `Show all ${allIters.length} iterations`}
+              </span>
+              <span style={{ display: 'inline-flex', transform: showAllIters ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}>
+                <TGIcon name="chevDown" size={14} color={T.accent} stroke={2.2} />
+              </span>
+            </button>
+          )}
+          {visibleIters.map((p, i) => {
             const tone = PASS_TONE[p.status] || 'hint';
             const color = tone === 'green' ? T.green : tone === 'red' ? T.red : tone === 'accent' ? T.accent : T.hint;
             return (
-              <div key={p.pass_no} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: i ? `0.5px solid ${T.sep}` : 'none' }}>
+              <div key={p.pass_no} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: (i > 0 || showIterToggle) ? `0.5px solid ${T.sep}` : 'none' }}>
                 {p.status === 'reviewed' && p.complete
                   ? <TGIcon name="check" size={14} color={T.green} stroke={2.6} />
                   : <Dot color={color} size={7} pulse={p.status === 'building'} />}
@@ -464,7 +471,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // (build_mode is still NOT a trigger — that produced a fake "running" agent.)
   const cloudActive = cloudApi === true || cloudDeployed;
   const agentClient = (link?.connected_client || '').split('/')[0];
-  const handle = botUsername || bot.handle;
   const since = detail?.published_at || detail?.created_at;
   const uptime = since ? relTime(since) : null;
   // the real go-live signal (NOT project.status): current_phase==='published'
@@ -555,7 +561,12 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '6px 0 0' }}>
         <BotTile T={T} name={bot.name} tone={bot.tone} size={72} radius={22} fontSize={30} />
         <div style={{ fontFamily: T.font, fontSize: 25, fontWeight: 700, color: T.text, letterSpacing: -0.4, marginTop: 4 }}>{bot.name}</div>
-        <div style={{ fontFamily: T.mono, fontSize: 14, color: T.accent }}>@{handle}</div>
+        {/* only show a @username once the real Telegram bot exists — the project's
+            suggested handle isn't a live bot yet, so showing it reads as a created
+            bot that doesn't exist. */}
+        {botUsername
+          ? <div style={{ fontFamily: T.mono, fontSize: 14, color: T.accent }}>@{botUsername}</div>
+          : <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>Bot not created yet</div>}
         <div style={{ marginTop: 3 }}>
           <Pill T={T} tone={statusState.tone}>
             <Dot color={statusState.color} size={6} pulse={statusState.pulse} /> {statusState.label}
@@ -981,17 +992,19 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '18px', marginTop: 5 }}>
             Removes this project from your AgentBot list.
           </div>
+          {botUsername && (
           <div style={{
             display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 10, padding: '9px 11px',
             borderRadius: 10, background: T.dark ? 'rgba(255,255,255,0.04)' : 'rgba(15,22,32,0.04)',
           }}>
             <TGIcon name="shield" size={15} color={T.amber} stroke={1.9} />
             <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.sub, lineHeight: '17px' }}>
-              The Telegram bot @{handle} keeps running — to delete it completely, open{' '}
+              The Telegram bot @{botUsername} keeps running — to delete it completely, open{' '}
               <span onClick={() => openTgLink('https://t.me/BotFather')} style={{ color: T.accent, fontWeight: 600, cursor: 'pointer' }}>@BotFather</span>
               {' '}and send <span style={{ fontFamily: T.mono }}>/deletebot</span>.
             </span>
           </div>
+          )}
           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
             <button onClick={() => setConfirmDelete(false)} style={{
               ...btnReset, flex: 1, height: 42, borderRadius: 11,
