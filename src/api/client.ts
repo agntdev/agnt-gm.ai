@@ -111,10 +111,16 @@ export interface BuildProgress {
   stage_label: string;    // human one-liner, e.g. "🔨 Building your bot — pass 2"
   percent: number;        // 0..100, APPROXIMATE
   eta_seconds: number;    // APPROXIMATE remaining; 0 when live/failed
-  pass_current: number;   // highest pass number reached
+  pass_current: number;   // highest pass number reached (THIS build; resets to 1 each change)
   merged_passes: number;  // accepted passes
   pass_floor: number;     // min passes before publish
   passes?: BuildProgressPass[] | null; // null/absent before the first pass — always guard
+  // BACKEND TODO: iterations restart at 1 on every "Ask for change" build, so the
+  // UI can't show a lifetime number (a change reads as "Iteration 1" when the bot
+  // already ran 8+). When the backend can supply how many iterations ran in PRIOR
+  // builds, send it here; the UI adds it to pass_no/pass_current for a cumulative
+  // number. Absent/0 = initial build (today's behavior). See iterOffset() usage.
+  iteration_offset?: number;
 }
 
 export interface BuildProgressPass {

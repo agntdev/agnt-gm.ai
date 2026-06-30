@@ -173,8 +173,17 @@ function buildStatusLabel(bp: BuildProgressDTO): string {
 
 // whole_bot build card: status headline + approx ETA + progress bar + per-
 // iteration timeline — the build screen's centerpiece while a whole_bot builds.
+// lifetime iteration number = iterations from prior builds (backend offset) +
+// this build's pass number. The offset is absent today, so this is a no-op (0)
+// until the backend ships it — at which point a change reads "Iteration 9"
+// instead of restarting at "Iteration 1". See BuildProgress.iteration_offset.
+function iterOffset(bp: BuildProgressDTO): number {
+  return bp.iteration_offset ?? 0;
+}
+
 function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
   const pct = Math.max(3, Math.min(100, bp.percent));
+  const iterBase = iterOffset(bp);
   // the iteration timeline can grow long (10+ rows) — keep it tidy by showing
   // only the most recent few, with a tap to expand the rest.
   const [showAllIters, setShowAllIters] = useState(false);
@@ -195,7 +204,7 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
           <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>≈ {bp.percent}%</span>
           {bp.pass_current > 0 && (
-            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>iteration {bp.pass_current}</span>
+            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>iteration {iterBase + bp.pass_current}</span>
           )}
         </div>
       </div>
@@ -219,7 +228,7 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
                 {p.status === 'reviewed' && p.complete
                   ? <TGIcon name="check" size={14} color={T.green} stroke={2.6} />
                   : <Dot color={color} size={7} pulse={p.status === 'building'} />}
-                <span style={{ flex: 1, fontFamily: T.font, fontSize: 13, color: T.text }}>Iteration {p.pass_no}</span>
+                <span style={{ flex: 1, fontFamily: T.font, fontSize: 13, color: T.text }}>Iteration {iterBase + p.pass_no}</span>
                 <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{p.label}</span>
                 {p.pr_number != null && <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.accent }}>#{p.pr_number}</span>}
               </div>
@@ -537,7 +546,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   type Stat = { value: string; label: string; tone?: 'green' };
   const buildStats: Stat[] = [
     wholeBot
-      ? { value: bp && bp.pass_current > 0 ? String(bp.pass_current) : '—', label: bp && bp.pass_current === 1 ? 'Iteration' : 'Iterations', tone: bp && (live || bp.phase === 'published') ? 'green' : undefined }
+      ? { value: bp && bp.pass_current > 0 ? String(iterOffset(bp) + bp.pass_current) : '—', label: bp && (iterOffset(bp) + bp.pass_current) === 1 ? 'Iteration' : 'Iterations', tone: bp && (live || bp.phase === 'published') ? 'green' : undefined }
       : { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
     { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
     {
@@ -654,11 +663,12 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       )}
 
       {/* primary action — the Lovable-style feedback loop. While a build is in
-          flight the change CTA is paused (the backend rejects changes mid-build);
-          it returns the moment the bot is live again. awaiting_agent is NOT a
-          running build — the build can't start until a builder agent is assigned,
-          so make it the action (one tap to the agents sheet) instead of a stalled
-          "Building" spinner. */}
+          flight the change CTA is paused (the backend rejects changes mid-build)
+          and there's nothing to show here — the build card below is the single
+          status surface. It returns the moment the bot is live again.
+          awaiting_agent is the exception: the build can't start until a builder
+          agent is assigned, so make that the action (one tap to the agents
+          sheet). */}
       {awaitingAgent ? (
         <button onClick={onManageAgents} style={{
           ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
@@ -667,17 +677,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         }}>
           <TGIcon name="cloud" size={20} color="#fff" stroke={2} /> Assign a builder agent
         </button>
-      ) : buildRunning ? (
-        <div style={{
-          width: '100%', minHeight: 54, borderRadius: 15, padding: '0 16px',
-          background: T.dark ? 'rgba(255,255,255,0.05)' : 'rgba(15,22,32,0.04)',
-          border: `1px solid ${T.sep}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          fontFamily: T.font, fontSize: 15.5, fontWeight: 600, color: T.sub, textAlign: 'center', lineHeight: '20px',
-        }}>
-          <Spinner color={T.hint} size={17} /> Building — you can ask for changes once it’s live
-        </div>
-      ) : (() => {
+      ) : buildRunning ? null : (() => {
         const label = live ? 'Ask for change' : latestDeployFailed || testsFailed || buildFailed ? 'Fix with agent' : 'Message agent';
         return (
         <button onClick={onOpenChat} style={{
@@ -750,15 +750,19 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           )
       )}
 
-      <div>
-        <SectionLabel T={T}>Build progress</SectionLabel>
-        <BuildProgress T={T} steps={progressSteps} />
-        {buildRunning && bp && (
-          <div style={{ marginTop: 10 }}>
-            <WholeBotBuildCard T={T} bp={bp} />
-          </div>
-        )}
-      </div>
+      {/* Build progress — for whole_bot the build card IS the single status
+          surface (status word + bar + % + iteration timeline), so the Plan→Build→
+          Test→Live stepper is dropped to avoid stacking three redundant status
+          indicators. The stepper stays for task_manager/phase bots, which have no
+          build card. */}
+      {(!wholeBot || (buildRunning && bp)) && (
+        <div>
+          <SectionLabel T={T}>Build progress</SectionLabel>
+          {wholeBot && bp
+            ? <WholeBotBuildCard T={T} bp={bp} />
+            : <BuildProgress T={T} steps={progressSteps} />}
+        </div>
+      )}
 
       {/* shipping a change lives in the chat (the "Ask for change" button above),
           same as task_manager bots — no separate composer here. A live chat
