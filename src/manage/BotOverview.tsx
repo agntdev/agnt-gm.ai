@@ -8,7 +8,7 @@ import { Theme, btnReset, hexA } from '../theme';
 import {
   ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, BotInitiate, BuildProgress as BuildProgressDTO,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject,
+  botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
@@ -241,6 +241,31 @@ function deployActive(d?: Deployment | null): boolean {
   return /queue|pending|build|deploy|progress|running|started/i.test(d.status || '');
 }
 
+// Bot avatar — the AI-generated image when present, else the monogram tile.
+// Falls back to the tile if the image fails to load (broken/expired URL), so the
+// identity slot always shows something. Same size/shape as BotTile.
+function BotAvatar({ T, name, tone, avatarUrl, size = 72, radius = 22, fontSize }: {
+  T: Theme; name: string; tone: string; avatarUrl?: string; size?: number; radius?: number; fontSize?: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  // reset the error gate when the URL changes (e.g. a regenerate produced a new one)
+  useEffect(() => { setFailed(false); }, [avatarUrl]);
+  if (avatarUrl && !failed) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={`${name} avatar`}
+        onError={() => setFailed(true)}
+        style={{
+          width: size, height: size, borderRadius: radius, flexShrink: 0,
+          objectFit: 'cover', display: 'block', background: T.cardBg,
+        }}
+      />
+    );
+  }
+  return <BotTile T={T} name={name} tone={tone} size={size} radius={radius} fontSize={fontSize} />;
+}
+
 // uppercase section label, reused across sections
 function SectionLabel({ T, children, right }: { T: Theme; children: ReactNode; right?: ReactNode }) {
   return (
@@ -289,6 +314,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const [creatingBot, setCreatingBot] = useState(false);
   const [botInit, setBotInit] = useState<BotInitiate | null>(null); // deep link issued, waiting for Telegram
   const [createBotErr, setCreateBotErr] = useState<string | null>(null);
+  const [regenAvatar, setRegenAvatar] = useState(false);   // avatar regenerate in flight
+  const [regenAvatarErr, setRegenAvatarErr] = useState<string | null>(null);
   const [addingTask, setAddingTask] = useState(false); // "Add new task" input open
   const [taskDraft, setTaskDraft] = useState('');
   const [addBusy, setAddBusy] = useState(false);
@@ -347,6 +374,37 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       else setCreateBotErr(e instanceof ApiError ? `Couldn't start — ${e.message}` : 'network error — try again');
     } finally { setCreatingBot(false); }
   };
+
+  // regenerate the AI avatar (owner): async 202, then the project poll below
+  // lands the new bot_avatar_url. Show a brief "generating…" state meanwhile;
+  // it clears when a different URL arrives (effect below) or after a cap so it
+  // never spins forever if generation is slow/failed server-side.
+  const avatarUrl = detail?.bot_avatar_url;
+  const regenAvatarBaseline = useRef<string | undefined>(undefined);
+  const regenAvatarTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const onRegenAvatar = async () => {
+    if (regenAvatar) return;
+    setRegenAvatar(true); setRegenAvatarErr(null);
+    regenAvatarBaseline.current = avatarUrl; // remember the pre-regen URL
+    try {
+      await regenerateBotAvatar(bot.id);
+      // safety floor: stop the spinner after a while even if no new URL lands
+      if (regenAvatarTimer.current) clearTimeout(regenAvatarTimer.current);
+      regenAvatarTimer.current = setTimeout(() => setRegenAvatar(false), 90000);
+    } catch (e) {
+      setRegenAvatar(false);
+      setRegenAvatarErr(e instanceof ApiError ? (e.status === 429 ? 'Too many requests — try again shortly.' : e.message) : 'network error — try again');
+    }
+  };
+  // clear the "generating" state once the poll lands a new (different) avatar URL
+  useEffect(() => {
+    if (regenAvatar && avatarUrl && avatarUrl !== regenAvatarBaseline.current) {
+      setRegenAvatar(false);
+      if (regenAvatarTimer.current) clearTimeout(regenAvatarTimer.current);
+    }
+  }, [avatarUrl, regenAvatar]);
+  // tidy the safety timer on unmount
+  useEffect(() => () => { if (regenAvatarTimer.current) clearTimeout(regenAvatarTimer.current); }, []);
 
   // after initiate, poll quickly until the managed-bot poller lands the row
   useEffect(() => {
@@ -559,7 +617,31 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* identity — centered */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '6px 0 0' }}>
-        <BotTile T={T} name={bot.name} tone={bot.tone} size={72} radius={22} fontSize={30} />
+        {/* avatar: AI-generated image when present (falls back to the monogram
+            tile on error), with a small owner-only regenerate control beneath. */}
+        <div style={{ position: 'relative', width: 72, height: 72 }}>
+          <BotAvatar T={T} name={bot.name} tone={bot.tone} avatarUrl={avatarUrl} size={72} radius={22} fontSize={30} />
+          {regenAvatar && (
+            <div style={{
+              position: 'absolute', inset: 0, borderRadius: 22,
+              background: hexA('#000000', 0.4),
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Spinner color="#fff" size={22} />
+            </div>
+          )}
+        </div>
+        <button onClick={() => void onRegenAvatar()} disabled={regenAvatar} style={{
+          ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 1,
+          fontFamily: T.font, fontSize: 12, fontWeight: 600, color: regenAvatar ? T.hint : T.accent,
+          cursor: regenAvatar ? 'default' : 'pointer',
+        }}>
+          <TGIcon name="refresh" size={13} color={regenAvatar ? T.hint : T.accent} stroke={2} />
+          {regenAvatar ? 'Generating…' : avatarUrl ? 'Regenerate avatar' : 'Generate avatar'}
+        </button>
+        {regenAvatarErr && (
+          <div style={{ fontFamily: T.font, fontSize: 11.5, color: T.amber, lineHeight: '15px', textAlign: 'center' }}>{regenAvatarErr}</div>
+        )}
         <div style={{ fontFamily: T.font, fontSize: 25, fontWeight: 700, color: T.text, letterSpacing: -0.4, marginTop: 4 }}>{bot.name}</div>
         {/* only show a @username once the real Telegram bot exists — the project's
             suggested handle isn't a live bot yet, so showing it reads as a created
