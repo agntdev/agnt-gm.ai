@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Theme, btnReset } from '../theme';
 import { TgUser } from '../telegram';
 import { TGIcon, Spinner } from '../ui';
+import { useLang, useT } from '../i18n';
 
 // Each example is a short button (title + blurb) that drops a rich, detailed
 // brief into the prompt box. That brief is what gets sent verbatim as the
@@ -136,22 +137,34 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
   user?: TgUser | null; onToggleTheme: () => void; error?: string | null;
   startBtn?: StartBtn | null;
 }) {
+  const t = useT();
+  const { lang, setLang } = useLang();
   const taRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { autoGrow(taRef.current); }, [idea]);
   // Three random ideas, chosen once on mount; the shuffle button re-rolls them.
   const [shownIdeas, setShownIdeas] = useState<IdeaExample[]>(() => pickIdeas(IDEAS_SHOWN));
   return (
     <div style={{ padding: '12px 18px 20px', display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      {/* avatar · theme switcher */}
+      {/* avatar · language + theme switchers */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
         <Avatar T={T} user={user} />
-        <button onClick={onToggleTheme} style={{
-          ...btnReset, width: 38, height: 38, borderRadius: 999,
-          background: T.dark ? 'rgba(255,255,255,0.07)' : 'rgba(15,22,32,0.05)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <TGIcon name={T.dark ? 'sun' : 'moon'} size={18} color={T.sub} stroke={1.9} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => setLang(lang === 'ru' ? 'en' : 'ru')} aria-label="Language" style={{
+            ...btnReset, height: 38, minWidth: 38, padding: '0 12px', borderRadius: 999,
+            background: T.dark ? 'rgba(255,255,255,0.07)' : 'rgba(15,22,32,0.05)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: T.font, fontSize: 13, fontWeight: 700, letterSpacing: 0.3, color: T.sub,
+          }}>
+            {lang === 'ru' ? 'RU' : 'EN'}
+          </button>
+          <button onClick={onToggleTheme} aria-label="Theme" style={{
+            ...btnReset, width: 38, height: 38, borderRadius: 999,
+            background: T.dark ? 'rgba(255,255,255,0.07)' : 'rgba(15,22,32,0.05)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <TGIcon name={T.dark ? 'sun' : 'moon'} size={18} color={T.sub} stroke={1.9} />
+          </button>
+        </div>
       </div>
 
       {changed && (
@@ -161,16 +174,16 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
         }}>
           <TGIcon name="refresh" size={17} color={T.accent} stroke={2} />
           <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.text, lineHeight: '18px' }}>
-            Edit your idea below — I'll rebuild and re-test from here.
+            {t("Edit your idea below — I'll rebuild and re-test from here.", 'Измените описание ниже — я пересоберу и заново протестирую.')}
           </span>
         </div>
       )}
 
       <div style={{ fontFamily: T.font, fontSize: 27, fontWeight: 700, color: T.text, letterSpacing: -0.5, lineHeight: '32px', textAlign: 'center' }}>
-        What should your<br />bot do?
+        {lang === 'ru' ? <>Что должен<br />делать бот?</> : <>What should your<br />bot do?</>}
       </div>
       <div style={{ fontFamily: T.font, fontSize: 15, color: T.sub, marginTop: 8, lineHeight: '21px', textAlign: 'center' }}>
-        Describe your idea in plain words — you can refine it next.
+        {t('Describe your idea in plain words — you can refine it next.', 'Опишите идею простыми словами — уточнить можно дальше.')}
       </div>
 
       <div style={{
@@ -179,14 +192,14 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
       }}>
         <textarea
           ref={taRef} value={idea} onChange={e => setIdea(e.target.value)} rows={3}
-          placeholder="e.g. A bot that lets my customers track their orders and chat with support…"
+          placeholder={t('e.g. A bot that lets my customers track their orders and chat with support…', 'напр. Бот, в котором мои клиенты отслеживают заказы и общаются с поддержкой…')}
           style={{
             width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent',
             fontFamily: T.font, fontSize: 16, lineHeight: '23px', color: T.text, padding: 0, minHeight: 70,
           }}
         />
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
-          <span style={{ fontFamily: T.mono, fontSize: 12, color: T.hint }}>{idea.trim().length} chars</span>
+          <span style={{ fontFamily: T.mono, fontSize: 12, color: T.hint }}>{idea.trim().length} {t('chars', 'симв.')}</span>
           {idea.trim() && startBtn && (
             <button
               onClick={startBtn.disabled || startBtn.busy ? undefined : startBtn.onClick}
@@ -210,20 +223,20 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
 
       {error && (
         <div style={{ fontFamily: T.font, fontSize: 13, color: T.amber, lineHeight: '18px', marginTop: 10, padding: '0 4px' }}>
-          Couldn't start — {error}. Tap the button to retry.
+          {t("Couldn't start", 'Не удалось запустить')} — {error}. {t('Tap the button to retry.', 'Нажмите кнопку, чтобы повторить.')}
         </div>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '22px 4px 11px' }}>
         <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3 }}>
-          Or start from an idea
+          {t('Or start from an idea', 'Или начните с примера')}
         </span>
         <button onClick={() => setShownIdeas(pickIdeas(IDEAS_SHOWN))} style={{
           ...btnReset, display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 8,
           fontFamily: T.font, fontSize: 12, fontWeight: 600, color: T.accent, textTransform: 'none', letterSpacing: 0,
         }}>
           <TGIcon name="refresh" size={13} color={T.accent} stroke={2} />
-          Shuffle
+          {t('Shuffle', 'Обновить')}
         </button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>

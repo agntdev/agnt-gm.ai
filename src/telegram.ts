@@ -26,7 +26,7 @@ interface TelegramWebApp {
   exitFullscreen?(): void;
   safeAreaInset?: SafeAreaInset;        // device chrome (status bar / notch)
   contentSafeAreaInset?: SafeAreaInset; // Telegram's own controls over the content
-  initDataUnsafe?: { user?: { first_name?: string; last_name?: string; photo_url?: string } };
+  initDataUnsafe?: { user?: { first_name?: string; last_name?: string; photo_url?: string; language_code?: string } };
   BackButton?: {
     show(): void;
     hide(): void;
@@ -125,6 +125,13 @@ export function telegramInitData(): string | null {
 
 export function telegramUserName(): string | null {
   return insideTelegram ? webApp?.initDataUnsafe?.user?.first_name || null : null;
+}
+
+// The user's Telegram language (e.g. 'ru', 'ru-RU', 'en') — drives the initial
+// interface locale. Null outside Telegram; the i18n layer then falls back to the
+// browser language. See src/i18n.tsx detectLang().
+export function telegramLanguageCode(): string | null {
+  return insideTelegram ? webApp?.initDataUnsafe?.user?.language_code || null : null;
 }
 
 export interface TgUser { initials: string; photoUrl: string | null }

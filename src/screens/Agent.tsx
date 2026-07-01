@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Theme, btnReset, hexA } from '../theme';
 import { mintAgentLink, getAgentLink, Project, BuildMode } from '../api/client';
 import { TGIcon, Card, Pill, Dot, Spinner, Stepper } from '../ui';
+import { useT, useLang } from '../i18n';
 
 export const INSTALL_CMD = 'npx skills add agntdev/skills --all';
 
@@ -39,10 +40,19 @@ export const MODE_META: Record<BuildMode, { title: string; desc: string; glyph: 
 };
 
 export function ModePicker({ T, mode, onMode }: { T: Theme; mode: BuildMode; onMode: (m: BuildMode) => void }) {
+  const t = useT();
+  const label = (m: BuildMode) => m === 'platform'
+    ? { title: t('Cloud agent', 'Облачный агент'),
+        desc: t('We build everything — agents write code and ship PRs from our platform. Zero setup.',
+                'Мы делаем всё — агенты пишут код и отправляют PR с нашей платформы. Без настройки.') }
+    : { title: t('Your agent', 'Ваш агент'),
+        desc: t('Your Claude or Codex does the work and pushes to the repo. We run checks & deploy.',
+                'Ваш Claude или Codex делает работу и пушит в репозиторий. Мы запускаем проверки и разворачиваем.') };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {(Object.keys(MODE_META) as BuildMode[]).map(m => {
         const meta = MODE_META[m];
+        const text = label(m);
         const sel = mode === m;
         return (
           <button key={m} onClick={() => onMode(m)} style={{
@@ -59,8 +69,8 @@ export function ModePicker({ T, mode, onMode }: { T: Theme; mode: BuildMode; onM
               <TGIcon name={meta.glyph} size={20} color={sel ? T.accent : T.sub} stroke={1.9} />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 600, color: T.text }}>{meta.title}</div>
-              <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 2, lineHeight: '17px' }}>{meta.desc}</div>
+              <div style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 600, color: T.text }}>{text.title}</div>
+              <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 2, lineHeight: '17px' }}>{text.desc}</div>
             </div>
             <div style={{
               width: 22, height: 22, borderRadius: 999, flexShrink: 0,
@@ -79,6 +89,8 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
   mode: BuildMode; onMode: (m: BuildMode) => void; error?: string | null;
   onConnected: (agentName: string | null) => void;
 }) {
+  const t = useT();
+  const { lang } = useLang();
   const [code, setCode] = useState<string | null>(null);
   const stopped = useRef(false);
 
@@ -127,13 +139,14 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Stepper T={T} steps={[0, 1]} current={1} />
-      <Pill T={T} tone="accent" style={{ alignSelf: 'flex-start' }}>Stage 2 · Who builds it</Pill>
+      <Pill T={T} tone="accent" style={{ alignSelf: 'flex-start' }}>{t('Stage 2 · Who builds it', 'Этап 2 · Кто собирает')}</Pill>
 
       <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.text, letterSpacing: -0.3, padding: '0 2px' }}>
-        Choose your builder
+        {t('Choose your builder', 'Выберите исполнителя')}
       </div>
       <div style={{ fontFamily: T.font, fontSize: 14.5, color: T.sub, lineHeight: '21px', padding: '0 2px', marginTop: -6 }}>
-        Both end with a live bot — you can switch anytime from the bot's page.
+        {t("Both end with a live bot — you can switch anytime from the bot's page.",
+           'Оба варианта дают живого бота — переключиться можно в любой момент на странице бота.')}
       </div>
 
       <ModePicker T={T} mode={mode} onMode={onMode} />
@@ -142,9 +155,10 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
         <Card T={T} pad={14} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           <TGIcon name="shield" size={19} color={T.green} stroke={1.9} />
           <div>
-            <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Nothing to set up</div>
+            <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>{t('Nothing to set up', 'Ничего настраивать не нужно')}</div>
             <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint, marginTop: 2, lineHeight: '18px' }}>
-              Cloud agents pick up every task, write the code and open PRs from our platform. You watch progress here and in the bot's chat.
+              {t("Cloud agents pick up every task, write the code and open PRs from our platform. You watch progress here and in the bot's chat.",
+                 'Облачные агенты берут каждую задачу, пишут код и открывают PR с нашей платформы. Вы следите за прогрессом здесь и в чате бота.')}
             </div>
           </div>
         </Card>
@@ -153,14 +167,14 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
           {/* the first prompt — connect code inside */}
           <div>
             <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>
-              Paste this first prompt into your agent
+              {t('Paste this first prompt into your agent', 'Вставьте этот первый промпт в своего агента')}
             </div>
             {code ? (
               <CopyCard T={T} text={firstPrompt(project, code)} mono small />
             ) : (
               <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Spinner color={T.accent} size={15} />
-                <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.sub }}>Generating your connect code…</span>
+                <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.sub }}>{t('Generating your connect code…', 'Генерируем код подключения…')}</span>
               </Card>
             )}
           </div>
@@ -170,16 +184,18 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
         <Dot color={connected ? T.green : T.amber} size={9} pulse={!connected} />
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>
-            {connected ? 'Agent connected' : 'Waiting for your agent…'}
+            {connected ? t('Agent connected', 'Агент подключён') : t('Waiting for your agent…', 'Ожидание вашего агента…')}
           </div>
           {!connected && code && (
             <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>
-              Connect code <span style={{ fontFamily: T.mono, fontWeight: 600 }}>{code}</span> · valid 10 min, auto-refreshes
+              {lang === 'ru'
+                ? <>Код подключения <span style={{ fontFamily: T.mono, fontWeight: 600 }}>{code}</span> · действует 10 мин, обновляется автоматически</>
+                : <>Connect code <span style={{ fontFamily: T.mono, fontWeight: 600 }}>{code}</span> · valid 10 min, auto-refreshes</>}
             </div>
           )}
         </div>
         {connected
-          ? <Pill T={T} tone="green">{agentName || 'Agent ready'}</Pill>
+          ? <Pill T={T} tone="green">{agentName || t('Agent ready', 'Агент готов')}</Pill>
           : <TGIcon name="clock" size={19} color={T.amber} stroke={1.9} />}
       </Card>
         </>
@@ -195,6 +211,7 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
 }
 
 export function CopyCard({ T, text, mono, small }: { T: Theme; text: string; mono?: boolean; small?: boolean }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard?.writeText(text).catch(() => {});
@@ -214,7 +231,7 @@ export function CopyCard({ T, text, mono, small }: { T: Theme; text: string; mon
         color: copied ? T.green : T.accent, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
       }}>
         <TGIcon name={copied ? 'check' : 'copy'} size={16} color={copied ? T.green : T.accent} stroke={2} />
-        {copied ? 'Copied' : 'Copy'}
+        {copied ? t('Copied', 'Скопировано') : t('Copy', 'Копировать')}
       </button>
     </Card>
   );

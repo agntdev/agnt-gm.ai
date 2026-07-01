@@ -6,13 +6,19 @@ import { useMemo } from 'react';
 import { Theme, btnReset, hexA, toneFor } from '../theme';
 import { Project } from '../api/client';
 import { openTgLink } from '../telegram';
+import { useT } from '../i18n';
 import { TGIcon, BotTile, Spinner } from '../ui';
+
+// Default preview shown when a discovered bot carries no server description.
+// Defined once so botFromProject and the render-site translation stay byte-identical.
+const DISCOVER_FALLBACK = 'A bot built on AgentBot.';
 
 export interface DiscoverBot {
   id: string;
   name: string;
   username: string; // real managed-bot @username - drives the t.me link
   tone: string;
+  avatarUrl?: string; // generated bot avatar (falls back to the name monogram)
   preview: string;
   activeAgents?: number;
   merged7d?: number;
@@ -47,7 +53,8 @@ export function discoverBotFromProject(p: Project): DiscoverBot | null {
     name: p.name,
     username: p.bot_username,
     tone: toneFor(p.slug),
-    preview: p.short_description || p.goal_of_project || 'A bot built on AgentBot.',
+    avatarUrl: p.logo_url || p.preview_image_url || undefined,
+    preview: p.short_description || p.goal_of_project || DISCOVER_FALLBACK,
     activeAgents: p.active_agents,
     merged7d: p.prs_merged_7d,
     openTasks: p.open_tasks,
@@ -61,6 +68,7 @@ export function DiscoveryPage({ T, bots, loading }: {
   T: Theme; bots: DiscoverBot[]; loading: boolean;
 }) {
   const C = discoveryPalette(T);
+  const t = useT();
   const visibleBots = useMemo(() => bots, [bots]);
 
   return (
@@ -87,7 +95,7 @@ export function DiscoveryPage({ T, bots, loading }: {
             fontWeight: 800,
             letterSpacing: 0,
             color: C.ink,
-          }}>Live bots</div>
+          }}>{t('Live bots', 'Боты в эфире')}</div>
           <div style={{
             marginTop: 3,
             fontFamily: T.font,
@@ -95,7 +103,11 @@ export function DiscoveryPage({ T, bots, loading }: {
             lineHeight: '18px',
             color: C.muted,
           }}>
-            {loading ? 'Loading Telegram bots' : bots.length ? `${bots.length} bots ready to try in Telegram` : 'Public bots appear here after launch'}
+            {loading
+              ? t('Loading Telegram bots', 'Загрузка ботов Telegram')
+              : bots.length
+                ? t(`${bots.length} bots ready to try in Telegram`, `${bots.length} ботов можно попробовать в Telegram`)
+                : t('Public bots appear here after launch', 'Публичные боты появятся здесь после запуска')}
           </div>
         </div>
 
@@ -144,8 +156,12 @@ export function DiscoveryPage({ T, bots, loading }: {
 function DiscoveryRow({ T, C, bot, last }: {
   T: Theme; C: DiscoveryPalette; bot: DiscoverBot; last: boolean;
 }) {
+  const t = useT();
   const queue = typeof bot.openTasks === 'number' ? bot.openTasks : 0;
   const age = timeAgo(bot.publishedAt || bot.createdAt);
+  const preview = bot.preview === DISCOVER_FALLBACK
+    ? t(DISCOVER_FALLBACK, 'Бот, созданный на AgentBot.')
+    : bot.preview;
 
   return (
     <button
@@ -164,7 +180,7 @@ function DiscoveryRow({ T, C, bot, last }: {
         borderBottom: last ? 'none' : `1px solid ${C.edge}`,
       }}
     >
-      <BotTile T={T} name={bot.name} tone={bot.tone} size={48} radius={12} />
+      <BotTile T={T} name={bot.name} tone={bot.tone} src={bot.avatarUrl} size={48} radius={12} />
 
       <div style={{ minWidth: 0 }}>
         <div style={{
@@ -209,12 +225,12 @@ function DiscoveryRow({ T, C, bot, last }: {
           WebkitLineClamp: 2,
           WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
-        }}>{bot.preview}</div>
+        }}>{preview}</div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-          <StatusChip T={T} C={C} label="Live" tone="live" />
+          <StatusChip T={T} C={C} label={t('Live', 'В эфире')} tone="live" />
           {age && <StatusChip T={T} C={C} label={age} />}
-          {queue > 0 && <StatusChip T={T} C={C} label={`${queue} queued`} tone="amber" />}
+          {queue > 0 && <StatusChip T={T} C={C} label={t(`${queue} queued`, `${queue} в очереди`)} tone="amber" />}
         </div>
       </div>
 
@@ -258,6 +274,7 @@ function StatusChip({ T, C, label, tone = 'neutral' }: {
 }
 
 function EmptyDiscovery({ T, C }: { T: Theme; C: DiscoveryPalette }) {
+  const t = useT();
   return (
     <div style={{
       padding: 16,
@@ -280,8 +297,8 @@ function EmptyDiscovery({ T, C }: { T: Theme; C: DiscoveryPalette }) {
         <TGIcon name="compass" size={21} color={C.blue} stroke={2} />
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: 0 }}>No public bots yet</div>
-        <div style={{ fontFamily: T.font, fontSize: 13, color: C.muted, marginTop: 2 }}>The list opens when live bots have public handles.</div>
+        <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: 0 }}>{t('No public bots yet', 'Публичных ботов пока нет')}</div>
+        <div style={{ fontFamily: T.font, fontSize: 13, color: C.muted, marginTop: 2 }}>{t('The list opens when live bots have public handles.', 'Список откроется, когда у ботов в эфире появятся публичные @-адреса.')}</div>
       </div>
     </div>
   );

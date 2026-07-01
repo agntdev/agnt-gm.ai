@@ -2,6 +2,7 @@
 // theme.jsx / discover.jsx. Visuals must match the prototype.
 import React from 'react';
 import { Theme, hexA, tile, btnReset } from './theme';
+import { useT } from './i18n';
 
 // ── Icons (simple geometric strokes only) ─────────────────────
 export function TGIcon({ name, size = 22, color = 'currentColor', stroke = 2 }: {
@@ -65,6 +66,7 @@ export function Mark({ T, size = 30, radius = 9 }: { T: Theme; size?: number; ra
 export function TGHeader({ T, title, subtitle, onBack }: {
   T: Theme; title: string; subtitle?: string; onBack?: (() => void) | null;
 }) {
+  const t = useT();
   return (
     <div style={{
       paddingTop: 'env(safe-area-inset-top, 0px)', background: T.headerBg, position: 'relative', zIndex: 5,
@@ -79,7 +81,7 @@ export function TGHeader({ T, title, subtitle, onBack }: {
           color: T.accent, fontFamily: T.font, fontSize: 17, fontWeight: 400, minWidth: 64,
         }}>
           {onBack ? <TGIcon name="back" size={24} color={T.accent} stroke={2.1} /> : null}
-          <span>{onBack ? 'Back' : ''}</span>
+          <span>{onBack ? t('Back', 'Назад') : ''}</span>
         </button>
         <div style={{ textAlign: 'center', overflow: 'hidden' }}>
           <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.text, lineHeight: '18px', letterSpacing: -0.2 }}>{title}</div>
@@ -256,10 +258,11 @@ export function ProgressBar({ T, value, color }: { T: Theme; value: number; colo
 export type Tab = 'build' | 'discover' | 'manage';
 
 export function TabBar({ T, tab, onTab }: { T: Theme; tab: Tab; onTab: (t: Tab) => void }) {
+  const t = useT();
   const items: { id: Tab; icon: string; label: string }[] = [
-    { id: 'build', icon: 'bolt', label: 'Build' },
-    { id: 'discover', icon: 'compass', label: 'Discover' },
-    { id: 'manage', icon: 'chat', label: 'My Bots' },
+    { id: 'build', icon: 'bolt', label: t('Build', 'Сборка') },
+    { id: 'discover', icon: 'compass', label: t('Discover', 'Каталог') },
+    { id: 'manage', icon: 'chat', label: t('My Bots', 'Мои боты') },
   ];
   return (
     <div style={{
@@ -286,17 +289,30 @@ export function TabBar({ T, tab, onTab }: { T: Theme; tab: Tab; onTab: (t: Tab) 
 }
 
 // ── monogram avatar tile ──────────────────────────────────────
-export function BotTile({ T, name, tone, size = 38, radius = 12, fontSize }: {
-  T: Theme; name: string; tone: string; size?: number; radius?: number; fontSize?: number;
+export function BotTile({ T, name, tone, src, size = 38, radius = 12, fontSize }: {
+  T: Theme; name: string; tone: string; src?: string | null; size?: number; radius?: number; fontSize?: number;
 }) {
   const c = tile(tone, T.dark);
+  // the generated bot avatar (the same image we set on the Telegram bot) when we
+  // have one; the name monogram stays rendered underneath as the fallback, so a
+  // missing or broken image (onError) reveals it rather than a broken-image icon.
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => { setFailed(false); }, [src]);
   return (
     <div style={{
+      position: 'relative', overflow: 'hidden',
       width: size, height: size, borderRadius: radius, flexShrink: 0, background: c.bg,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: T.font, fontSize: fontSize || size * 0.46, fontWeight: 700, color: c.fg,
       letterSpacing: -0.3,
-    }}>{(name[0] || '?').toUpperCase()}</div>
+    }}>
+      {(name[0] || '?').toUpperCase()}
+      {src && !failed && (
+        <img src={src} alt="" onError={() => setFailed(true)} style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+        }} />
+      )}
+    </div>
   );
 }
 
