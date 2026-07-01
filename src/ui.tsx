@@ -329,7 +329,7 @@ export function BotTile({ T, name, tone, src, size = 38, radius = 12, fontSize }
   return (
     <div style={{
       position: 'relative', overflow: 'hidden',
-      width: size, height: size, borderRadius: radius, flexShrink: 0, background: c.bg,
+      width: size, height: size, borderRadius: '50%', flexShrink: 0, background: c.bg,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: T.font, fontSize: fontSize || size * 0.46, fontWeight: 700, color: c.fg,
       letterSpacing: -0.3,
@@ -361,7 +361,7 @@ export function BotAvatar({ T, name, tone, avatarUrl, size = 38, radius = 12, fo
         alt={`${name} avatar`}
         onError={() => setFailed(true)}
         style={{
-          width: size, height: size, borderRadius: radius, flexShrink: 0,
+          width: size, height: size, borderRadius: '50%', flexShrink: 0,
           objectFit: 'cover', display: 'block', background: T.cardBg,
         }}
       />

@@ -759,14 +759,25 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           </button>
         </div>
       )}
-      {/* Test bot — quiet deep link */}
+      {/* Test bot · Show in Discover — one row */}
       {botUsername && live && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: -2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={() => openTgLink(`https://t.me/${botUsername}`)} style={{
-            ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.accent,
+            ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, padding: '0 15px',
+            borderRadius: 999, background: T.nestedBg, border: `1px solid ${T.sep}`,
+            fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.text,
           }}>
             <TGIcon name="open" size={16} color={T.accent} stroke={2} /> {t('Test bot', 'Тест бота')}
           </button>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 9,
+            height: 36, padding: '0 8px 0 13px', borderRadius: 999,
+            background: T.nestedBg, border: `1px solid ${T.sep}`,
+          }}>
+            <TGIcon name="compass" size={15} color={discoverable ? T.accent : T.hint} stroke={2} />
+            <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.sub }}>{t('Show in Discover', 'В Каталоге')}</span>
+            <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
+          </div>
         </div>
       )}
 
@@ -869,18 +880,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       )}
 
       {/* Settings — public visibility · auto-updates · who builds it */}
-      {/* Show in Discover — small inline toggle */}
-      {live && botUsername && (
-        <div style={{
-          alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 9,
-          height: 36, padding: '0 8px 0 13px', borderRadius: 999,
-          background: T.nestedBg, border: `1px solid ${T.sep}`,
-        }}>
-          <TGIcon name="compass" size={15} color={discoverable ? T.accent : T.hint} stroke={2} />
-          <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.sub }}>{t('Show in Discover', 'В Каталоге')}</span>
-          <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
-        </div>
-      )}
 
       {/* assigned builder agent summary → add-an-agent sheet (cloud or local) */}
       <div>
