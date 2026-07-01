@@ -9,6 +9,7 @@ import { mintAgentLink, getAgentLink, getProject, Project } from '../api/client'
 import { TGIcon, Card, Dot, Spinner } from '../ui';
 import { firstPrompt, CopyCard, INSTALL_CMD } from '../screens/Agent';
 import { MyBot } from './MyBots';
+import { useT } from '../i18n';
 
 function Label({ T, children }: { T: Theme; children: ReactNode }) {
   return (
@@ -19,6 +20,7 @@ function Label({ T, children }: { T: Theme; children: ReactNode }) {
 }
 
 export function ConnectAgent({ T, bot, onConnected }: { T: Theme; bot: MyBot; onConnected: () => void }) {
+  const t = useT();
   const [project, setProject] = useState<Project | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const stopped = useRef(false);
@@ -72,32 +74,32 @@ export function ConnectAgent({ T, bot, onConnected }: { T: Theme; bot: MyBot; on
   return (
     <div style={{ padding: '16px 16px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
-        <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.text, letterSpacing: -0.3 }}>Connect a local agent</div>
+        <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.text, letterSpacing: -0.3 }}>{t('Connect a local agent', 'Подключить локального агента')}</div>
         <div style={{ fontFamily: T.font, fontSize: 14, color: T.sub, lineHeight: '20px', marginTop: 4 }}>
-          Paste the prompt into your Claude or Codex — or run the command yourself. The one-time code connects it and it starts building.
+          {t('Paste the prompt into your Claude or Codex — or run the command yourself. The one-time code connects it and it starts building.', 'Вставьте промпт в Claude или Codex — или выполните команду сами. Одноразовый код подключит его, и он начнёт сборку.')}
         </div>
       </div>
 
       {/* one-tap path: the whole first prompt (contains the code + commands) */}
       <div>
-        <Label T={T}>Paste this into your agent</Label>
+        <Label T={T}>{t('Paste this into your agent', 'Вставьте это в вашего агента')}</Label>
         {code ? (
           <CopyCard T={T} text={firstPrompt(project, code)} mono small />
         ) : (
           <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Spinner color={T.accent} size={15} />
-            <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.sub }}>Generating your connect code…</span>
+            <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.sub }}>{t('Generating your connect code…', 'Генерируем код подключения…')}</span>
           </Card>
         )}
       </div>
 
       {/* manual path: raw code + CLI commands */}
       <div>
-        <Label T={T}>Or run it yourself</Label>
+        <Label T={T}>{t('Or run it yourself', 'Или выполните сами')}</Label>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <CopyCard T={T} text={code ? `agnt connect ${code}` : '…'} mono small />
           <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, padding: '0 4px' }}>
-            New to agnt? Install the CLI skills first:
+            {t('New to agnt? Install the CLI skills first:', 'Впервые в agnt? Сначала установите навыки CLI:')}
           </div>
           <CopyCard T={T} text={INSTALL_CMD} mono small />
         </div>
@@ -107,10 +109,10 @@ export function ConnectAgent({ T, bot, onConnected }: { T: Theme; bot: MyBot; on
       <Card T={T} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Dot color={T.amber} size={9} pulse />
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Waiting for your agent…</div>
+          <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>{t('Waiting for your agent…', 'Ожидание вашего агента…')}</div>
           {code && (
             <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>
-              Connect code <span style={{ fontFamily: T.mono, fontWeight: 600 }}>{code}</span> · valid 10 min, auto-refreshes
+              {t('Connect code', 'Код подключения')} <span style={{ fontFamily: T.mono, fontWeight: 600 }}>{code}</span> {t('· valid 10 min, auto-refreshes', '· действует 10 мин, обновляется автоматически')}
             </div>
           )}
         </div>

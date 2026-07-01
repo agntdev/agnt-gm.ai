@@ -7,11 +7,13 @@ import { Theme, btnReset } from '../theme';
 import { runCloudAgent } from '../api/client';
 import { payAndAssignCloudAgent, STAR_COST } from '../api/stars';
 import { TGIcon, Spinner } from '../ui';
+import { useT } from '../i18n';
 
 export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudDeployed, onClose }: {
   T: Theme; project: { id: string; name: string };
   cloudDeployed: boolean; onConnectNew: () => void; onCloudDeployed: () => void; onClose: () => void;
 }) {
+  const t = useT();
   const [deployed, setDeployed] = useState(cloudDeployed);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -61,9 +63,9 @@ export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudD
                 <TGIcon name="shield" size={21} color={T.amber} stroke={1.9} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 700, color: T.text }}>Switch to a local agent?</div>
+                <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 700, color: T.text }}>{t('Switch to a local agent?', 'Переключиться на локального агента?')}</div>
                 <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub, marginTop: 3, lineHeight: '18px' }}>
-                  The platform will hand new tasks to your local agent instead of the cloud agent on {project.name}. You can switch back anytime.
+                  {t(`The platform will hand new tasks to your local agent instead of the cloud agent on ${project.name}. You can switch back anytime.`, `Платформа будет отдавать новые задачи вашему локальному агенту вместо облачного на ${project.name}. Вы можете вернуться в любой момент.`)}
                 </div>
               </div>
             </div>
@@ -73,32 +75,32 @@ export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudD
                 background: T.dark ? 'rgba(255,255,255,0.06)' : '#f3f5f8',
                 color: T.text, fontFamily: T.font, fontSize: 14.5, fontWeight: 600,
               }}>
-                Keep cloud agent
+                {t('Keep cloud agent', 'Оставить облачного агента')}
               </button>
               <button onClick={onConnectNew} style={{
                 ...btnReset, flex: 1, height: 44, borderRadius: 12,
                 background: T.accent, color: '#fff', fontFamily: T.font, fontSize: 14.5, fontWeight: 600,
               }}>
-                Switch to local
+                {t('Switch to local', 'Переключиться на локального')}
               </button>
             </div>
           </div>
         ) : (
           <>
             <div style={{ padding: '8px 18px 4px' }}>
-              <div style={{ fontFamily: T.font, fontSize: 18, fontWeight: 700, color: T.text, letterSpacing: -0.2 }}>Add an agent</div>
+              <div style={{ fontFamily: T.font, fontSize: 18, fontWeight: 700, color: T.text, letterSpacing: -0.2 }}>{t('Add an agent', 'Добавить агента')}</div>
               <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint, marginTop: 2, lineHeight: '18px' }}>
-                Put an agent on {project.name}'s tasks.
+                {t(`Put an agent on ${project.name}'s tasks.`, `Поставьте агента на задачи ${project.name}.`)}
               </div>
             </div>
 
             <div style={{ padding: '14px 14px 6px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* cloud — deploy one (max one per bot) */}
               <Option T={T} icon="cloud"
-                title="Cloud agent"
-                desc={deployed ? 'Deployed — running on our platform'
-                  : error ? "Couldn't deploy — tap to retry"
-                  : `We deploy and run one for you · ${STAR_COST.cloudAgent} ⭐`}
+                title={t('Cloud agent', 'Облачный агент')}
+                desc={deployed ? t('Deployed — running on our platform', 'Развёрнут — работает на нашей платформе')
+                  : error ? t("Couldn't deploy — tap to retry", 'Не удалось развернуть — нажмите, чтобы повторить')
+                  : t(`We deploy and run one for you · ${STAR_COST.cloudAgent} ⭐`, `Мы развернём и запустим его за вас · ${STAR_COST.cloudAgent} ⭐`)}
                 tone={deployed ? 'green' : error ? 'amber' : 'hint'}
                 onClick={deployCloud} disabled={deployed}
                 right={busy ? <Spinner color={T.accent} size={18} />
@@ -107,8 +109,8 @@ export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudD
 
               {/* local — connect your own agent with a code */}
               <Option T={T} icon="code"
-                title="Local agent"
-                desc="Connect your Claude or Codex with a code"
+                title={t('Local agent', 'Локальный агент')}
+                desc={t('Connect your Claude or Codex with a code', 'Подключите Claude или Codex по коду')}
                 tone="hint"
                 onClick={pickLocal}
                 right={<TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />} />

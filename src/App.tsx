@@ -19,6 +19,7 @@ import {
   setDiscoverable,
 } from './api/client';
 import { useChat } from './chat/Chat';
+import { useT } from './i18n';
 import { TGHeader, MainButton, TabBar, Tab, Spinner } from './ui';
 import { PromptScreen } from './screens/Prompt';
 import { ClarifyScreen, GenPhase } from './screens/Clarify';
@@ -43,9 +44,10 @@ const ConnectAgent = lazy(() => import('./manage/ConnectAgent').then(m => ({ def
 const STEPS = ['prompt', 'clarify', 'agent'] as const;
 type StepId = typeof STEPS[number];
 
-const STAGE_SUB: Record<StepId, string> = {
-  prompt: 'New bot', clarify: 'Tell me more',
-  agent: 'Advanced builder',
+// [en, ru] pairs — translated at the single render site with t(...STAGE_SUB[id]).
+const STAGE_SUB: Record<StepId, [string, string]> = {
+  prompt: ['New bot', 'Новый бот'], clarify: ['Tell me more', 'Расскажите подробнее'],
+  agent: ['Advanced builder', 'Продвинутый сборщик'],
 };
 
 const THEME_KEY = 'agentbot-theme';
@@ -153,6 +155,7 @@ function useColorMode(): ['light' | 'dark', () => void] {
 }
 
 export default function App() {
+  const t = useT();
   const [mode, toggleTheme] = useColorMode();
   const T: Theme = tgTheme(mode);
   useEffect(() => { syncChrome(T.headerBg, T.pageBg); document.body.style.background = T.pageBg; }, [mode]);
@@ -255,7 +258,7 @@ export default function App() {
       pollPlan(r.project_id);
       goTo(STEPS.indexOf('clarify'), 1);
     } catch (e) {
-      setStartError(e instanceof ApiError ? `${e.message}${e.details ? ` (${e.details})` : ''}` : 'network error');
+      setStartError(e instanceof ApiError ? `${e.message}${e.details ? ` (${e.details})` : ''}` : t('network error', 'ошибка сети'));
     } finally {
       setStarting(false);
     }
@@ -319,7 +322,7 @@ export default function App() {
         if (st === 'draft') genSince = null;
         else genSince = genSince ?? Date.now();
       } catch { /* transient — keep polling */ }
-      if (genSince && Date.now() - genSince > 4 * 60_000) { setGenError('timed out'); setGen('error'); return; }
+      if (genSince && Date.now() - genSince > 4 * 60_000) { setGenError(t('timed out', 'превышено время ожидания')); setGen('error'); return; }
       setTimeout(tick, 3000);
     };
     setTimeout(tick, 3000);
@@ -518,8 +521,8 @@ export default function App() {
       void refreshMyBots(pid);
     } catch (e) {
       setBuildError(e instanceof ApiError
-        ? `Couldn't start the build — ${e.message}${e.details ? ` (${e.details})` : ''}`
-        : "Couldn't start the build — network error. Tap to retry.");
+        ? `${t("Couldn't start the build", 'Не удалось запустить сборку')} — ${e.message}${e.details ? ` (${e.details})` : ''}`
+        : t("Couldn't start the build — network error. Tap to retry.", 'Не удалось запустить сборку — ошибка сети. Нажмите, чтобы повторить.'));
     } finally {
       setBuilding(false);
     }
@@ -665,7 +668,9 @@ export default function App() {
     switch (id) {
       case 'prompt': return {
         // outside Telegram there is no initData to authorize with — say so
-        label: idea.trim() && !tgAuthed && !insideTelegram ? 'Open in Telegram to build' : 'Start generating',
+        label: idea.trim() && !tgAuthed && !insideTelegram
+          ? t('Open in Telegram to build', 'Откройте в Telegram, чтобы собрать')
+          : t('Start generating', 'Начать генерацию'),
         disabled: !idea.trim() || (!tgAuthed && !insideTelegram) || starting,
         busy: starting,
         onClick: () => void startChatFlow(),
@@ -678,7 +683,9 @@ export default function App() {
       case 'agent': {
         const ready = buildMode === 'platform' || connected;
         return {
-          label: building ? 'Starting…' : ready ? 'Start building' : 'Connecting…',
+          label: building
+            ? t('Starting…', 'Запуск…')
+            : ready ? t('Start building', 'Начать сборку') : t('Connecting…', 'Подключение…'),
           disabled: !ready || building,
           busy: building || (buildMode === 'local' && !connected),
           onClick: () => void startBuild(),
@@ -741,13 +748,13 @@ export default function App() {
   const header = insideTelegram ? null : (tab === 'manage'
     ? (activeBot
       ? <TGHeader T={T}
-          title={manageView === 'activity' ? 'Activity' : manageView === 'connect' ? 'Connect agent' : manageView === 'board' || manageView === 'taskboard' ? 'Build board' : manageView === 'inbox' ? 'Needs you' : activeBot.name}
+          title={manageView === 'activity' ? t('Activity', 'События') : manageView === 'connect' ? t('Connect agent', 'Подключить агента') : manageView === 'board' || manageView === 'taskboard' ? t('Build board', 'Доска сборки') : manageView === 'inbox' ? t('Needs you', 'Требует внимания') : activeBot.name}
           subtitle={manageView === 'overview' || manageView === 'chat' ? '@' + activeBot.handle + ' · ' + activeBot.version : '@' + activeBot.handle}
           onBack={closeChat} />
-      : <TGHeader T={T} title="My Bots" subtitle="Deployed on AgentBot" />)
+      : <TGHeader T={T} title={t('My Bots', 'Мои боты')} subtitle={t('Deployed on AgentBot', 'Развёрнуто на AgentBot')} />)
     : tab === 'discover'
-    ? <TGHeader T={T} title="Discover" subtitle="Bots built on AgentBot" />
-    : <TGHeader T={T} title="AgentBot" subtitle={STAGE_SUB[id]} onBack={onBack} />);
+    ? <TGHeader T={T} title={t('Discover', 'Каталог')} subtitle={t('Bots built on AgentBot', 'Боты, созданные на AgentBot')} />
+    : <TGHeader T={T} title="AgentBot" subtitle={t(...STAGE_SUB[id])} onBack={onBack} />);
 
   // ── body per tab ──
   const body = tab === 'manage'
@@ -819,12 +826,12 @@ export default function App() {
     : tab === 'manage'
     ? (activeBot && manageView === 'chat'
       ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false}
-          placeholder={cloudBots.has(activeBot.id) ? 'Ask your cloud agent…' : undefined} />
+          placeholder={cloudBots.has(activeBot.id) ? t('Ask your cloud agent…', 'Спросите облачного агента…') : undefined} />
       : null)
     : drafting
     ? <Composer T={T} draft={chatDraft} onChange={setChatDraft}
         onSend={() => { const t = chatDraft.trim(); if (t) { clarifyChat.send(t); setChatDraft(''); } }}
-        disabled={false} placeholder="Type your answer…" />
+        disabled={false} placeholder={t('Type your answer…', 'Введите ответ…')} />
     : id === 'prompt'
     ? null // prompt step renders its "Start generating" button inline (inside the textarea card)
     : (mainBtn ? <MainButton T={T} {...mainBtn} /> : null);
