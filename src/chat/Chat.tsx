@@ -3,9 +3,9 @@
 // cursor polling, optimistic owner messages, ai_thinking typing indicator,
 // quick-reply options, role=system deploy/build logs.
 import { useEffect, useRef, useState } from 'react';
-import { Theme, btnReset } from '../theme';
+import { Theme } from '../theme';
 import { ChatMessage, getChatMessages, sendChatMessage } from '../api/client';
-import { TGIcon, Bubble, TypingBubble, Spinner } from '../ui';
+import { Bubble, TypingBubble, Spinner, EventCard, QuickReplies } from '../ui';
 
 // adaptive polling: tight while an AI turn is running (the answer can land
 // any moment), relaxed when the chat is idle, and much slower when the chat
@@ -89,65 +89,56 @@ export function activeOptions(messages: ChatMessage[]): { msgId: number; options
   return null;
 }
 
-// one system log line (build started, deploys, version bumps…).
-// The backend sends no severity field, so derive it from the content/data:
-// failures get the red treatment, everything else reads as progress.
-function systemSeverity(m: ChatMessage): 'ok' | 'fail' {
-  const probe = `${m.content || ''} ${JSON.stringify(m.data ?? '')}`.toLowerCase();
-  return /fail|error|crash|broken|🔴|❌|⛔|✗/.test(probe) ? 'fail' : 'ok';
-}
-
-function SystemLog({ T, msg }: { T: Theme; msg: ChatMessage }) {
-  const fail = systemSeverity(msg) === 'fail';
-  const fg = fail ? T.red : T.green;
-  return (
-    <div style={{ display: 'flex', justifyContent: 'flex-start', animation: 'tgbubble .32s cubic-bezier(.2,.8,.2,1)' }}>
-      <div style={{
-        display: 'inline-flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 13,
-        background: fail ? T.redSoft : T.greenSoft, maxWidth: '88%',
-      }}>
-        <TGIcon name={fail ? 'close' : 'check'} size={15} color={fg} stroke={2.6} />
-        <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: fg, lineHeight: '17px' }}>{msg.content}</span>
-      </div>
-    </div>
-  );
-}
-
-// Cloud-agent tool call surfaced in the chat — the agent edited a task, ran a
-// build, deployed, etc. Distinct from a plain system log (accent-tinted) so the
-// owner can see what the agent did on their behalf. Backend contract:
-// data = { kind:'action', action, label, status?, target? }.
-interface ActionData {
-  kind?: string; action?: string; label?: string;
-  status?: 'running' | 'done' | 'failed' | string;
-  target?: { slug?: string; pr_url?: string; url?: string };
-}
-
-const ACTION_ICON: Record<string, string> = {
-  task_update: 'check', task_run: 'bolt', task_create: 'plus', retry_task: 'refresh',
-  build: 'bolt', deploy: 'arrowUp', pause: 'pause', resume: 'play', test: 'beaker',
+// Map a system/action event to a Bold stage palette + icon. `data.kind`
+// (README event kinds) drives it; otherwise fall back to content severity.
+type Pal = 'amber' | 'green' | 'terracotta' | 'neutral';
+const EVENT_KIND: Record<string, { palette: Pal; icon: string }> = {
+  build_started: { palette: 'terracotta', icon: 'bolt' },
+  spec_progress: { palette: 'amber', icon: 'beaker' },
+  spec_ready: { palette: 'green', icon: 'check' },
+  spec_failed: { palette: 'terracotta', icon: 'close' },
+  phase: { palette: 'amber', icon: 'server' },
+  bot_preview: { palette: 'green', icon: 'spark' },
+  bot_deploy: { palette: 'green', icon: 'arrowUp' },
+  app_deploy: { palette: 'green', icon: 'arrowUp' },
+  ai_error: { palette: 'terracotta', icon: 'close' },
+  test: { palette: 'amber', icon: 'beaker' },
+  feedback: { palette: 'neutral', icon: 'refresh' },
+  log_only: { palette: 'neutral', icon: 'code' },
+  task_update: { palette: 'neutral', icon: 'check' },
+  task_run: { palette: 'amber', icon: 'bolt' },
+  task_create: { palette: 'neutral', icon: 'plus' },
+  retry_task: { palette: 'amber', icon: 'refresh' },
+  pr_opened: { palette: 'amber', icon: 'code' },
+  task_done: { palette: 'green', icon: 'check' },
+  build: { palette: 'terracotta', icon: 'bolt' },
+  deploy: { palette: 'green', icon: 'arrowUp' },
+  pause: { palette: 'neutral', icon: 'pause' },
+  resume: { palette: 'green', icon: 'play' },
 };
 
-function ActionLog({ T, msg }: { T: Theme; msg: ChatMessage }) {
-  const d = (msg.data || {}) as ActionData;
-  const failed = d.status === 'failed';
-  const fg = failed ? T.red : T.accent;
-  const icon = ACTION_ICON[d.action || ''] || 'bolt'; // unknown actions render generically
+interface EventData { kind?: string; action?: string; label?: string; title?: string; sub?: string; detail?: string; status?: string; }
+
+function eventLook(msg: ChatMessage): { palette: Pal; icon: string } {
+  const d = (msg.data || {}) as EventData;
+  const key = d.kind && d.kind !== 'action' ? d.kind : (d.action || '');
+  if (EVENT_KIND[key]) return EVENT_KIND[key];
+  const probe = `${msg.content || ''} ${JSON.stringify(msg.data ?? '')} ${d.status || ''}`.toLowerCase();
+  return /fail|error|crash|broken|🔴|❌|⛔|✗/.test(probe)
+    ? { palette: 'terracotta', icon: 'close' }
+    : { palette: 'green', icon: 'check' };
+}
+
+// A system/agent event → full-width stage-coloured event card (Bold 1c).
+function EventRow({ T, msg }: { T: Theme; msg: ChatMessage }) {
+  const d = (msg.data || {}) as EventData;
+  const look = eventLook(msg);
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-start', animation: 'tgbubble .32s cubic-bezier(.2,.8,.2,1)' }}>
-      <div style={{
-        display: 'inline-flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 13,
-        background: failed ? T.redSoft : T.accentSoft, maxWidth: '88%',
-      }}>
-        <TGIcon name={icon} size={15} color={fg} stroke={2.2} />
-        <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: fg, lineHeight: '17px' }}>{d.label || msg.content}</span>
-        {d.status === 'running'
-          ? <Spinner color={fg} size={13} />
-          : d.status === 'done'
-            ? <TGIcon name="check" size={14} color={fg} stroke={2.6} />
-            : null}
-      </div>
-    </div>
+    <EventCard
+      T={T} palette={look.palette} icon={look.icon}
+      title={d.title || d.label || msg.content}
+      sub={d.sub || d.detail || undefined}
+    />
   );
 }
 
@@ -161,35 +152,19 @@ export function ChatThread({ T, messages, thinking, onOption, pendingNote }: {
     <>
       {messages.map(m => {
         const data = m.data as { kind?: string } | undefined;
-        if (data?.kind === 'action') return <ActionLog key={m.id} T={T} msg={m} />;
-        if (m.role === 'system') return <SystemLog key={m.id} T={T} msg={m} />;
+        if (data?.kind === 'action' || m.role === 'system') return <EventRow key={m.id} T={T} msg={m} />;
         const own = m.role === 'owner';
         return (
-          <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Bubble T={T} from={own ? 'user' : 'bot'} animateIn={m.id < 0}>
-              <span style={{ whiteSpace: 'pre-line' }}>{m.content}</span>
-            </Bubble>
-            {!own && opts?.msgId === m.id && !thinking && (
-              // quick replies are often full sentences, not short labels — render
-              // them as left-aligned, auto-height option buttons (short ones hug
-              // their text, long ones wrap) rather than fixed-height centered pills.
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
-                {opts.options.map(o => (
-                  <button key={o} onClick={() => onOption!(o)} style={{
-                    ...btnReset, maxWidth: '88%', textAlign: 'left',
-                    padding: '10px 14px', borderRadius: 14,
-                    background: T.accentSoft, color: T.accent,
-                    border: `1.5px solid ${T.accentBorder}`,
-                    fontFamily: T.font, fontSize: 14.5, fontWeight: 500, lineHeight: '19px',
-                    whiteSpace: 'normal', wordBreak: 'break-word', transition: 'background .15s',
-                  }}>{o}</button>
-                ))}
-              </div>
-            )}
-          </div>
+          <Bubble key={m.id} T={T} from={own ? 'user' : 'bot'} animateIn={m.id < 0}>
+            <span style={{ whiteSpace: 'pre-line' }}>{m.content}</span>
+          </Bubble>
         );
       })}
       {thinking && <TypingBubble T={T} />}
+      {/* quick replies live at the foot of the feed, terracotta bordered chips */}
+      {opts && !thinking && onOption && (
+        <QuickReplies T={T} options={opts.options} onPick={onOption} />
+      )}
       {pendingNote && !thinking && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, alignSelf: 'center', padding: '4px 0' }}>
           <Spinner color={T.hint} size={14} />
