@@ -1,7 +1,7 @@
 // ui.tsx — shared Telegram Mini-App primitives, ported 1:1 from the design's
 // theme.jsx / discover.jsx. Visuals must match the prototype.
 import React from 'react';
-import { Theme, hexA, tile, btnReset } from './theme';
+import { Theme, hexA, tile, btnReset, EVENT_PALETTES, EventPalette } from './theme';
 import { useT } from './i18n';
 
 // ── Icons (simple geometric strokes only) ─────────────────────
@@ -41,6 +41,7 @@ export function TGIcon({ name, size = 22, color = 'currentColor', stroke = 2 }: 
     pause: <g fill={color} stroke="none"><rect x="7" y="5" width="3.4" height="14" rx="1.2" /><rect x="13.6" y="5" width="3.4" height="14" rx="1.2" /></g>,
     play: <path d="M8 5.5v13l11-6.5-11-6.5z" fill={color} stroke="none" />,
     cloud: <path d="M7.5 18.5a4 4 0 01-.4-7.98 5.2 5.2 0 0110.06-1.3A3.75 3.75 0 0117 18.5H7.5z" {...p} />,
+    folder: <path d="M4 7a2 2 0 012-2h3.2a2 2 0 011.5.7l1 1.3H18a2 2 0 012 2v7a2 2 0 01-2 2H6a2 2 0 01-2-2V7z" {...p} />,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
@@ -49,15 +50,22 @@ export function TGIcon({ name, size = 22, color = 'currentColor', stroke = 2 }: 
   );
 }
 
-// ── Brand mark — simple accent tile + bolt glyph ──────────────
+// ── Brand mark — green rounded-square with a terracotta hollow square ──
+// AGNTDEV lockup (Bold 1c): a green tile with an inset hollow terracotta
+// square glyph. Pair with the "AGNTDEV" wordmark (Onest 800) at call sites.
 export function Mark({ T, size = 30, radius = 9 }: { T: Theme; size?: number; radius?: number }) {
+  const inner = Math.round(size * 0.46);
+  const bw = Math.max(2, Math.round(size * 0.09));
   return (
     <div style={{
       width: size, height: size, borderRadius: radius, flexShrink: 0,
-      background: T.accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: `0 2px 8px ${hexA(T.accent, 0.4)}`,
+      background: T.text, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: `0 3px 10px ${hexA(T.text, 0.35)}`,
     }}>
-      <TGIcon name="bolt" size={size * 0.6} color="#fff" />
+      <div style={{
+        width: inner, height: inner, borderRadius: Math.round(inner * 0.28),
+        border: `${bw}px solid ${T.accent}`, background: 'transparent',
+      }} />
     </div>
   );
 }
@@ -70,7 +78,7 @@ export function TGHeader({ T, title, subtitle, onBack }: {
   return (
     <div style={{
       paddingTop: 'env(safe-area-inset-top, 0px)', background: T.headerBg, position: 'relative', zIndex: 5,
-      borderBottom: `0.5px solid ${T.sep}`,
+      borderBottom: `1px solid ${T.sep}`,
     }}>
       <div style={{
         height: 50, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -84,7 +92,7 @@ export function TGHeader({ T, title, subtitle, onBack }: {
           <span>{onBack ? t('Back', 'Назад') : ''}</span>
         </button>
         <div style={{ textAlign: 'center', overflow: 'hidden' }}>
-          <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.text, lineHeight: '18px', letterSpacing: -0.2 }}>{title}</div>
+          <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 700, color: T.text, lineHeight: '18px', letterSpacing: -0.3 }}>{title}</div>
           {subtitle && <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, lineHeight: '15px', marginTop: 1 }}>{subtitle}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', minWidth: 64, justifyContent: 'flex-end' }}>
@@ -101,15 +109,17 @@ export function TGHeader({ T, title, subtitle, onBack }: {
 export function MainButton({ T, label, onClick, disabled, busy, icon }: {
   T: Theme; label: string; onClick?: () => void; disabled?: boolean; busy?: boolean; icon?: string;
 }) {
-  const bg = disabled ? (T.dark ? '#243140' : '#dfe4ea') : T.accent;
+  const bg = disabled ? T.nestedBg : T.accent;
   const fg = disabled ? T.hint : T.accentText;
   return (
-    <div style={{ padding: '8px 12px 12px', background: T.headerBg, borderTop: `0.5px solid ${T.sep}`, position: 'relative', zIndex: 5 }}>
+    <div style={{ padding: '10px 16px 14px', background: T.headerBg, borderTop: `1px solid ${T.sep}`, position: 'relative', zIndex: 5 }}>
       <button onClick={disabled || busy ? undefined : onClick} style={{
-        ...btnReset, width: '100%', height: 50, borderRadius: 12,
-        backgroundColor: bg, color: fg, fontFamily: T.font, fontSize: 16.5, fontWeight: 600,
-        letterSpacing: 0.1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+        ...btnReset, width: '100%', height: 50, borderRadius: 15,
+        backgroundColor: bg, color: fg, fontFamily: T.font, fontSize: 16, fontWeight: 700,
+        letterSpacing: -0.2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
         cursor: disabled ? 'default' : 'pointer',
+        boxShadow: disabled ? 'none' : T.ctaShadow,
+        transition: 'transform .12s ease',
       }}>
         {busy && <Spinner color={fg} />}
         {icon && !busy && <TGIcon name={icon} size={18} color={fg} stroke={2} />}
@@ -138,7 +148,7 @@ export function Stepper({ T, steps, current }: { T: Theme; steps: number[]; curr
           <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{
               height: 3, borderRadius: 2,
-              background: done || active ? T.accent : (T.dark ? 'rgba(255,255,255,0.1)' : 'rgba(15,22,32,0.08)'),
+              background: done || active ? T.accent : T.sepStrong,
               opacity: active ? 1 : (done ? 0.55 : 1), transition: 'background .3s',
             }} />
           </div>
@@ -155,19 +165,20 @@ export function Card({ T, children, style = {}, pad = 16 }: {
   return (
     <div style={{
       background: T.cardBg, borderRadius: T.cardRadius, padding: pad, boxShadow: T.shadow,
-      border: `0.5px solid ${T.sep}`, ...style,
+      border: `1px solid ${T.sep}`, ...style,
     }}>{children}</div>
   );
 }
 
 // ── Pill (status chip) ────────────────────────────────────────
 export function Pill({ T, children, tone = 'neutral', style = {} }: {
-  T: Theme; children: React.ReactNode; tone?: 'neutral' | 'accent' | 'green'; style?: React.CSSProperties;
+  T: Theme; children: React.ReactNode; tone?: 'neutral' | 'accent' | 'green' | 'gold'; style?: React.CSSProperties;
 }) {
   const map = {
-    neutral: { bg: T.dark ? 'rgba(255,255,255,0.06)' : 'rgba(15,22,32,0.05)', fg: T.sub },
+    neutral: { bg: T.nestedBg, fg: T.sub },
     accent: { bg: T.accentSoft, fg: T.accent },
-    green: { bg: T.greenSoft, fg: T.green },
+    green: { bg: T.sage, fg: '#2f8f6f' },  // Live
+    gold: { bg: T.goldSoft, fg: T.gold },  // Building / Ready
   };
   const c = map[tone];
   return (
@@ -193,10 +204,10 @@ export function Chip({ T, children, selected, onClick, icon }: {
   return (
     <button onClick={onClick} style={{
       ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, height: 38, padding: '0 15px',
-      borderRadius: 11, fontFamily: T.font, fontSize: 14.5, fontWeight: 500,
-      background: selected ? T.accentSoft : (T.dark ? 'rgba(255,255,255,0.05)' : '#f3f5f8'),
+      borderRadius: 11, fontFamily: T.font, fontSize: 14.5, fontWeight: 600,
+      background: selected ? T.accentSoft : T.nestedBg,
       color: selected ? T.accent : T.text,
-      border: `1.5px solid ${selected ? T.accentBorder : 'transparent'}`,
+      border: `1.5px solid ${selected ? T.accentBorder : T.sep}`,
       cursor: 'pointer', transition: 'all .15s',
     }}>{icon}{children}</button>
   );
@@ -213,12 +224,12 @@ export function Bubble({ T, from = 'bot', children, animateIn }: {
       animation: animateIn ? 'tgbubble .32s cubic-bezier(.2,.8,.2,1)' : 'none',
     }}>
       <div style={{
-        maxWidth: '82%', padding: '10px 14px', borderRadius: 18,
-        borderBottomLeftRadius: isBot ? 5 : 18, borderBottomRightRadius: isBot ? 18 : 5,
+        maxWidth: isBot ? '84%' : '82%', padding: '11px 15px', borderRadius: 20,
+        borderBottomLeftRadius: isBot ? 6 : 20, borderBottomRightRadius: isBot ? 20 : 6,
         background: isBot ? T.botBubble : T.userBubble,
         color: isBot ? T.text : T.userBubbleText,
-        border: isBot ? `0.5px solid ${T.sep}` : 'none',
-        boxShadow: isBot ? T.shadow : `0 1px 6px ${hexA(T.accent, 0.3)}`,
+        border: isBot ? `1px solid ${T.sep}` : 'none',
+        boxShadow: isBot ? T.shadow : `0 8px 18px -10px ${hexA(T.text, 0.5)}`,
         fontFamily: T.font, fontSize: 15, lineHeight: '20px',
       }}>{children}</div>
     </div>
@@ -248,7 +259,7 @@ export function TypingBubble({ T }: { T: Theme }) {
 // ── Progress bar ──────────────────────────────────────────────
 export function ProgressBar({ T, value, color }: { T: Theme; value: number; color?: string }) {
   return (
-    <div style={{ height: 6, borderRadius: 4, background: T.dark ? 'rgba(255,255,255,0.08)' : 'rgba(15,22,32,0.07)', overflow: 'hidden' }}>
+    <div style={{ height: 6, borderRadius: 4, background: hexA(T.text, 0.1), overflow: 'hidden' }}>
       <div style={{ height: '100%', width: `${value}%`, borderRadius: 4, background: color || T.accent, transition: 'width .4s cubic-bezier(.3,.8,.3,1)' }} />
     </div>
   );
@@ -259,31 +270,47 @@ export type Tab = 'build' | 'discover' | 'manage';
 
 export function TabBar({ T, tab, onTab }: { T: Theme; tab: Tab; onTab: (t: Tab) => void }) {
   const t = useT();
-  const items: { id: Tab; icon: string; label: string }[] = [
-    { id: 'build', icon: 'bolt', label: t('Build', 'Сборка') },
-    { id: 'discover', icon: 'compass', label: t('Discover', 'Каталог') },
-    { id: 'manage', icon: 'chat', label: t('My Bots', 'Мои боты') },
-  ];
+  const side = (id: Tab, icon: string, label: string) => {
+    const on = tab === id;
+    return (
+      <button onClick={() => onTab(id)} style={{
+        ...btnReset, flex: 1, height: '100%', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 3,
+      }}>
+        <TGIcon name={icon} size={22} color={on ? T.accent : T.hint} stroke={on ? 2.2 : 2} />
+        <span style={{
+          fontFamily: T.font, fontSize: 10.5, fontWeight: on ? 700 : 500,
+          letterSpacing: 0.1, color: on ? T.accent : T.hint,
+        }}>{label}</span>
+      </button>
+    );
+  };
   return (
+    // Wrapper stays in-flow (reserves height) with transparent surround;
+    // the inner pill reads as a floating translucent bar.
     <div style={{
-      display: 'flex', background: T.headerBg, borderTop: `0.5px solid ${T.sep}`,
-      paddingBottom: 'max(8px, env(safe-area-inset-bottom, 0px))', position: 'relative', zIndex: 5,
+      background: 'transparent', padding: '6px 14px',
+      paddingBottom: 'max(14px, env(safe-area-inset-bottom, 8px))',
+      position: 'relative', zIndex: 20,
     }}>
-      {items.map(it => {
-        const on = tab === it.id;
-        return (
-          <button key={it.id} onClick={() => onTab(it.id)} style={{
-            ...btnReset, flex: 1, height: 50, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', gap: 3,
-          }}>
-            <TGIcon name={it.icon} size={23} color={on ? T.accent : T.hint} stroke={2} />
-            <span style={{
-              fontFamily: T.font, fontSize: 10.5, fontWeight: on ? 700 : 500,
-              letterSpacing: 0.2, color: on ? T.accent : T.hint,
-            }}>{it.label}</span>
-          </button>
-        );
-      })}
+      <div style={{
+        display: 'flex', alignItems: 'center', height: 66,
+        background: hexA('#FBF8EF', 0.92), backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+        border: `1px solid ${T.sep}`, borderRadius: 22, boxShadow: T.tabShadow,
+        padding: '0 8px', position: 'relative',
+      }}>
+        {side('manage', 'folder', t('Bots', 'Боты'))}
+        {/* center — raised terracotta ＋ (new bot / onboarding) */}
+        <button onClick={() => onTab('build')} style={{
+          ...btnReset, width: 52, height: 52, flexShrink: 0, marginTop: -14,
+          borderRadius: 17, background: T.accent, color: T.accentText,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: T.ctaShadow, border: `3px solid ${hexA('#FBF8EF', 0.92)}`,
+        }}>
+          <TGIcon name="plus" size={26} color={T.accentText} stroke={2.6} />
+        </button>
+        {side('discover', 'compass', t('Discover', 'Каталог'))}
+      </div>
     </div>
   );
 }
@@ -314,6 +341,32 @@ export function BotTile({ T, name, tone, src, size = 38, radius = 12, fontSize }
       )}
     </div>
   );
+}
+
+// ── bot avatar: AI-generated image, else the monogram tile ────
+// Shows the AI-generated avatar (bot_avatar_url) when present, else falls back to
+// the BotTile monogram. Also falls back if the image errors (broken/expired URL),
+// so the slot always shows something. Same size/shape as BotTile — a drop-in swap.
+export function BotAvatar({ T, name, tone, avatarUrl, size = 38, radius = 12, fontSize }: {
+  T: Theme; name: string; tone: string; avatarUrl?: string; size?: number; radius?: number; fontSize?: number;
+}) {
+  const [failed, setFailed] = React.useState(false);
+  // reset the error gate when the URL changes (e.g. a regenerate produced a new one)
+  React.useEffect(() => { setFailed(false); }, [avatarUrl]);
+  if (avatarUrl && !failed) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={`${name} avatar`}
+        onError={() => setFailed(true)}
+        style={{
+          width: size, height: size, borderRadius: radius, flexShrink: 0,
+          objectFit: 'cover', display: 'block', background: T.cardBg,
+        }}
+      />
+    );
+  }
+  return <BotTile T={T} name={name} tone={tone} size={size} radius={radius} fontSize={fontSize} />;
 }
 
 // ── shared small blocks used across screens ───────────────────
@@ -347,5 +400,125 @@ export function BigStat({ T, value, label, tone }: { T: Theme; value: string; la
       <div style={{ fontFamily: T.font, fontSize: 28, fontWeight: 700, color, letterSpacing: -0.5 }}>{value}</div>
       <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint, marginTop: 2 }}>{label}</div>
     </Card>
+  );
+}
+
+// ── Bold 1c: brand wordmark lockup ────────────────────────────
+export function Wordmark({ T, size = 30 }: { T: Theme; size?: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <Mark T={T} size={size} radius={Math.round(size * 0.3)} />
+      <span style={{ fontFamily: T.font, fontWeight: 800, fontSize: size * 0.62, letterSpacing: -0.4, color: T.text }}>AGNTDEV</span>
+    </div>
+  );
+}
+
+// ── Bold 1c: circular build-progress ring ─────────────────────
+// 172px conic ring on a dark-green disc; large percent numeral.
+export function ProgressRing({ T, value, size = 172, label, color }: {
+  T: Theme; value: number; size?: number; label?: string; color?: string;
+}) {
+  const pct = Math.max(0, Math.min(100, Math.round(value)));
+  const arc = color || T.accent;
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%', margin: '0 auto', position: 'relative',
+      background: `conic-gradient(${arc} ${pct}%, ${hexA(T.text, 0.12)} 0)`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: T.heroShadow,
+    }}>
+      <div style={{
+        position: 'absolute', inset: 13, borderRadius: '50%', background: T.text,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+      }}>
+        <span style={{ fontFamily: T.font, fontWeight: 700, fontSize: 32, letterSpacing: -1, color: T.accentText }}>{pct}%</span>
+        {label && <span style={{ fontFamily: T.font, fontSize: 12, fontWeight: 500, color: hexA(T.accentText, 0.7) }}>{label}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Bold 1c: stage-coloured event card (chat feed system message) ──
+export function EventCard({ T, palette = 'neutral', icon, chip, title, children }: {
+  T: Theme; palette?: keyof typeof EVENT_PALETTES; icon?: string; chip?: string;
+  title: React.ReactNode; children?: React.ReactNode;
+}) {
+  const p: EventPalette = EVENT_PALETTES[palette];
+  return (
+    <div style={{
+      background: p.bg, border: `1px solid ${p.border}`, borderRadius: 16, padding: '13px 15px',
+      display: 'flex', flexDirection: 'column', gap: children ? 7 : 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {icon && (
+          <div style={{ width: 30, height: 30, borderRadius: 9, background: p.chip, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <TGIcon name={icon} size={17} color={p.accent} stroke={2} />
+          </div>
+        )}
+        <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 700, color: T.text, flex: 1, letterSpacing: -0.2 }}>{title}</div>
+        {chip && (
+          <span style={{
+            fontFamily: T.font, fontSize: 11, fontWeight: 700, color: p.accent, background: p.chip,
+            padding: '3px 9px', borderRadius: 999, letterSpacing: 0.2,
+          }}>{chip}</span>
+        )}
+      </div>
+      {children && <div style={{ fontFamily: T.font, fontSize: 13.5, lineHeight: '19px', color: T.sub, paddingLeft: icon ? 40 : 0 }}>{children}</div>}
+    </div>
+  );
+}
+
+// ── Bold 1c: toast (bottom, above tab bar) ────────────────────
+export function Toast({ T, show, children, bottom = 92 }: {
+  T: Theme; show: boolean; children: React.ReactNode; bottom?: number;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', left: 0, right: 0, bottom, display: 'flex', justifyContent: 'center',
+      pointerEvents: 'none', zIndex: 60, padding: '0 20px',
+      opacity: show ? 1 : 0, transform: show ? 'translateY(0)' : 'translateY(10px)',
+      transition: 'opacity .22s ease, transform .22s ease',
+    }}>
+      <div style={{
+        background: T.text, color: T.accentText, fontFamily: T.font, fontSize: 14, fontWeight: 600,
+        padding: '11px 18px', borderRadius: 14, boxShadow: T.heroShadow, maxWidth: '100%',
+        display: 'flex', alignItems: 'center', gap: 9, letterSpacing: -0.1,
+      }}>{children}</div>
+    </div>
+  );
+}
+
+// ── Bold 1c: toggle switch (48×28) ────────────────────────────
+export function Toggle({ T, on, onChange }: { T: Theme; on: boolean; onChange?: (v: boolean) => void }) {
+  return (
+    <button onClick={() => onChange?.(!on)} style={{
+      ...btnReset, width: 48, height: 28, borderRadius: 999, flexShrink: 0,
+      background: on ? T.green : T.sepStrong, position: 'relative', transition: 'background .2s ease',
+    }}>
+      <span style={{
+        position: 'absolute', top: 3, left: on ? 23 : 3, width: 22, height: 22, borderRadius: '50%',
+        background: '#FBF8EF', boxShadow: '0 1px 3px rgba(34,64,46,0.35)', transition: 'left .2s ease',
+      }} />
+    </button>
+  );
+}
+
+// ── Bold 1c: segmented control (active = green fill, cream text) ──
+export function Segmented<V extends string>({ T, value, options, onChange }: {
+  T: Theme; value: V; options: { id: V; label: string }[]; onChange: (v: V) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 4, background: T.nestedBg, borderRadius: 13, padding: 4 }}>
+      {options.map(o => {
+        const on = o.id === value;
+        return (
+          <button key={o.id} onClick={() => onChange(o.id)} style={{
+            ...btnReset, flex: 1, height: 36, borderRadius: 10, fontFamily: T.font, fontSize: 13.5,
+            fontWeight: on ? 700 : 600, color: on ? T.accentText : T.sub,
+            background: on ? T.text : 'transparent', transition: 'background .18s ease, color .18s ease',
+          }}>{o.label}</button>
+        );
+      })}
+    </div>
   );
 }

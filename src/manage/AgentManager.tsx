@@ -72,7 +72,7 @@ export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudD
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setConfirmLocal(false)} style={{
                 ...btnReset, flex: 1, height: 44, borderRadius: 12,
-                background: T.dark ? 'rgba(255,255,255,0.06)' : '#f3f5f8',
+                background: T.nestedBg,
                 color: T.text, fontFamily: T.font, fontSize: 14.5, fontWeight: 600,
               }}>
                 {t('Keep cloud agent', 'Оставить облачного агента')}

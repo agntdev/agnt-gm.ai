@@ -78,6 +78,7 @@ export interface Project {
   github_project_url?: string;
   live_url?: string;
   bot_username?: string;   // the real managed-bot @username (for t.me links on Discovery)
+  bot_avatar_url?: string; // AI-generated bot avatar (public Spaces URL); absent until generated
   discoverable?: boolean;  // listed on the Discover page; absent/true = shown, false = opted out
   logo_url?: string;
   preview_image_url?: string;
@@ -544,6 +545,17 @@ export function setBotPaused(idOrSlug: string, paused: boolean): Promise<unknown
 // opt a bot in/out of the Discover feed — optimistic (real PUT when the API ships)
 export function setDiscoverable(idOrSlug: string, on: boolean): Promise<unknown> {
   return request('PUT', `/builder/projects/${encodeURIComponent(idOrSlug)}/discoverable`, { discoverable: on });
+}
+
+// ── Regenerate the AI bot avatar (owner) ──────────────────────
+// Async 202 → { accepted, status:'pending' }; the new bot_avatar_url lands on a
+// later project poll. The button shows a brief "generating…" state meanwhile.
+export interface AvatarRegenResult {
+  accepted?: boolean;
+  status?: string; // 'pending'
+}
+export function regenerateBotAvatar(idOrSlug: string): Promise<AvatarRegenResult> {
+  return request('POST', `/builder/projects/${encodeURIComponent(idOrSlug)}/avatar/regenerate`);
 }
 
 // ── Cloud agent (deploy one; max one per bot) ─────────────────

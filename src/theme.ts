@@ -27,7 +27,28 @@ export interface Theme {
   font: string;
   mono: string;
   cardRadius: number;
+  // ── Bold 1c extras ──
+  canvasBg: string;     // page surround behind the screen
+  flatBg: string;       // flat card / composer field
+  nestedBg: string;     // nested tiles/chips inside a card
+  accentPressed: string; // terracotta emphasis text (#A94A2F)
+  gold: string;         // amber accent
+  goldSoft: string;     // amber tint bg
+  sage: string;         // sage chip bg
+  sageBorder: string;
+  heroShadow: string;   // dark hero card shadow
+  ctaShadow: string;    // terracotta CTA shadow
+  tabShadow: string;    // floating tab bar shadow
 }
+
+// Event-card palettes (system messages in the chat feed), Bold direction.
+export interface EventPalette { bg: string; border: string; chip: string; accent: string; }
+export const EVENT_PALETTES: Record<'amber' | 'green' | 'terracotta' | 'neutral', EventPalette> = {
+  amber:      { bg: '#F6EFDD', border: '#E6D3A6', chip: '#EAD9AE', accent: '#B08D4C' },
+  green:      { bg: '#E4EEE4', border: '#C2DAC7', chip: '#D0E3D3', accent: '#2f8f6f' },
+  terracotta: { bg: '#F8E9E1', border: '#ECCBBB', chip: '#F1D5C7', accent: '#C15B3D' },
+  neutral:    { bg: '#F1EADA', border: '#E4DAC0', chip: '#E7DDC6', accent: '#8C8168' },
+};
 
 export function hexA(hex: string, alpha: number): string {
   const h = hex.replace('#', '');
@@ -37,38 +58,48 @@ export function hexA(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// Telegram-native palette, light + dark, parameterised by accent hue.
-export function tgTheme(mode: 'light' | 'dark', accent = '#229ED9'): Theme {
-  const dark = mode === 'dark';
-  const a = accent;
+// AGNTDEV "Bold 1c" — a single warm cream/terracotta/green palette (no
+// dark variant in this design). Mode + accent args are kept for call-site
+// compatibility but ignored: the design is one confident theme.
+export function tgTheme(_mode?: 'light' | 'dark', _accent?: string): Theme {
   return {
-    dark,
-    accent: a,
-    accentText: '#ffffff',
-    // accent tint used for soft fills / selected chips
-    accentSoft: dark ? hexA(a, 0.18) : hexA(a, 0.1),
-    accentBorder: dark ? hexA(a, 0.5) : hexA(a, 0.32),
-    pageBg: dark ? '#0e1621' : '#eef1f5',
-    cardBg: dark ? '#17212b' : '#ffffff',
-    headerBg: dark ? '#17212b' : '#ffffff',
-    inputBg: dark ? '#0e1621' : '#f3f5f8',
-    text: dark ? '#f5f7fa' : '#0d1620',
-    hint: dark ? '#7d8b99' : '#8a929c',
-    sub: dark ? '#aab4be' : '#5c6570',
-    sep: dark ? 'rgba(255,255,255,0.07)' : 'rgba(15,22,32,0.07)',
-    sepStrong: dark ? 'rgba(255,255,255,0.12)' : 'rgba(15,22,32,0.1)',
-    botBubble: dark ? '#1c2a37' : '#ffffff',
-    userBubble: a,
-    userBubbleText: '#ffffff',
-    green: dark ? '#5cc98c' : '#21a05a',
-    greenSoft: dark ? 'rgba(92,201,140,0.16)' : 'rgba(33,160,90,0.1)',
-    red: dark ? '#ef8273' : '#d6492f',
-    redSoft: dark ? 'rgba(239,130,115,0.16)' : 'rgba(214,73,47,0.1)',
-    amber: dark ? '#e9b15c' : '#c98a1e',
-    shadow: dark ? '0 1px 2px rgba(0,0,0,0.4)' : '0 1px 2px rgba(15,22,32,0.05), 0 1px 12px rgba(15,22,32,0.04)',
-    font: '-apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif',
-    mono: '"SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace',
-    cardRadius: 16,
+    dark: false,
+    accent: '#C15B3D',            // terracotta — primary CTA
+    accentText: '#FBF8EF',        // cream text on terracotta
+    accentSoft: '#F8E9E1',        // terracotta tint (soft fills)
+    accentBorder: '#C15B3D',      // strong terracotta (selected chip / quick-reply)
+    pageBg: '#ECE4CE',            // screen background
+    canvasBg: '#DED3B8',          // page surround behind the screen
+    cardBg: '#FBF8EF',            // raised card surface
+    headerBg: '#FBF8EF',          // header / footer chrome
+    inputBg: '#F6F1E3',           // flat card / composer field
+    flatBg: '#F6F1E3',
+    nestedBg: '#F1EADA',          // nested tiles/chips inside a card
+    text: '#22402E',              // ink / primary green
+    hint: '#B3A98C',
+    sub: '#8C8168',
+    sep: '#E4DAC0',               // borders
+    sepStrong: '#D8CDB2',
+    botBubble: '#FBF8EF',         // assistant bubble (cream)
+    userBubble: '#22402E',        // owner bubble (green)
+    userBubbleText: '#F3ECD8',    // cream text
+    green: '#3AA98B',             // success
+    greenSoft: '#E1E8D6',         // sage tint
+    red: '#C15B3D',               // "needs fix" reads as terracotta here
+    redSoft: '#F3DBCF',
+    amber: '#B08D4C',             // gold
+    accentPressed: '#A94A2F',
+    gold: '#B08D4C',
+    goldSoft: '#F1E7CF',
+    sage: '#E1E8D6',
+    sageBorder: '#C2D3BE',
+    shadow: '0 10px 26px -18px rgba(34,64,46,0.3)',
+    heroShadow: '0 16px 32px -18px rgba(34,64,46,0.6)',
+    ctaShadow: '0 9px 19px -9px rgba(193,91,61,0.7)',
+    tabShadow: '0 12px 26px -14px rgba(34,64,46,0.4)',
+    font: '"Onest", -apple-system, system-ui, "Segoe UI", Roboto, sans-serif',
+    mono: 'ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace',
+    cardRadius: 18,
   };
 }
 
