@@ -1,5 +1,5 @@
 // api/stars.ts — Telegram Stars "pay then run" orchestration for gated owner
-// actions (deploy 1★, cloud-agent 10★). Keeps the Telegram SDK coupling out of
+// actions (deploy 1★, cloud-agent 100★). Keeps the Telegram SDK coupling out of
 // the pure API client.
 //
 // Flow:
@@ -24,7 +24,7 @@ export type PayResult = 'ok' | 'cancelled' | 'failed' | 'unconfirmed';
 // Display price (mirrors the backend default). The authoritative amount is
 // always shown in Telegram's native payment sheet; this is just for the button
 // label. Only cloud-agent assignment is charged — deploy is free.
-export const STAR_COST = { cloudAgent: 10 } as const;
+export const STAR_COST = { cloudAgent: 100 } as const;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
