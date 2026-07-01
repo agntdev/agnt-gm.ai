@@ -582,20 +582,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     { label: t('Live', 'В эфире'), state: live ? 'done' : latestDeployFailed ? 'failed' : latestDeployActive ? 'active' : 'todo' },
   ];
 
-  // One combined 3-up card: build progress · end-user reach · recency. The
-  // middle cell carries unique users (analytics.active_users — distinct users in
-  // the window) once the bot is live; '—' until the analytics endpoint ships.
-  type Stat = { value: string; label: string; tone?: 'green' };
-  const stats: Stat[] = [
-    wholeBot
-      ? { value: bp && bp.pass_current > 0 ? String(iterOffset(bp) + bp.pass_current) : '—', label: bp && (iterOffset(bp) + bp.pass_current) === 1 ? t('Iteration', 'Итерация') : t('Iterations', 'Итерации'), tone: bp && (live || bp.phase === 'published') ? 'green' : undefined }
-      : { value: total ? `${done}/${total}` : '—', label: t('Tasks done', 'Задачи готовы'), tone: allDone ? 'green' : undefined },
-    { value: human(analytics?.active_users), label: t('unique users', 'уник. польз.') },
-    {
-      value: latestDeploy?.deployed_at ? relTime(latestDeploy.deployed_at) : latestDeploy?.status || '—',
-      label: latestDeployFailed ? t('Deploy failed', 'Ошибка деплоя') : t('Last update', 'Последнее обновление'),
-    },
-  ];
 
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -652,17 +638,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </div>
       )}
 
-      {/* Show on Discovery — owner opt-out of the public Discover feed */}
-      {live && botUsername && (
-        <div style={{
-          alignSelf: 'flex-start', height: 34, display: 'inline-flex', alignItems: 'center', gap: 8,
-          padding: '0 8px 0 12px', borderRadius: 999, background: T.nestedBg, border: `1px solid ${T.sep}`,
-        }}>
-          <TGIcon name="compass" size={14} color={discoverable ? T.accent : T.hint} stroke={2} />
-          <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.sub }}>{t('Discover', 'Каталог')}</span>
-          <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
-        </div>
-      )}
 
       {/* Onboarding (either pipeline) before the bot exists: a two-step sequence —
           (1) assign a builder agent, then (2) create the bot, which is locked
@@ -749,34 +724,48 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         );
       })()}
 
-      {/* secondary actions — Test bot · Spec · Code */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px 28px', marginTop: -4 }}>
-        {(() => {
-          const canTest = !!botUsername && live && !pausedEffective;
-          return (
-        <button disabled={!canTest} onClick={() => canTest && openTgLink(`https://t.me/${botUsername}`)} style={{
-          ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600,
-          color: canTest ? T.accent : T.hint, cursor: canTest ? 'pointer' : 'default',
-        }}>
-          <TGIcon name="open" size={17} color={canTest ? T.accent : T.hint} stroke={2} /> {t('Test bot', 'Тест бота')}
-        </button>
-          );
-        })()}
-        {blueprintUrl && (
-          <button onClick={() => openExternal(blueprintUrl)} style={{
-            ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
+      {/* secondary — Pause/Resume · Test bot (two tiles, per the prototype) */}
+      {live && botUsername && (
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onTogglePause} style={{
+            ...btnReset, flex: 1, height: 48, borderRadius: 14, background: T.cardBg,
+            border: `1px solid ${T.sep}`, boxShadow: T.shadow,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text,
           }}>
-            <TGIcon name="link" size={17} color={T.accent} stroke={2} /> {t('Spec', 'Спека')}
+            <TGIcon name={paused ? 'play' : 'pause'} size={18} color={T.sub} stroke={2} />
+            {paused ? t('Resume', 'Возобновить') : t('Pause', 'Пауза')}
           </button>
-        )}
-        {repoUrl && (
-          <button onClick={() => openExternal(repoUrl)} style={{
-            ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
+          <button onClick={() => openTgLink(`https://t.me/${botUsername}`)} style={{
+            ...btnReset, flex: 1, height: 48, borderRadius: 14, background: T.cardBg,
+            border: `1px solid ${T.sep}`, boxShadow: T.shadow,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text,
           }}>
-            <TGIcon name="code" size={17} color={T.accent} stroke={2} /> {t('Code', 'Код')}
+            <TGIcon name="open" size={17} color={T.sub} stroke={2} />
+            {t('Test bot', 'Тест бота')}
           </button>
-        )}
-      </div>
+        </div>
+      )}
+      {/* Spec · Code — quiet deep links */}
+      {(blueprintUrl || repoUrl) && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24, marginTop: -2 }}>
+          {blueprintUrl && (
+            <button onClick={() => openExternal(blueprintUrl)} style={{
+              ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.accent,
+            }}>
+              <TGIcon name="link" size={16} color={T.accent} stroke={2} /> {t('Spec', 'Спека')}
+            </button>
+          )}
+          {repoUrl && (
+            <button onClick={() => openExternal(repoUrl)} style={{
+              ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.accent,
+            }}>
+              <TGIcon name="code" size={16} color={T.accent} stroke={2} /> {t('Code', 'Код')}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* task_manager: attention inbox — amber/red badge when something needs the
           owner, else a neutral "all clear" entry point */}
@@ -831,20 +820,66 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           update). Hidden while a whole_bot is building (the build card above
           carries the live status). */}
       {!wholeBotBuilding && (
-      <Card T={T} pad={0}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
-          {stats.map((s, i) => (
-            <div key={i} style={{
-              padding: '11px 8px', textAlign: 'center',
-              borderLeft: i % 3 ? `0.5px solid ${T.sep}` : 'none',
-              borderTop: i >= 3 ? `0.5px solid ${T.sep}` : 'none',
-            }}>
-              <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, letterSpacing: -0.4, color: s.tone === 'green' ? T.green : T.text }}>{s.value}</div>
-              <div style={{ fontFamily: T.font, fontSize: 11, color: T.hint, marginTop: 2 }}>{s.label}</div>
+        <div>
+          <SectionLabel T={T}>{t('Activity', 'Активность')}</SectionLabel>
+          <Card T={T} pad={16}>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1, background: T.nestedBg, borderRadius: 14, padding: '12px 13px' }}>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{t('Active users · 30d', 'Активные · 30д')}</div>
+                {analytics?.active_users == null ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                    <TGIcon name="clock" size={14} color={T.hint} stroke={2} />
+                    <span style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.hint }}>{t('no data yet', 'пока нет данных')}</span>
+                  </div>
+                ) : (
+                  <div style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: T.text, letterSpacing: -0.5, marginTop: 2 }}>{human(analytics.active_users)}</div>
+                )}
+              </div>
+              <div style={{ flex: 1, background: T.nestedBg, borderRadius: 14, padding: '12px 13px' }}>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{t('Releases', 'Релизы')}</div>
+                <div style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: T.text, letterSpacing: -0.5, marginTop: 2 }}>{deploys.length || '—'}</div>
+              </div>
             </div>
-          ))}
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 12 }}>
+              {live ? t('Live', 'В сети') : t('In progress', 'В процессе')}
+              {latestDeploy?.deployed_at ? ` · ${t('last update', 'обновлено')} ${relTime(latestDeploy.deployed_at)}` : ''}
+            </div>
+          </Card>
         </div>
-      </Card>
+      )}
+
+      {/* The plan — the readable "what we understood" spec */}
+      {blueprintUrl && (
+        <button onClick={() => openExternal(blueprintUrl)} style={{
+          ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 13,
+          padding: 14, borderRadius: 16, background: T.cardBg, border: `1px solid ${T.sep}`, boxShadow: T.shadow,
+        }}>
+          <div style={{ width: 38, height: 38, borderRadius: 11, background: T.sage, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <TGIcon name="check" size={19} color="#2f8f6f" stroke={2} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 700, color: T.text }}>{t('The plan', 'План')}</div>
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>{t('what we understood from your idea', 'что мы поняли из вашей идеи')}</div>
+          </div>
+          <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />
+        </button>
+      )}
+
+      {/* Settings — public visibility */}
+      {live && botUsername && (
+        <div>
+          <SectionLabel T={T}>{t('Settings', 'Настройки')}</SectionLabel>
+          <Card T={T} pad={0}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px' }}>
+              <TGIcon name="compass" size={18} color={T.sub} stroke={2} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>{t('Show in Discover', 'Показывать в Каталоге')}</div>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>{discoverable ? t('Visible in the public catalog', 'Виден в публичном каталоге') : t('Hidden from the public catalog', 'Скрыт из публичного каталога')}</div>
+              </div>
+              <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* assigned builder agent summary → add-an-agent sheet (cloud or local) */}
