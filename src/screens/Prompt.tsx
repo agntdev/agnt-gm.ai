@@ -158,10 +158,10 @@ function autoGrow(el: HTMLTextAreaElement | null) {
 
 export type StartBtn = { label: string; disabled?: boolean; busy?: boolean; onClick?: () => void };
 
-export function PromptScreen({ T, idea, setIdea, changed, error, startBtn, onMyBots }: {
+export function PromptScreen({ T, idea, setIdea, changed, error, startBtn }: {
   T: Theme; idea: string; setIdea: (v: string) => void; changed: boolean;
   user?: TgUser | null; onToggleTheme?: () => void; error?: string | null;
-  startBtn?: StartBtn | null; onMyBots?: () => void;
+  startBtn?: StartBtn | null;
 }) {
   const t = useT();
   const { lang, setLang } = useLang();
@@ -173,17 +173,12 @@ export function PromptScreen({ T, idea, setIdea, changed, error, startBtn, onMyB
   const canStart = !!idea.trim() && !!startBtn && !startBtn.disabled;
   return (
     <div style={{ padding: '16px 22px 24px', display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      {/* brand lockup · My bots link (+ minimal language toggle) */}
+      {/* brand lockup · language toggle */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
         <Wordmark T={T} size={30} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <button onClick={() => setLang(lang === 'ru' ? 'en' : 'ru')} aria-label="Language" style={{
-            ...btnReset, fontFamily: T.font, fontSize: 13, fontWeight: 700, letterSpacing: 0.3, color: T.hint,
-          }}>{lang === 'ru' ? 'RU' : 'EN'}</button>
-          <button onClick={onMyBots} style={{
-            ...btnReset, fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.sub, letterSpacing: -0.2,
-          }}>{t('My bots', 'Мои боты')}</button>
-        </div>
+        <button onClick={() => setLang(lang === 'ru' ? 'en' : 'ru')} aria-label="Language" style={{
+          ...btnReset, fontFamily: T.font, fontSize: 13, fontWeight: 700, letterSpacing: 0.3, color: T.hint,
+        }}>{lang === 'ru' ? 'RU' : 'EN'}</button>
       </div>
 
       {changed && (
