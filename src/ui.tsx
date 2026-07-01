@@ -266,6 +266,28 @@ export function ProgressBar({ T, value, color }: { T: Theme; value: number; colo
   );
 }
 
+// ── Sparkline — tiny 7-day trend (area + line + last-point dot) ─
+export function Sparkline({ values, color, width = 92, height = 34 }: {
+  values: number[]; color: string; width?: number; height?: number;
+}) {
+  if (!values || values.length < 2) return null;
+  const max = Math.max(...values), min = Math.min(...values);
+  const range = max - min || 1;
+  const stepX = width / (values.length - 1);
+  const pad = 3;
+  const pts = values.map((v, i) => [i * stepX, height - pad - ((v - min) / range) * (height - pad * 2)] as const);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const area = `${line} L${width},${height} L0,${height} Z`;
+  const last = pts[pts.length - 1];
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', flexShrink: 0 }}>
+      <path d={area} fill={color} fillOpacity={0.13} />
+      <path d={line} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r={2.6} fill={color} />
+    </svg>
+  );
+}
+
 // ── bottom tab bar ────────────────────────────────────────────
 export type Tab = 'build' | 'discover' | 'manage';
 

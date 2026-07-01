@@ -11,7 +11,7 @@ import {
   botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
-import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, StatusChip } from '../ui';
+import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, StatusChip, Sparkline } from '../ui';
 import { MyBot } from './MyBots';
 import { relTime } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
@@ -258,6 +258,22 @@ function SectionLabel({ T, children, right }: { T: Theme; children: ReactNode; r
     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 4px 11px' }}>
       <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3 }}>{children}</span>
       {right}
+    </div>
+  );
+}
+
+// one small usage stat inside the Usage card
+function UsageTile({ T, label, value, tone, dot, up }: {
+  T: Theme; label: string; value: string; tone?: string; dot?: string; up?: boolean;
+}) {
+  return (
+    <div style={{ flex: 1, minWidth: 0, background: T.nestedBg, borderRadius: 14, padding: '11px 12px' }}>
+      <div style={{ fontFamily: T.font, fontSize: 11.5, color: T.hint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
+        {dot && <span style={{ width: 7, height: 7, borderRadius: 999, background: dot, flexShrink: 0 }} />}
+        <span style={{ fontFamily: T.font, fontSize: 18, fontWeight: 700, color: tone || T.text, letterSpacing: -0.4 }}>{value}</span>
+        {up && <TGIcon name="arrowUp" size={12} color={T.green} stroke={2.6} />}
+      </div>
     </div>
   );
 }
@@ -829,34 +845,59 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       {/* stats — one compact 3-up row (build progress · unique users · last
           update). Hidden while a whole_bot is building (the build card above
           carries the live status). */}
-      {!wholeBotBuilding && (
+      {/* Usage — live summary of who's using the bot (degrades gracefully) */}
+      {!wholeBotBuilding && (() => {
+        const a = analytics;
+        const peopleToday = a?.people_today ?? a?.messages_today ?? null;
+        const users7d = a?.users_7d && a.users_7d.length >= 2 ? a.users_7d : null;
+        const usersTotal = a?.users_total ?? a?.active_users ?? null;
+        const usersNew = a?.users_new_7d ?? null;
+        const activeNow = a?.active_now ?? null;
+        const delta = a?.delta_pct ?? null;
+        const hasStats = usersTotal != null || usersNew != null || activeNow != null || delta != null;
+        const peopleWord = (n: number) => lang === 'ru'
+          ? (n % 10 === 1 && n % 100 !== 11 ? 'человеку' : 'людям')
+          : (n === 1 ? 'person' : 'people');
+        const newValue = usersNew != null ? `+${human(usersNew)}` : (delta != null ? `${delta > 0 ? '+' : ''}${delta}%` : '—');
+        const newUp = usersNew != null ? usersNew > 0 : (delta != null ? delta > 0 : false);
+        return (
         <div>
-          <SectionLabel T={T}>{t('Activity', 'Активность')}</SectionLabel>
+          <SectionLabel T={T}>{t('Usage', 'Использование')}</SectionLabel>
           <Card T={T} pad={16}>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ flex: 1, background: T.nestedBg, borderRadius: 14, padding: '12px 13px' }}>
-                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{t('Active users · 30d', 'Активные · 30д')}</div>
-                {analytics?.active_users == null ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
-                    <TGIcon name="clock" size={14} color={T.hint} stroke={2} />
-                    <span style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.hint }}>{t('no data yet', 'пока нет данных')}</span>
-                  </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {peopleToday != null ? (
+                  <>
+                    <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub }}>{t('Today your bot answered', 'Сегодня бот ответил')}</div>
+                    <div style={{ fontFamily: T.font, fontSize: 26, fontWeight: 800, color: T.text, letterSpacing: -0.6, marginTop: 2 }}>
+                      {human(peopleToday)} <span style={{ fontSize: 15, fontWeight: 600, color: T.sub }}>{peopleWord(peopleToday)}</span>
+                    </div>
+                  </>
                 ) : (
-                  <div style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: T.text, letterSpacing: -0.5, marginTop: 2 }}>{human(analytics.active_users)}</div>
+                  <>
+                    <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 700, color: T.text }}>{live ? t('Your bot is live', 'Бот в эфире') : t('Getting ready', 'Готовимся')}</div>
+                    <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 3, lineHeight: '17px' }}>{t('Usage shows up here as people start chatting with it.', 'Статистика появится, как только людьми начнут пользоваться.')}</div>
+                  </>
                 )}
               </div>
-              <div style={{ flex: 1, background: T.nestedBg, borderRadius: 14, padding: '12px 13px' }}>
-                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{t('Releases', 'Релизы')}</div>
-                <div style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: T.text, letterSpacing: -0.5, marginTop: 2 }}>{deploys.length || '—'}</div>
-              </div>
+              {users7d && <Sparkline values={users7d} color={T.green} />}
             </div>
-            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 12 }}>
+            {hasStats && (
+              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                <UsageTile T={T} label={t('Total users', 'Всего')} value={human(usersTotal ?? undefined)} />
+                <UsageTile T={T} label={t('New · 7d', 'Новых · 7д')} value={newValue} tone={newUp ? T.green : undefined} up={newUp} />
+                <UsageTile T={T} label={t('Online now', 'Онлайн')} value={activeNow != null ? human(activeNow) : '—'} dot={activeNow ? T.green : undefined} />
+              </div>
+            )}
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 14 }}>
               {live ? t('Live', 'В сети') : t('In progress', 'В процессе')}
               {latestDeploy?.deployed_at ? ` · ${t('last update', 'обновлено')} ${relTime(latestDeploy.deployed_at)}` : ''}
+              {deploys.length ? ` · ${deploys.length} ${t('releases', 'релизов')}` : ''}
             </div>
           </Card>
         </div>
-      )}
+        );
+      })()}
 
       {/* The plan — the readable "what we understood" spec (in-app viewer) */}
       {(onOpenPlan || blueprintUrl) && (
