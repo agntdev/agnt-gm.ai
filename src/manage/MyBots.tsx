@@ -4,7 +4,7 @@
 import { Theme, btnReset, toneFor } from '../theme';
 import { Project, ChatMessage } from '../api/client';
 import { ChatThread } from '../chat/Chat';
-import { TGIcon, Mark, Bubble, Spinner, BotTile } from '../ui';
+import { TGIcon, Mark, Bubble, Spinner, BotAvatar } from '../ui';
 
 export interface MyBot {
   id: string;
@@ -16,6 +16,7 @@ export interface MyBot {
   inProgress: boolean; // not deployed yet — tapping resumes the build pipeline
   statusLabel: string;
   preview: string;
+  avatarUrl?: string; // AI-generated bot avatar (bot_avatar_url); absent until generated
   // task_manager (living DAG) vs the legacy phase pipeline. From the project's
   // build_pipeline once it ships (gap #1); undefined today → the board/overview
   // fall back to probing /dag for node_kind. Drives which board/inbox to show.
@@ -50,6 +51,7 @@ export function botFromProject(p: Project): MyBot {
     inProgress: !deployed,
     statusLabel: deployed ? 'Live' : (STATUS_LABELS[p.status] || p.status),
     preview: desc,
+    avatarUrl: p.bot_avatar_url,
     // undefined until the DTO carries build_pipeline; the board/overview probe /dag otherwise
     isTaskManager,
   };
@@ -107,7 +109,7 @@ export function MyBotsList({ T, bots, loading, authed, onOpen, onBuildFirst }: {
             border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
           }}>
             <div style={{ position: 'relative', flexShrink: 0 }}>
-              <BotTile T={T} name={bot.name} tone={bot.tone} size={46} radius={14} />
+              <BotAvatar T={T} name={bot.name} tone={bot.tone} avatarUrl={bot.avatarUrl} size={46} radius={14} />
               <span style={{
                 position: 'absolute', right: -1, bottom: -1, width: 13, height: 13, borderRadius: 999,
                 background: bot.status === 'live' ? T.green : T.amber, border: `2.5px solid ${T.cardBg}`,
@@ -167,7 +169,7 @@ export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onO
     <div style={{ padding: '16px 14px 18px', display: 'flex', flexDirection: 'column', gap: 10, minHeight: '100%' }}>
       {showIdentity && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 2px 6px' }}>
-          <BotTile T={T} name={bot.name} tone={bot.tone} size={38} radius={12} />
+          <BotAvatar T={T} name={bot.name} tone={bot.tone} avatarUrl={bot.avatarUrl} size={38} radius={12} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 700, color: T.text, letterSpacing: -0.2 }}>{bot.name}</div>
             <div style={{ fontFamily: T.mono, fontSize: 12, color: T.hint, marginTop: 1 }}>@{bot.handle} · {bot.version}</div>

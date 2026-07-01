@@ -11,7 +11,7 @@ import {
   botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
-import { TGIcon, Card, Pill, Dot, BotTile, Spinner } from '../ui';
+import { TGIcon, Card, Pill, Dot, BotAvatar, Spinner } from '../ui';
 import { MyBot } from './MyBots';
 import { ActivityTimeline, relTime, withDeployments } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
@@ -239,31 +239,6 @@ function deployFailed(d?: Deployment | null): boolean {
 function deployActive(d?: Deployment | null): boolean {
   if (!d) return false;
   return /queue|pending|build|deploy|progress|running|started/i.test(d.status || '');
-}
-
-// Bot avatar — the AI-generated image when present, else the monogram tile.
-// Falls back to the tile if the image fails to load (broken/expired URL), so the
-// identity slot always shows something. Same size/shape as BotTile.
-function BotAvatar({ T, name, tone, avatarUrl, size = 72, radius = 22, fontSize }: {
-  T: Theme; name: string; tone: string; avatarUrl?: string; size?: number; radius?: number; fontSize?: number;
-}) {
-  const [failed, setFailed] = useState(false);
-  // reset the error gate when the URL changes (e.g. a regenerate produced a new one)
-  useEffect(() => { setFailed(false); }, [avatarUrl]);
-  if (avatarUrl && !failed) {
-    return (
-      <img
-        src={avatarUrl}
-        alt={`${name} avatar`}
-        onError={() => setFailed(true)}
-        style={{
-          width: size, height: size, borderRadius: radius, flexShrink: 0,
-          objectFit: 'cover', display: 'block', background: T.cardBg,
-        }}
-      />
-    );
-  }
-  return <BotTile T={T} name={name} tone={tone} size={size} radius={radius} fontSize={fontSize} />;
 }
 
 // uppercase section label, reused across sections

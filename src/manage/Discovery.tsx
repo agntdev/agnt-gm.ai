@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { Theme, btnReset, hexA, toneFor } from '../theme';
 import { Project } from '../api/client';
 import { openTgLink } from '../telegram';
-import { TGIcon, BotTile, Spinner } from '../ui';
+import { TGIcon, BotAvatar, Spinner } from '../ui';
 
 export interface DiscoverBot {
   id: string;
@@ -14,6 +14,7 @@ export interface DiscoverBot {
   username: string; // real managed-bot @username - drives the t.me link
   tone: string;
   preview: string;
+  avatarUrl?: string; // AI-generated bot avatar (bot_avatar_url); absent until generated
   activeAgents?: number;
   merged7d?: number;
   openTasks?: number;
@@ -48,6 +49,7 @@ export function discoverBotFromProject(p: Project): DiscoverBot | null {
     username: p.bot_username,
     tone: toneFor(p.slug),
     preview: p.short_description || p.goal_of_project || 'A bot built on AgentBot.',
+    avatarUrl: p.bot_avatar_url,
     activeAgents: p.active_agents,
     merged7d: p.prs_merged_7d,
     openTasks: p.open_tasks,
@@ -164,7 +166,7 @@ function DiscoveryRow({ T, C, bot, last }: {
         borderBottom: last ? 'none' : `1px solid ${C.edge}`,
       }}
     >
-      <BotTile T={T} name={bot.name} tone={bot.tone} size={48} radius={12} />
+      <BotAvatar T={T} name={bot.name} tone={bot.tone} avatarUrl={bot.avatarUrl} size={48} radius={12} />
 
       <div style={{ minWidth: 0 }}>
         <div style={{

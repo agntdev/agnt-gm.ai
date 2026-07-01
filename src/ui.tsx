@@ -300,6 +300,32 @@ export function BotTile({ T, name, tone, size = 38, radius = 12, fontSize }: {
   );
 }
 
+// ── bot avatar: AI-generated image, else the monogram tile ────
+// Shows the AI-generated avatar (bot_avatar_url) when present, else falls back to
+// the BotTile monogram. Also falls back if the image errors (broken/expired URL),
+// so the slot always shows something. Same size/shape as BotTile — a drop-in swap.
+export function BotAvatar({ T, name, tone, avatarUrl, size = 38, radius = 12, fontSize }: {
+  T: Theme; name: string; tone: string; avatarUrl?: string; size?: number; radius?: number; fontSize?: number;
+}) {
+  const [failed, setFailed] = React.useState(false);
+  // reset the error gate when the URL changes (e.g. a regenerate produced a new one)
+  React.useEffect(() => { setFailed(false); }, [avatarUrl]);
+  if (avatarUrl && !failed) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={`${name} avatar`}
+        onError={() => setFailed(true)}
+        style={{
+          width: size, height: size, borderRadius: radius, flexShrink: 0,
+          objectFit: 'cover', display: 'block', background: T.cardBg,
+        }}
+      />
+    );
+  }
+  return <BotTile T={T} name={name} tone={tone} size={size} radius={radius} fontSize={fontSize} />;
+}
+
 // ── shared small blocks used across screens ───────────────────
 export function SpecBlock({ T, title, children }: { T: Theme; title: string; children: React.ReactNode }) {
   return (
