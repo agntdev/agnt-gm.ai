@@ -65,7 +65,7 @@ async function payAndRun(invoice: StarInvoice, run: () => Promise<void>): Promis
   return 'ok';
 }
 
-// Pay 10★ then assign the cloud agent.
+// Pay 100★ then assign the cloud agent (our AI builds the bot for you).
 export function payAndAssignCloudAgent(projectId: string, run: () => Promise<void>): Promise<PayResult> {
   return createCloudAgentInvoice(projectId).then((inv) => payAndRun(inv, run));
 }

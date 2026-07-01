@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 import { Theme } from '../theme';
 import { ChatMessage } from '../api/client';
 import { ChatThread } from '../chat/Chat';
-import { TGIcon, Bubble, Chip } from '../ui';
+import { TGIcon, Bubble, Chip, Dot } from '../ui';
 import { useT } from '../i18n';
 
 // generation status driven by the real project lifecycle
@@ -39,6 +39,21 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
 
   return (
     <div ref={scrollRef} style={{ padding: '18px 16px 14px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: '100%' }}>
+      {/* in-content chat identity — avatar · New bot · draft · online */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 2px 2px' }}>
+        <div style={{ width: 40, height: 40, borderRadius: 12, background: T.text, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <TGIcon name="bolt" size={20} color={T.accentText} stroke={2} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 700, color: T.text, letterSpacing: -0.2 }}>{t('New bot', 'Новый бот')}</div>
+          <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>{t('draft · AI assistant', 'черновик · ИИ-ассистент')}</div>
+        </div>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: T.sage, borderRadius: 999, padding: '5px 11px', flexShrink: 0 }}>
+          <Dot color={T.green} size={6} pulse />
+          <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: '#3f6b4a' }}>{t('online', 'онлайн')}</span>
+        </span>
+      </div>
+
       <ChatThread T={T} messages={messages} thinking={thinking}
         onOption={handedOff ? undefined : onOption}
         pendingNote={handedOff && gen === 'generating' ? t('Brief accepted — generating your spec…', 'Бриф принят — генерируем спецификацию…') : null} />

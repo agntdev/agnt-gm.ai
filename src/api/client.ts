@@ -730,3 +730,36 @@ export async function getProjectSpec(idOrSlug: string): Promise<ProjectSpec | nu
     throw e;
   }
 }
+
+// Blueprint ("The plan") — the AI's structured read of the idea. GET
+// /projects/:id/quality/blueprint (owner). The endpoint may not be shipped
+// everywhere yet, so 403/404/405 → null and the Plan screen shows a fallback.
+// All fields optional — the viewer renders whatever is present.
+export interface BlueprintEntryPoint { command?: string; description?: string; actor?: string }
+export interface BlueprintFlow { name?: string; when?: string; trigger?: string; steps?: string[] | string; summary?: string }
+export interface BlueprintEntity { name?: string; description?: string; retention?: 'none' | 'session' | 'persistent' | string }
+export interface BlueprintContent {
+  entry_points?: BlueprintEntryPoint[];
+  flows?: BlueprintFlow[];
+  data_entities?: BlueprintEntity[];
+  integrations?: string[];
+  edge_cases?: string[];
+}
+export interface Blueprint {
+  archetype?: string;
+  title?: string;
+  summary?: string;
+  voice?: string;
+  completeness_score?: number; // 0..1
+  missing_fields?: string[];
+  assumptions?: string[];
+  content?: BlueprintContent;
+}
+export async function getBlueprint(idOrSlug: string): Promise<Blueprint | null> {
+  try {
+    return await request('GET', `/builder/projects/${encodeURIComponent(idOrSlug)}/quality/blueprint`);
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 405 || e.status === 403)) return null;
+    throw e;
+  }
+}

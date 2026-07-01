@@ -8,10 +8,10 @@ import { Theme, btnReset, hexA } from '../theme';
 import {
   ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, BotInitiate, BuildProgress as BuildProgressDTO,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
+  botIsLive, retryDeploy, setAutoMerge, setBuildModeApi, BuildMode, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
-import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, StatusChip } from '../ui';
+import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, StatusChip, Segmented } from '../ui';
 import { MyBot } from './MyBots';
 import { ActivityTimeline, relTime, withDeployments } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
@@ -250,6 +250,15 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
           })}
         </Card>
       )}
+      {/* reassurance — "found gaps" is progress, not failure (Bold terracotta tint) */}
+      {!live && !failed && (
+        <div style={{ background: '#FBF3EC', border: '1px solid #eccfbf', borderRadius: 16, padding: '13px 15px', display: 'flex', gap: 11 }}>
+          <TGIcon name="shield" size={18} color={T.accentPressed} stroke={2} />
+          <span style={{ fontFamily: T.font, fontSize: 13, color: T.accentPressed, lineHeight: '18px' }}>
+            {t('“Found gaps” is normal. After each round we compare your bot to the plan and fix anything missing — that’s progress, not a failure.', '«Найдены пробелы» — это норма. После каждого раунда мы сверяем бота с планом и дописываем недостающее — это прогресс, а не ошибка.')}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -283,9 +292,9 @@ interface OvSnap {
 }
 const OV_CACHE = new Map<string, OvSnap>();
 
-export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause, discoverable, onToggleDiscoverable }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onOpenPlan, onDelete, onViewActivity, onManageAgents, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause, discoverable, onToggleDiscoverable }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
-  onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onDelete: () => void;
+  onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onOpenPlan?: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
   onCloudDetected?: () => void; // API revealed a cloud agent this client hadn't recorded
   onCloudGone?: () => void;     // API says no cloud agent — clear a stale local mark
@@ -316,6 +325,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const [createBotErr, setCreateBotErr] = useState<string | null>(null);
   const [regenAvatar, setRegenAvatar] = useState(false);   // avatar regenerate in flight
   const [regenAvatarErr, setRegenAvatarErr] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);          // redeploy in flight
+  const [buildModeOverride, setBuildModeOverride] = useState<BuildMode | null>(null); // optimistic build-mode
+  const [autoMergeOverride, setAutoMergeOverride] = useState<boolean | null>(null);   // optimistic auto-updates
   const [addingTask, setAddingTask] = useState(false); // "Add new task" input open
   const [taskDraft, setTaskDraft] = useState('');
   const [addBusy, setAddBusy] = useState(false);
@@ -508,6 +520,14 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const repoUrl = detail?.github_repo_url;
   // the bot's blueprint (build brief) lives in the repo; the "Spec" action links it
   const blueprintUrl = repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/blueprint.md` : null;
+
+  // Settings controls (optimistic local override over the fetched detail).
+  const effBuildMode: BuildMode = buildModeOverride
+    ?? ((detail?.build_mode === 'local_agent' || detail?.build_mode === 'local') ? 'local' : 'platform');
+  const changeBuildMode = (m: BuildMode) => { setBuildModeOverride(m); setBuildModeApi(bot.id, m).catch(() => {}); };
+  const autoMergeOn = autoMergeOverride ?? !!detail?.auto_merge_enabled;
+  const toggleAutoMerge = () => { const next = !autoMergeOn; setAutoMergeOverride(next); setAutoMerge(bot.id, next).catch(() => {}); };
+  const onRetry = () => { if (retrying) return; setRetrying(true); retryDeploy(bot.id).catch(() => {}).finally(() => setTimeout(() => setRetrying(false), 4000)); };
 
   const sys = messages.filter(m => m.role === 'system');
   const activity = [...withDeployments(sys, deploys, lang)].reverse().slice(0, 4);
@@ -724,7 +744,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         );
       })()}
 
-      {/* secondary — Pause/Resume · Test bot (two tiles, per the prototype) */}
+      {/* secondary — Pause/Resume · Retry (two tiles, per the prototype) */}
       {live && botUsername && (
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onTogglePause} style={{
@@ -736,20 +756,28 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             <TGIcon name={paused ? 'play' : 'pause'} size={18} color={T.sub} stroke={2} />
             {paused ? t('Resume', 'Возобновить') : t('Pause', 'Пауза')}
           </button>
-          <button onClick={() => openTgLink(`https://t.me/${botUsername}`)} style={{
+          <button onClick={onRetry} disabled={retrying} style={{
             ...btnReset, flex: 1, height: 48, borderRadius: 14, background: T.cardBg,
             border: `1px solid ${T.sep}`, boxShadow: T.shadow,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
             fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text,
+            cursor: retrying ? 'default' : 'pointer',
           }}>
-            <TGIcon name="open" size={17} color={T.sub} stroke={2} />
-            {t('Test bot', 'Тест бота')}
+            {retrying ? <Spinner color={T.sub} size={17} /> : <TGIcon name="refresh" size={17} color={T.sub} stroke={2} />}
+            {t('Retry', 'Повтор')}
           </button>
         </div>
       )}
-      {/* Spec · Code — quiet deep links */}
-      {(blueprintUrl || repoUrl) && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24, marginTop: -2 }}>
+      {/* Test bot · Spec · Code — quiet deep links */}
+      {(botUsername || blueprintUrl || repoUrl) && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 22px', marginTop: -2 }}>
+          {botUsername && live && (
+            <button onClick={() => openTgLink(`https://t.me/${botUsername}`)} style={{
+              ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.accent,
+            }}>
+              <TGIcon name="open" size={16} color={T.accent} stroke={2} /> {t('Test bot', 'Тест бота')}
+            </button>
+          )}
           {blueprintUrl && (
             <button onClick={() => openExternal(blueprintUrl)} style={{
               ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.accent,
@@ -848,9 +876,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </div>
       )}
 
-      {/* The plan — the readable "what we understood" spec */}
-      {blueprintUrl && (
-        <button onClick={() => openExternal(blueprintUrl)} style={{
+      {/* The plan — the readable "what we understood" spec (in-app viewer) */}
+      {(onOpenPlan || blueprintUrl) && (
+        <button onClick={() => { if (onOpenPlan) onOpenPlan(); else if (blueprintUrl) openExternal(blueprintUrl); }} style={{
           ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 13,
           padding: 14, borderRadius: 16, background: T.cardBg, border: `1px solid ${T.sep}`, boxShadow: T.shadow,
         }}>
@@ -865,7 +893,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </button>
       )}
 
-      {/* Settings — public visibility */}
+      {/* Settings — public visibility · auto-updates · who builds it */}
       {live && botUsername && (
         <div>
           <SectionLabel T={T}>{t('Settings', 'Настройки')}</SectionLabel>
@@ -877,6 +905,26 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                 <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>{discoverable ? t('Visible in the public catalog', 'Виден в публичном каталоге') : t('Hidden from the public catalog', 'Скрыт из публичного каталога')}</div>
               </div>
               <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderTop: `1px solid ${T.sep}` }}>
+              <TGIcon name="refresh" size={18} color={T.sub} stroke={2} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>{t('Apply updates automatically', 'Применять обновления автоматически')}</div>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>{autoMergeOn ? t('Changes ship without review', 'Изменения выходят без ревью') : t('Changes wait for your OK', 'Изменения ждут вашего подтверждения')}</div>
+              </div>
+              <Switch T={T} on={autoMergeOn} onClick={toggleAutoMerge} size="compact" />
+            </div>
+            <div style={{ padding: '13px 16px', borderTop: `1px solid ${T.sep}` }}>
+              <div style={{ fontFamily: T.font, fontSize: 12, fontWeight: 700, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 9 }}>{t('Who builds it', 'Кто собирает')}</div>
+              <Segmented<BuildMode>
+                T={T}
+                value={effBuildMode}
+                options={[
+                  { id: 'platform', label: t('We build it', 'Собираем мы') },
+                  { id: 'local', label: t('I will build it', 'Соберу сам') },
+                ]}
+                onChange={changeBuildMode}
+              />
             </div>
           </Card>
         </div>
