@@ -258,11 +258,11 @@ export function PromptScreen({ T, idea, setIdea, changed, error, startBtn }: {
       <div style={{ fontFamily: T.font, fontSize: 12, fontWeight: 700, color: T.hint, textTransform: 'uppercase', letterSpacing: 1.4, margin: '24px 2px 12px' }}>
         {t('Or start from an idea', 'Или начните с примера')}
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
         {chips.map((ex) => (
           <button key={ex.title[0]} onClick={() => setIdea(tr(lang, ...ex.prompt))} style={{
-            ...btnReset, padding: '12px 16px', borderRadius: 14, background: T.inputBg,
-            border: `1px solid ${T.sep}`, fontFamily: T.font, fontSize: 14.5, fontWeight: 600,
+            ...btnReset, padding: '10px 14px', borderRadius: 13, background: T.inputBg,
+            border: `1px solid ${T.sep}`, fontFamily: T.font, fontSize: 12.3, fontWeight: 600,
             color: T.text, letterSpacing: -0.1, textAlign: 'left',
           }}>
             {tr(lang, ...ex.title)}
