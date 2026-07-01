@@ -667,7 +667,7 @@ export function retryDeploy(idOrSlug: string): Promise<{ ok?: boolean; status?: 
 }
 
 // ── Telegram Stars payments (gate model) ─────────────────────────
-// Cloud-agent assignment (10★) is gated: mint a one-shot invoice here, pay it
+// Cloud-agent assignment (100★) is gated: mint a one-shot invoice here, pay it
 // via Telegram.WebApp.openInvoice, then re-call the action (which atomically
 // consumes the paid intent). See api/stars.ts. Deploy is FREE (no charge).
 // When charging is disabled the invoice endpoint returns payment_required=false
