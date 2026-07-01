@@ -172,62 +172,50 @@ function buildStatusLabel(bp: BuildProgressDTO, lang: Lang): string {
   }
 }
 
-// whole_bot build card: status headline + approx ETA + progress bar + per-
-// iteration timeline — the build screen's centerpiece while a whole_bot builds.
-// lifetime iteration number = iterations from prior builds (backend offset) +
-// this build's pass number. The offset is absent today, so this is a no-op (0)
-// until the backend ships it — at which point a change reads "Iteration 9"
-// instead of restarting at "Iteration 1". See BuildProgress.iteration_offset.
-function iterOffset(bp: BuildProgressDTO): number {
-  return bp.iteration_offset ?? 0;
-}
-
+// whole_bot build card (one-pass model): the ring + the backend's stage_label +
+// a compact per-step log. Usually a single pass → live.
 function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
   const t = useT();
   const { lang } = useLang();
   const pct = Math.max(3, Math.min(100, bp.percent));
-  const iterBase = iterOffset(bp);
-  // the iteration timeline can grow long (10+ rows) — keep it tidy by showing
-  // only the most recent few, with a tap to expand the rest.
+  // one-pass model: the build is usually a single pass → live. The passes[]
+  // timeline stays as a compact log; expand if it ever grows.
   const [showAllIters, setShowAllIters] = useState(false);
-  const ITER_VISIBLE = 3;
+  const STEP_VISIBLE = 4;
   const allIters = bp.passes ?? [];
-  const hiddenIters = allIters.length - ITER_VISIBLE;
-  const visibleIters = showAllIters || hiddenIters <= 0 ? allIters : allIters.slice(-ITER_VISIBLE);
+  const hiddenIters = allIters.length - STEP_VISIBLE;
+  const visibleIters = showAllIters || hiddenIters <= 0 ? allIters : allIters.slice(-STEP_VISIBLE);
   const showIterToggle = hiddenIters > 0;
+  // stage drives colour / branching only; stage_label is the ready status string.
   const failed = bp.stage === 'failed';
-  const live = bp.stage === 'live' || bp.phase === 'published';
-  // stat tiles sit on the dark hero — a faint cream-tinted lighter green
-  const tileBg = hexA(T.accentText, 0.07);
-  const statTile = (value: string, label: string) => (
-    <div style={{ flex: 1, background: tileBg, borderRadius: 14, padding: '11px 6px', textAlign: 'center' }}>
-      <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.accentText, letterSpacing: -0.5 }}>{value}</div>
-      <div style={{ fontFamily: T.font, fontSize: 11.5, color: hexA(T.accentText, 0.6), marginTop: 2 }}>{label}</div>
-    </div>
-  );
+  const gaps = bp.stage === 'live_with_gaps';
+  const live = bp.stage === 'live' || gaps || bp.phase === 'published';
+  const arc = failed ? T.red : gaps ? T.gold : undefined;
+  const dotColor = failed ? T.red : gaps ? T.gold : live ? T.green : T.accent;
+  const label = bp.stage_label || buildStatusLabel(bp, lang);
+  const ringLabel = failed ? t('needs fix', 'правка')
+    : gaps ? t('with gaps', 'с пробелами')
+    : live ? t('complete', 'готово')
+    : bp.eta_seconds > 0 ? `≈ ${bp.eta_seconds}${t('s', 'с')}`
+    : t('building', 'сборка');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* dark-green build hero — ring + status + iteration stats */}
-      <div style={{ background: T.text, borderRadius: 20, boxShadow: T.heroShadow, padding: '18px 16px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <Dot color={failed ? T.red : live ? T.green : T.accent} size={8} pulse={!live && !failed} />
-          <span style={{ fontFamily: T.font, fontSize: 14, fontWeight: 700, color: T.accentText, letterSpacing: -0.2 }}>
-            {failed ? t('Needs a fix', 'Нужна правка') : live ? t('Live!', 'В эфире!') : `${buildStatusLabel(bp, lang)}…`}
+      {/* dark-green build hero — ring + the backend's stage_label (verbatim) */}
+      <div style={{ background: T.text, borderRadius: 20, boxShadow: T.heroShadow, padding: '20px 16px 18px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, maxWidth: '100%' }}>
+          <Dot color={dotColor} size={8} pulse={!live && !failed} />
+          <span style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 700, color: T.accentText, letterSpacing: -0.2, textAlign: 'center', lineHeight: '19px' }}>
+            {label}
           </span>
         </div>
-        <ProgressRing T={T} value={pct} label={failed ? t('needs fix', 'правка') : live ? t('complete', 'готово') : t('building', 'сборка')} color={failed ? T.red : undefined} />
-        <div style={{ display: 'flex', gap: 10 }}>
-          {statTile(String(iterBase + bp.pass_current), t('round', 'раунд'))}
-          {statTile(String(bp.merged_passes), t('approved', 'принято'))}
-          {statTile(String(bp.pass_floor), t('target', 'цель'))}
-        </div>
+        <ProgressRing T={T} value={pct} label={ringLabel} color={arc} />
       </div>
       {allIters.length > 0 && (
         <Card T={T} pad={0}>
           {showIterToggle && (
             <button onClick={() => setShowAllIters(v => !v)} style={{ ...btnReset, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px' }}>
               <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.accent }}>
-                {showAllIters ? t('Show fewer', 'Свернуть') : t(`Show all ${allIters.length} iterations`, `Показать все ${allIters.length} итераций`)}
+                {showAllIters ? t('Show fewer', 'Свернуть') : t(`Show all ${allIters.length} steps`, `Показать все ${allIters.length} шагов`)}
               </span>
               <span style={{ display: 'inline-flex', transform: showAllIters ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}>
                 <TGIcon name="chevDown" size={14} color={T.accent} stroke={2.2} />
@@ -238,26 +226,17 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
             const tone = PASS_TONE[p.status] || 'hint';
             const color = tone === 'green' ? T.green : tone === 'red' ? T.red : tone === 'accent' ? T.accent : T.hint;
             return (
-              <div key={p.pass_no} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: (i > 0 || showIterToggle) ? `0.5px solid ${T.sep}` : 'none' }}>
+              <div key={p.pass_no} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderTop: (i > 0 || showIterToggle) ? `0.5px solid ${T.sep}` : 'none' }}>
                 {p.status === 'reviewed' && p.complete
-                  ? <TGIcon name="check" size={14} color={T.green} stroke={2.6} />
+                  ? <TGIcon name="check" size={15} color={T.green} stroke={2.6} />
                   : <Dot color={color} size={7} pulse={p.status === 'building'} />}
-                <span style={{ flex: 1, fontFamily: T.font, fontSize: 13, color: T.text }}>{t('Iteration', 'Итерация')} {iterBase + p.pass_no}</span>
-                <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{p.label}</span>
+                {/* label is a ready-made row string — render as-is */}
+                <span style={{ flex: 1, fontFamily: T.font, fontSize: 13.5, color: T.text }}>{p.label}</span>
                 {p.pr_number != null && <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.accent }}>#{p.pr_number}</span>}
               </div>
             );
           })}
         </Card>
-      )}
-      {/* reassurance — "found gaps" is progress, not failure (Bold terracotta tint) */}
-      {!live && !failed && (
-        <div style={{ background: '#FBF3EC', border: '1px solid #eccfbf', borderRadius: 16, padding: '13px 15px', display: 'flex', gap: 11 }}>
-          <TGIcon name="shield" size={18} color={T.accentPressed} stroke={2} />
-          <span style={{ fontFamily: T.font, fontSize: 13, color: T.accentPressed, lineHeight: '18px' }}>
-            {t('“Found gaps” is normal. After each round we compare your bot to the plan and fix anything missing — that’s progress, not a failure.', '«Найдены пробелы» — это норма. После каждого раунда мы сверяем бота с планом и дописываем недостающее — это прогресс, а не ошибка.')}
-          </span>
-        </div>
       )}
     </div>
   );
@@ -649,6 +628,23 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </div>
       )}
 
+      {/* live_with_gaps — bot is live, but the blueprint isn't fully covered.
+          Not a failure: refine it by chatting (the one-pass "fix later" flow). */}
+      {bp?.stage === 'live_with_gaps' && (
+        <button onClick={onOpenChat} style={{
+          ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12,
+          padding: '13px 15px', borderRadius: 16, background: T.goldSoft, border: `1px solid ${hexA(T.gold, 0.4)}`,
+        }}>
+          <div style={{ width: 36, height: 36, borderRadius: 11, background: hexA(T.gold, 0.18), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <TGIcon name="spark" size={18} color={T.gold} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 700, color: T.gold }}>{t('Live — a few things to polish', 'В эфире — есть что доработать')}</div>
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.sub, marginTop: 1, lineHeight: '17px' }}>{t('Your bot is running. Ask me here to fix or add anything.', 'Бот уже работает. Напишите здесь, что исправить или добавить.')}</div>
+          </div>
+          <TGIcon name="chevRight" size={18} color={T.gold} stroke={2} />
+        </button>
+      )}
 
       {/* Onboarding (either pipeline) before the bot exists: a two-step sequence —
           (1) assign a builder agent, then (2) create the bot, which is locked
