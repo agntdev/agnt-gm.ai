@@ -524,6 +524,12 @@ export interface BotAnalytics {
   messages_today?: number;
   delta_pct?: number; // change vs. yesterday
   window?: string;
+  // ── live usage summary (all optional; the card degrades gracefully) ──
+  people_today?: number;   // distinct people the bot answered today
+  users_total?: number;    // all-time unique users
+  users_new_7d?: number;   // new unique users in the last 7 days
+  users_7d?: number[];     // daily unique users, oldest→newest — drives the sparkline
+  active_now?: number;     // conversations active right now
 }
 
 export async function getBotAnalytics(idOrSlug: string): Promise<BotAnalytics | null> {
