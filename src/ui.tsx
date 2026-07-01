@@ -301,12 +301,12 @@ export function TabBar({ T, tab, onTab }: { T: Theme; tab: Tab; onTab: (t: Tab) 
         padding: '0 8px', position: 'relative',
       }}>
         {side('manage', 'folder', t('Bots', 'Боты'))}
-        {/* center — raised terracotta ＋ (new bot / onboarding) */}
+        {/* center — terracotta ＋ (new bot / onboarding), centered in the bar */}
         <button onClick={() => onTab('build')} style={{
-          ...btnReset, width: 52, height: 52, flexShrink: 0, marginTop: -14,
-          borderRadius: 17, background: T.accent, color: T.accentText,
+          ...btnReset, width: 52, height: 52, flexShrink: 0,
+          borderRadius: 16, background: T.accent, color: T.accentText,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: T.ctaShadow, border: `3px solid ${hexA('#FBF8EF', 0.92)}`,
+          boxShadow: T.ctaShadow,
         }}>
           <TGIcon name="plus" size={26} color={T.accentText} stroke={2.6} />
         </button>
