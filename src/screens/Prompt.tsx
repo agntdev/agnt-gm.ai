@@ -1,6 +1,7 @@
-// Prompt — entry hero: "What should your bot do?"
-// Top row: user avatar + theme switcher (no logo); centered title/subtitle.
-import { useEffect, useRef, useState } from 'react';
+// Prompt — onboarding hero: "Describe the bot you want" (Bold 1c).
+// Top row: AGNTDEV brand lockup left, "My bots" link right. Eyebrow pill,
+// two-tone hero, prompt card with a terracotta send button, and idea chips.
+import { useEffect, useRef } from 'react';
 import { Theme, btnReset } from '../theme';
 import { TgUser } from '../telegram';
 import { TGIcon, Spinner, Wordmark } from '../ui';
@@ -147,83 +148,47 @@ export const IDEA_EXAMPLES: IdeaExample[] = [
   },
 ];
 
-// We keep a big library of examples but only show three at a time, picked at
-// random each visit (and re-rollable via the shuffle button) so the screen
-// stays fresh and surfaces the full range over repeat visits.
-const IDEAS_SHOWN = 3;
-
-function pickIdeas(n: number): IdeaExample[] {
-  const a = IDEA_EXAMPLES.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a.slice(0, n);
-}
-
 function autoGrow(el: HTMLTextAreaElement | null) {
   if (!el) return;
   el.style.height = 'auto';
-  el.style.height = Math.max(70, el.scrollHeight) + 'px';
-}
-
-// circular user avatar (photo > initials) with an online dot
-function Avatar({ T, user }: { T: Theme; user?: TgUser | null }) {
-  return (
-    <div style={{ position: 'relative', width: 38, height: 38 }}>
-      {user?.photoUrl ? (
-        <img src={user.photoUrl} alt="" style={{ width: 38, height: 38, borderRadius: 999, objectFit: 'cover', display: 'block' }} />
-      ) : (
-        <div style={{
-          width: 38, height: 38, borderRadius: 999, background: T.accent,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: '#fff', letterSpacing: 0.2,
-        }}>
-          {user?.initials || <TGIcon name="user" size={19} color="#fff" stroke={2} />}
-        </div>
-      )}
-      <span style={{
-        position: 'absolute', right: -1, bottom: -1, width: 11, height: 11, borderRadius: 999,
-        background: T.green, border: `2px solid ${T.pageBg}`,
-      }} />
-    </div>
-  );
+  // clamp: a transient bad scrollHeight at mount (before fonts/layout settle)
+  // must never balloon the field; long ideas scroll past the cap.
+  el.style.height = Math.min(Math.max(92, el.scrollHeight), 260) + 'px';
 }
 
 export type StartBtn = { label: string; disabled?: boolean; busy?: boolean; onClick?: () => void };
 
-export function PromptScreen({ T, idea, setIdea, changed, user, error, startBtn }: {
+export function PromptScreen({ T, idea, setIdea, changed, error, startBtn, onMyBots }: {
   T: Theme; idea: string; setIdea: (v: string) => void; changed: boolean;
   user?: TgUser | null; onToggleTheme?: () => void; error?: string | null;
-  startBtn?: StartBtn | null;
+  startBtn?: StartBtn | null; onMyBots?: () => void;
 }) {
   const t = useT();
   const { lang, setLang } = useLang();
   const taRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { autoGrow(taRef.current); }, [idea]);
-  // Three random ideas, chosen once on mount; the shuffle button re-rolls them.
-  const [shownIdeas, setShownIdeas] = useState<IdeaExample[]>(() => pickIdeas(IDEAS_SHOWN));
+  // A fixed set of starter ideas shown as wrapped chips (each still carries a
+  // full brief in `.prompt`). No shuffle — matches the prototype's chip row.
+  const chips = IDEA_EXAMPLES.slice(0, 6);
+  const canStart = !!idea.trim() && !!startBtn && !startBtn.disabled;
   return (
-    <div style={{ padding: '14px 22px 20px', display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      {/* brand lockup · language switcher · user avatar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+    <div style={{ padding: '16px 22px 24px', display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      {/* brand lockup · My bots link (+ minimal language toggle) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
         <Wordmark T={T} size={30} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <button onClick={() => setLang(lang === 'ru' ? 'en' : 'ru')} aria-label="Language" style={{
-            ...btnReset, height: 38, minWidth: 38, padding: '0 13px', borderRadius: 999,
-            background: T.nestedBg, border: `1px solid ${T.sep}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: T.font, fontSize: 13, fontWeight: 700, letterSpacing: 0.3, color: T.sub,
-          }}>
-            {lang === 'ru' ? 'RU' : 'EN'}
-          </button>
-          <Avatar T={T} user={user} />
+            ...btnReset, fontFamily: T.font, fontSize: 13, fontWeight: 700, letterSpacing: 0.3, color: T.hint,
+          }}>{lang === 'ru' ? 'RU' : 'EN'}</button>
+          <button onClick={onMyBots} style={{
+            ...btnReset, fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.sub, letterSpacing: -0.2,
+          }}>{t('My bots', 'Мои боты')}</button>
         </div>
       </div>
 
       {changed && (
         <div style={{
-          display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 13px', borderRadius: 12, marginBottom: 16,
+          display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 13px', borderRadius: 14, marginBottom: 16,
           background: T.accentSoft, border: `1px solid ${T.accentBorder}`,
         }}>
           <TGIcon name="refresh" size={17} color={T.accent} stroke={2} />
@@ -233,46 +198,58 @@ export function PromptScreen({ T, idea, setIdea, changed, user, error, startBtn 
         </div>
       )}
 
-      <div style={{ fontFamily: T.font, fontSize: 30, fontWeight: 800, color: T.text, letterSpacing: -1, lineHeight: '34px', textAlign: 'center' }}>
-        {lang === 'ru' ? <>Что должен<br />делать бот?</> : <>What should your<br />bot do?</>}
-      </div>
-      <div style={{ fontFamily: T.font, fontSize: 15, color: T.sub, marginTop: 10, lineHeight: '21px', textAlign: 'center' }}>
-        {t('Describe your idea in plain words — you can refine it next.', 'Опишите идею простыми словами — уточнить можно дальше.')}
+      {/* eyebrow */}
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
+        background: T.sage, borderRadius: 999, padding: '7px 14px', marginBottom: 16,
+      }}>
+        <span style={{ width: 7, height: 7, borderRadius: 999, background: T.green }} />
+        <span style={{ fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: '#3f6b4a' }}>
+          {t('Build a bot just by chatting', 'Соберите бота просто в переписке')}
+        </span>
       </div>
 
+      {/* two-tone hero */}
+      <div style={{ fontFamily: T.font, fontSize: 33, fontWeight: 800, color: T.text, letterSpacing: -1, lineHeight: '37px' }}>
+        {lang === 'ru'
+          ? <>Опишите бота, <span style={{ color: T.accent }}>который нужен</span></>
+          : <>Describe the bot <span style={{ color: T.accent }}>you want</span></>}
+      </div>
+      <div style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 500, color: T.sub, marginTop: 12, lineHeight: '22px' }}>
+        {t('Answer a few questions and we build a real Telegram bot and put it live — usually in a couple of minutes. No coding.',
+           'Ответьте на пару вопросов — и мы соберём настоящего Telegram-бота и запустим его, обычно за пару минут. Без кода.')}
+      </div>
+
+      {/* prompt card with send button */}
       <div style={{
-        marginTop: 20, borderRadius: 18, background: T.cardBg, border: `1.5px solid ${idea ? T.accentBorder : T.sep}`,
-        boxShadow: T.shadow, padding: 16, transition: 'border-color .2s',
+        marginTop: 22, borderRadius: 22, background: T.cardBg, border: `1px solid ${idea ? T.accentBorder : T.sep}`,
+        boxShadow: T.shadow, padding: 18, transition: 'border-color .2s',
       }}>
         <textarea
           ref={taRef} value={idea} onChange={e => setIdea(e.target.value)} rows={3}
-          placeholder={t('e.g. A bot that lets my customers track their orders and chat with support…', 'напр. Бот, в котором мои клиенты отслеживают заказы и общаются с поддержкой…')}
+          placeholder={t('For example: a bot that takes coffee pre-orders — guests pick a drink, pay in store, and it pings them when it is ready…',
+                         'Например: бот для предзаказов кофе — гости выбирают напиток, платят в кафе, а бот пишет, когда заказ готов…')}
           style={{
             width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent',
-            fontFamily: T.font, fontSize: 16, lineHeight: '23px', color: T.text, padding: 0, minHeight: 70,
+            fontFamily: T.font, fontSize: 16, lineHeight: '23px', color: T.text, padding: 0, minHeight: 92,
           }}
         />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
-          <span style={{ fontFamily: T.mono, fontSize: 12, color: T.hint }}>{idea.trim().length} {t('chars', 'симв.')}</span>
-          {idea.trim() && startBtn && (
-            <button
-              onClick={startBtn.disabled || startBtn.busy ? undefined : startBtn.onClick}
-              disabled={startBtn.disabled}
-              style={{
-                ...btnReset, display: 'flex', alignItems: 'center', gap: 6,
-                padding: '7px 14px', borderRadius: 999,
-                background: startBtn.disabled ? T.nestedBg : T.accent,
-                color: startBtn.disabled ? T.hint : T.accentText,
-                fontFamily: T.font, fontSize: 13, fontWeight: 700, letterSpacing: 0.1,
-                cursor: startBtn.disabled ? 'default' : 'pointer',
-                boxShadow: startBtn.disabled ? 'none' : T.ctaShadow,
-                animation: 'tgfade .2s', whiteSpace: 'nowrap',
-              }}
-            >
-              {startBtn.busy && <Spinner color={startBtn.disabled ? T.hint : T.accentText} size={14} />}
-              {startBtn.label}
-            </button>
-          )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+          <button
+            onClick={canStart && !startBtn?.busy ? startBtn!.onClick : undefined}
+            disabled={!canStart}
+            aria-label={startBtn?.label || 'Start'}
+            style={{
+              ...btnReset, width: 48, height: 48, borderRadius: 14,
+              background: canStart ? T.accent : T.nestedBg, color: canStart ? T.accentText : T.hint,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: canStart ? T.ctaShadow : 'none', transition: 'background .2s',
+              cursor: canStart ? 'pointer' : 'default',
+            }}>
+            {startBtn?.busy
+              ? <Spinner color={T.accentText} size={20} />
+              : <TGIcon name="arrowRight" size={22} color={canStart ? T.accentText : T.hint} stroke={2.4} />}
+          </button>
         </div>
       </div>
 
@@ -282,33 +259,18 @@ export function PromptScreen({ T, idea, setIdea, changed, user, error, startBtn 
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '22px 4px 11px' }}>
-        <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3 }}>
-          {t('Or start from an idea', 'Или начните с примера')}
-        </span>
-        <button onClick={() => setShownIdeas(pickIdeas(IDEAS_SHOWN))} style={{
-          ...btnReset, display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px', borderRadius: 8,
-          fontFamily: T.font, fontSize: 12, fontWeight: 600, color: T.accent, textTransform: 'none', letterSpacing: 0,
-        }}>
-          <TGIcon name="refresh" size={13} color={T.accent} stroke={2} />
-          {t('Shuffle', 'Обновить')}
-        </button>
+      {/* OR START FROM AN IDEA — wrapped chips */}
+      <div style={{ fontFamily: T.font, fontSize: 12, fontWeight: 700, color: T.hint, textTransform: 'uppercase', letterSpacing: 1.4, margin: '24px 2px 12px' }}>
+        {t('Or start from an idea', 'Или начните с примера')}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-        {shownIdeas.map((ex) => (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {chips.map((ex) => (
           <button key={ex.title[0]} onClick={() => setIdea(tr(lang, ...ex.prompt))} style={{
-            ...btnReset, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px',
-            borderRadius: 14, background: T.cardBg,
-            border: `1px solid ${T.sep}`, boxShadow: T.shadow,
+            ...btnReset, padding: '12px 16px', borderRadius: 14, background: T.inputBg,
+            border: `1px solid ${T.sep}`, fontFamily: T.font, fontSize: 14.5, fontWeight: 600,
+            color: T.text, letterSpacing: -0.1, textAlign: 'left',
           }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <TGIcon name="spark" size={16} color={T.accent} />
-            </div>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text, lineHeight: '19px' }}>{tr(lang, ...ex.title)}</span>
-              <span style={{ display: 'block', fontFamily: T.font, fontSize: 12.5, color: T.hint, lineHeight: '16px', marginTop: 2 }}>{tr(lang, ...ex.blurb)}</span>
-            </span>
-            <TGIcon name="arrowUp" size={15} color={T.hint} stroke={2} />
+            {tr(lang, ...ex.title)}
           </button>
         ))}
       </div>

@@ -11,7 +11,7 @@ import {
   botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
-import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing } from '../ui';
+import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, StatusChip } from '../ui';
 import { MyBot } from './MyBots';
 import { ActivityTimeline, relTime, withDeployments } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
@@ -599,68 +599,70 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* identity — centered */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '6px 0 0' }}>
-        {/* avatar: AI-generated image when present (falls back to the monogram
-            tile on error), with a small owner-only regenerate control beneath. */}
-        <div style={{ position: 'relative', width: 72, height: 72 }}>
-          <BotTile T={T} name={bot.name} tone={bot.tone} src={avatarUrl} size={72} radius={22} fontSize={30} />
+      {/* identity — avatar · name / @username · regenerate */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ position: 'relative', width: 64, height: 64, flexShrink: 0 }}>
+          <BotTile T={T} name={bot.name} tone={bot.tone} src={avatarUrl} size={64} radius={20} fontSize={26} />
           {regenAvatar && (
             <div style={{
-              position: 'absolute', inset: 0, borderRadius: 22,
+              position: 'absolute', inset: 0, borderRadius: 20,
               background: hexA('#000000', 0.4),
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Spinner color="#fff" size={22} />
+              <Spinner color="#fff" size={20} />
             </div>
           )}
         </div>
-        <button onClick={() => void onRegenAvatar()} disabled={regenAvatar} style={{
-          ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 1,
-          fontFamily: T.font, fontSize: 12, fontWeight: 600, color: regenAvatar ? T.hint : T.accent,
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.text, letterSpacing: -0.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bot.name}</div>
+          <div style={{ marginTop: 6 }}>
+            {botUsername
+              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: T.sage, borderRadius: 999, padding: '4px 11px' }}>
+                  <Dot color="#2f8f6f" size={6} />
+                  <span style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 600, color: '#2f8f6f' }}>@{botUsername}</span>
+                </span>
+              : <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>{t('Bot not created yet', 'Бот ещё не создан')}</span>}
+          </div>
+        </div>
+        <button onClick={() => void onRegenAvatar()} disabled={regenAvatar} aria-label={t('Regenerate avatar', 'Обновить аватар')} style={{
+          ...btnReset, width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+          background: T.nestedBg, border: `1px solid ${T.sep}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: regenAvatar ? 'default' : 'pointer',
         }}>
-          <TGIcon name="refresh" size={13} color={regenAvatar ? T.hint : T.accent} stroke={2} />
-          {regenAvatar ? t('Generating…', 'Генерация…') : avatarUrl ? t('Regenerate avatar', 'Обновить аватар') : t('Generate avatar', 'Создать аватар')}
+          <TGIcon name="refresh" size={18} color={regenAvatar ? T.hint : T.sub} stroke={2} />
         </button>
-        {regenAvatarErr && (
-          <div style={{ fontFamily: T.font, fontSize: 11.5, color: T.amber, lineHeight: '15px', textAlign: 'center' }}>{regenAvatarErr}</div>
-        )}
-        <div style={{ fontFamily: T.font, fontSize: 25, fontWeight: 700, color: T.text, letterSpacing: -0.4, marginTop: 4 }}>{bot.name}</div>
-        {/* only show a @username once the real Telegram bot exists — the project's
-            suggested handle isn't a live bot yet, so showing it reads as a created
-            bot that doesn't exist. */}
-        {botUsername
-          ? <div style={{ fontFamily: T.mono, fontSize: 14, color: T.accent }}>@{botUsername}</div>
-          : <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>{t('Bot not created yet', 'Бот ещё не создан')}</div>}
-        <div style={{ marginTop: 3 }}>
-          <Pill T={T} tone={statusState.tone}>
-            <Dot color={statusState.color} size={6} pulse={statusState.pulse} /> {statusState.label}
-          </Pill>
-        </div>
-
-        {/* Show on Discovery — owner opt-out of the public Discover feed */}
-        {live && botUsername && (
-          <div style={{
-            marginTop: 5,
-            height: 34,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '0 8px 0 11px',
-            borderRadius: 999,
-            background: T.nestedBg,
-            border: `0.5px solid ${T.sep}`,
-          }}>
-            <TGIcon name="compass" size={14} color={discoverable ? T.accent : T.hint} stroke={2} />
-            <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 650, color: T.sub }}>{t('Discovery', 'Discovery')}</span>
-            <span style={{ fontFamily: T.font, fontSize: 12, fontWeight: 600, color: discoverable ? T.accent : T.hint }}>
-              {discoverable ? t('Visible', 'Виден') : t('Hidden', 'Скрыт')}
-            </span>
-            <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
-          </div>
-        )}
       </div>
+      {regenAvatarErr && (
+        <div style={{ fontFamily: T.font, fontSize: 11.5, color: T.amber, lineHeight: '15px' }}>{regenAvatarErr}</div>
+      )}
+
+      {/* three SEPARATE state indicators — BOT (container) · PROJECT (status) · SETUP (phase) */}
+      {botUsername && (
+        <div style={{ display: 'flex', gap: 10 }}>
+          <StatusChip T={T} label={t('Bot', 'Бот')}
+            value={paused ? t('Paused', 'Пауза') : live ? t('Running', 'Работает') : t('Idle', 'Ожидает')}
+            dot={paused ? T.gold : live ? T.green : T.hint} />
+          <StatusChip T={T} label={t('Project', 'Проект')}
+            value={live ? t('Live', 'В сети') : statusState.label}
+            dot={statusState.color} />
+          <StatusChip T={T} label={t('Setup', 'Настройка')}
+            value={live ? t('Done', 'Готово') : (dag?.current_phase || '—')}
+            dot={live ? T.green : T.gold} />
+        </div>
+      )}
+
+      {/* Show on Discovery — owner opt-out of the public Discover feed */}
+      {live && botUsername && (
+        <div style={{
+          alignSelf: 'flex-start', height: 34, display: 'inline-flex', alignItems: 'center', gap: 8,
+          padding: '0 8px 0 12px', borderRadius: 999, background: T.nestedBg, border: `1px solid ${T.sep}`,
+        }}>
+          <TGIcon name="compass" size={14} color={discoverable ? T.accent : T.hint} stroke={2} />
+          <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.sub }}>{t('Discover', 'Каталог')}</span>
+          <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
+        </div>
+      )}
 
       {/* Onboarding (either pipeline) before the bot exists: a two-step sequence —
           (1) assign a builder agent, then (2) create the bot, which is locked

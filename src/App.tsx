@@ -722,7 +722,8 @@ export default function App() {
       case 'prompt': return (
         <PromptScreen T={T} idea={idea} setIdea={setIdea} changed={changed}
           user={telegramUser()} onToggleTheme={toggleTheme} error={startError}
-          startBtn={mainBtn} />
+          startBtn={mainBtn}
+          onMyBots={() => { setManageBot(null); setManageView('overview'); setDir(1); setTab('manage'); }} />
       );
       case 'clarify': return (
         <ClarifyScreen T={T} messages={clarifyChat.messages} thinking={clarifyChat.thinking}
@@ -873,13 +874,17 @@ export default function App() {
         </Suspense>
       </div>
       {footer}
-      <TabBar T={T} tab={tab} onTab={(tb) => {
-        setDir(1);
-        setAgentSheet(false); // never leave the sheet hanging over another tab
-        // tapping My Bots pops to its root (the list), not the last-open bot
-        if (tb === 'manage') { setManageBot(null); setManageView('overview'); }
-        setTab(tb);
-      }} />
+      {/* Floating tab bar only on Bots / Discover / Dashboard — the build
+          pipeline (onboarding, chat, build, plan) stays focused/immersive. */}
+      {(tab === 'discover' || (tab === 'manage' && (!manageBot || manageView === 'overview'))) && (
+        <TabBar T={T} tab={tab} onTab={(tb) => {
+          setDir(1);
+          setAgentSheet(false); // never leave the sheet hanging over another tab
+          // tapping My Bots pops to its root (the list), not the last-open bot
+          if (tb === 'manage') { setManageBot(null); setManageView('overview'); }
+          setTab(tb);
+        }} />
+      )}
 
       {/* "Add an agent" sheet — overlays everything, closed by scrim/back */}
       {agentSheet && activeBot && (

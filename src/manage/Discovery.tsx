@@ -1,13 +1,13 @@
 // Discovery - a public list of live production bots built on the platform.
-// Tapping a row opens the live bot in Telegram. The list comes from
+// Tapping a card opens the live bot in Telegram. The list comes from
 // GET /builder/projects/discover; other users' bots cannot be enumerated
 // client-side, so an empty API response stays empty.
 import { useMemo } from 'react';
-import { Theme, btnReset, hexA, toneFor } from '../theme';
+import { Theme, btnReset, toneFor } from '../theme';
 import { Project } from '../api/client';
 import { openTgLink } from '../telegram';
 import { useT } from '../i18n';
-import { TGIcon, BotTile, Spinner } from '../ui';
+import { TGIcon, BotTile, Pill, Dot } from '../ui';
 
 // Default preview shown when a discovered bot carries no server description.
 // Defined once so botFromProject and the render-site translation stay byte-identical.
@@ -26,23 +26,6 @@ export interface DiscoverBot {
   buildMode?: string;
   publishedAt?: string;
   createdAt?: string;
-}
-
-interface DiscoveryPalette {
-  page: string;
-  panel: string;
-  row: string;
-  rowPressed: string;
-  edge: string;
-  edgeStrong: string;
-  ink: string;
-  muted: string;
-  live: string;
-  liveBg: string;
-  blue: string;
-  blueBg: string;
-  amber: string;
-  amberBg: string;
 }
 
 // A bot with no username cannot be opened, so omit it from the feed.
@@ -67,85 +50,48 @@ export function discoverBotFromProject(p: Project): DiscoverBot | null {
 export function DiscoveryPage({ T, bots, loading }: {
   T: Theme; bots: DiscoverBot[]; loading: boolean;
 }) {
-  const C = discoveryPalette(T);
   const t = useT();
   const visibleBots = useMemo(() => bots, [bots]);
 
   return (
     <div style={{
       minHeight: '100%',
-      padding: '14px 12px 24px',
-      background: C.page,
+      padding: '14px 20px 96px',
+      background: T.pageBg,
       display: 'flex',
       flexDirection: 'column',
-      gap: 12,
+      gap: 14,
     }}>
-      <section style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-        gap: 12,
-        padding: '0 2px 2px',
-      }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{
-            fontFamily: T.font,
-            fontSize: 22,
-            lineHeight: '26px',
-            fontWeight: 800,
-            letterSpacing: 0,
-            color: C.ink,
-          }}>{t('Live bots', 'Боты в эфире')}</div>
-          <div style={{
-            marginTop: 3,
-            fontFamily: T.font,
-            fontSize: 13,
-            lineHeight: '18px',
-            color: C.muted,
-          }}>
-            {loading
-              ? t('Loading Telegram bots', 'Загрузка ботов Telegram')
-              : bots.length
-                ? t(`${bots.length} bots ready to try in Telegram`, `${bots.length} ботов можно попробовать в Telegram`)
-                : t('Public bots appear here after launch', 'Публичные боты появятся здесь после запуска')}
-          </div>
-        </div>
-
+      <header>
+        <h1 style={{
+          margin: 0,
+          fontFamily: T.font,
+          fontSize: 28,
+          fontWeight: 800,
+          letterSpacing: -0.6,
+          color: T.text,
+        }}>{t('Discover', 'Каталог')}</h1>
         <div style={{
-          minWidth: 42,
-          height: 34,
-          padding: '0 11px',
-          borderRadius: 12,
-          background: C.panel,
-          border: `1px solid ${C.edge}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: T.mono,
-          fontSize: 15,
-          fontWeight: 850,
-          color: C.ink,
-        }}>{loading ? '-' : bots.length}</div>
-      </section>
+          marginTop: 4,
+          fontFamily: T.font,
+          fontSize: 14,
+          color: T.sub,
+        }}>
+          {loading
+            ? t('loading live bots…', 'загружаем живых ботов…')
+            : bots.length
+              ? t('live bots from the community', 'живые боты сообщества')
+              : t('no live bots yet', 'живых ботов пока нет')}
+        </div>
+      </header>
 
-      {loading && <LoadingRows T={T} C={C} />}
-      {!loading && visibleBots.length === 0 && <EmptyDiscovery T={T} C={C} />}
+      {loading && <LoadingRows T={T} />}
+      {!loading && visibleBots.length === 0 && <EmptyDiscovery T={T} />}
 
       {!loading && visibleBots.length > 0 && (
-        <div style={{
-          background: C.panel,
-          border: `1px solid ${C.edgeStrong}`,
-          borderRadius: 12,
-          overflow: 'hidden',
-        }}>
-          {visibleBots.map((bot, index) => (
-            <DiscoveryRow
-              key={bot.id}
-              T={T}
-              C={C}
-              bot={bot}
-              last={index === visibleBots.length - 1}
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {visibleBots.map(bot => (
+            <DiscoveryCard key={bot.id} T={T} bot={bot} />
           ))}
         </div>
       )}
@@ -153,12 +99,8 @@ export function DiscoveryPage({ T, bots, loading }: {
   );
 }
 
-function DiscoveryRow({ T, C, bot, last }: {
-  T: Theme; C: DiscoveryPalette; bot: DiscoverBot; last: boolean;
-}) {
+function DiscoveryCard({ T, bot }: { T: Theme; bot: DiscoverBot }) {
   const t = useT();
-  const queue = typeof bot.openTasks === 'number' ? bot.openTasks : 0;
-  const age = timeAgo(bot.publishedAt || bot.createdAt);
   const preview = bot.preview === DISCOVER_FALLBACK
     ? t(DISCOVER_FALLBACK, 'Бот, созданный на AgentBot.')
     : bot.preview;
@@ -169,56 +111,42 @@ function DiscoveryRow({ T, C, bot, last }: {
       style={{
         ...btnReset,
         width: '100%',
-        minHeight: 104,
-        padding: '13px 12px',
-        display: 'grid',
-        gridTemplateColumns: '48px minmax(0, 1fr) 30px',
-        gap: 12,
-        alignItems: 'start',
         textAlign: 'left',
-        background: C.row,
-        borderBottom: last ? 'none' : `1px solid ${C.edge}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 13,
+        background: T.cardBg,
+        border: `1px solid ${T.sep}`,
+        borderRadius: 20,
+        boxShadow: T.shadow,
+        padding: 16,
       }}
     >
-      <BotTile T={T} name={bot.name} tone={bot.tone} src={bot.avatarUrl} size={48} radius={12} />
+      <div style={{ flexShrink: 0 }}>
+        <BotTile T={T} name={bot.name} tone={bot.tone} src={bot.avatarUrl} size={52} radius={16} />
+      </div>
 
-      <div style={{ minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 7,
-          minWidth: 0,
+          gap: 8,
+          flexWrap: 'wrap',
         }}>
-          <div style={{
-            minWidth: 0,
+          <span style={{
             fontFamily: T.font,
-            fontSize: 16,
-            lineHeight: '20px',
-            fontWeight: 800,
-            color: C.ink,
-            letterSpacing: 0,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}>{bot.name}</div>
-          <span style={{ width: 7, height: 7, borderRadius: 999, background: C.live, flexShrink: 0 }} />
+            fontSize: 17,
+            fontWeight: 700,
+            color: T.text,
+            letterSpacing: -0.2,
+          }}>{bot.name}</span>
+          <Pill T={T} tone="green"><Dot color="#2f8f6f" size={6} /> {t('LIVE', 'В СЕТИ')}</Pill>
         </div>
 
         <div style={{
-          marginTop: 2,
-          fontFamily: T.mono,
-          fontSize: 12.2,
-          lineHeight: '16px',
-          color: C.blue,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>@{bot.username}</div>
-
-        <div style={{
-          marginTop: 7,
+          marginTop: 3,
           fontFamily: T.font,
-          fontSize: 13,
+          fontSize: 13.5,
           lineHeight: '18px',
           color: T.sub,
           display: '-webkit-box',
@@ -227,140 +155,77 @@ function DiscoveryRow({ T, C, bot, last }: {
           overflow: 'hidden',
         }}>{preview}</div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-          <StatusChip T={T} C={C} label={t('Live', 'В эфире')} tone="live" />
-          {age && <StatusChip T={T} C={C} label={age} />}
-          {queue > 0 && <StatusChip T={T} C={C} label={t(`${queue} queued`, `${queue} в очереди`)} tone="amber" />}
-        </div>
+        <div style={{
+          marginTop: 5,
+          fontFamily: T.mono,
+          fontSize: 12.5,
+          color: T.hint,
+        }}>@{bot.username}</div>
       </div>
 
-      <div style={{
-        width: 30,
-        height: 30,
-        borderRadius: 10,
-        background: C.blueBg,
-        border: `1px solid ${hexA(C.blue, 0.22)}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-        <TGIcon name="open" size={15} color={C.blue} stroke={2.1} />
+      <div style={{ flexShrink: 0 }}>
+        <TGIcon name="chevRight" size={20} color={T.hint} stroke={2} />
       </div>
     </button>
   );
 }
 
-function StatusChip({ T, C, label, tone = 'neutral' }: {
-  T: Theme; C: DiscoveryPalette; label: string; tone?: 'neutral' | 'live' | 'amber';
-}) {
-  const bg = tone === 'live' ? C.liveBg : tone === 'amber' ? C.amberBg : C.rowPressed;
-  const fg = tone === 'live' ? C.live : tone === 'amber' ? C.amber : C.muted;
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      minHeight: 23,
-      padding: '0 8px',
-      borderRadius: 999,
-      background: bg,
-      color: fg,
-      fontFamily: T.font,
-      fontSize: 11.5,
-      fontWeight: 750,
-      lineHeight: '23px',
-      whiteSpace: 'nowrap',
-    }}>{label}</span>
-  );
-}
-
-function EmptyDiscovery({ T, C }: { T: Theme; C: DiscoveryPalette }) {
+function EmptyDiscovery({ T }: { T: Theme }) {
   const t = useT();
   return (
     <div style={{
-      padding: 16,
-      borderRadius: 12,
-      background: C.panel,
-      border: `1px solid ${C.edgeStrong}`,
+      background: T.cardBg,
+      border: `1px solid ${T.sep}`,
+      borderRadius: 20,
+      boxShadow: T.shadow,
+      padding: '40px 20px',
       display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
+      textAlign: 'center',
       gap: 12,
     }}>
       <div style={{
-        width: 42,
-        height: 42,
-        borderRadius: 12,
-        background: C.blueBg,
+        width: 52,
+        height: 52,
+        borderRadius: 16,
+        background: T.nestedBg,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
       }}>
-        <TGIcon name="compass" size={21} color={C.blue} stroke={2} />
+        <TGIcon name="compass" size={24} color={T.hint} stroke={2} />
       </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: T.font, fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: 0 }}>{t('No public bots yet', 'Публичных ботов пока нет')}</div>
-        <div style={{ fontFamily: T.font, fontSize: 13, color: C.muted, marginTop: 2 }}>{t('The list opens when live bots have public handles.', 'Список откроется, когда у ботов в эфире появятся публичные @-адреса.')}</div>
+      <div>
+        <div style={{ fontFamily: T.font, fontSize: 17, fontWeight: 700, color: T.text, letterSpacing: -0.2 }}>{t('No public bots yet', 'Публичных ботов пока нет')}</div>
+        <div style={{ marginTop: 4, fontFamily: T.font, fontSize: 13.5, lineHeight: '18px', color: T.sub }}>{t('The list opens when live bots have public handles.', 'Список откроется, когда у ботов в эфире появятся публичные @-адреса.')}</div>
       </div>
     </div>
   );
 }
 
-function LoadingRows({ T, C }: { T: Theme; C: DiscoveryPalette }) {
+function LoadingRows({ T }: { T: Theme }) {
   return (
-    <div style={{
-      background: C.panel,
-      border: `1px solid ${C.edgeStrong}`,
-      borderRadius: 12,
-      overflow: 'hidden',
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {[0, 1, 2].map(i => (
         <div key={i} style={{
-          minHeight: 104,
-          borderBottom: i === 2 ? 'none' : `1px solid ${C.edge}`,
+          background: T.cardBg,
+          border: `1px solid ${T.sep}`,
+          borderRadius: 20,
+          boxShadow: T.shadow,
+          padding: 16,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          gap: 13,
         }}>
-          {i === 1 ? <Spinner color={C.blue} size={20} /> : (
-            <div style={{ width: '76%', height: 42, borderRadius: 12, background: C.rowPressed }} />
-          )}
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: T.nestedBg, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ width: '52%', height: 15, borderRadius: 7, background: T.nestedBg }} />
+            <div style={{ width: '88%', height: 12, borderRadius: 6, background: T.nestedBg }} />
+            <div style={{ width: '34%', height: 11, borderRadius: 6, background: T.nestedBg }} />
+          </div>
         </div>
       ))}
     </div>
   );
-}
-
-function discoveryPalette(T: Theme): DiscoveryPalette {
-  return {
-    page: T.pageBg,
-    panel: T.cardBg,
-    row: T.cardBg,
-    rowPressed: T.nestedBg,
-    edge: T.sep,
-    edgeStrong: T.sepStrong,
-    ink: T.text,
-    muted: T.sub,
-    live: T.green,
-    liveBg: T.greenSoft,
-    blue: T.accent,
-    blueBg: T.accentSoft,
-    amber: T.gold,
-    amberBg: T.goldSoft,
-  };
-}
-
-function timeAgo(date?: string): string | null {
-  const days = daysSince(date);
-  if (days === null) return null;
-  if (days <= 0) return 'today';
-  if (days === 1) return '1d live';
-  if (days < 30) return `${days}d live`;
-  const months = Math.floor(days / 30);
-  return months === 1 ? '1mo live' : `${months}mo live`;
-}
-
-function daysSince(date?: string): number | null {
-  if (!date) return null;
-  const time = Date.parse(date);
-  if (!Number.isFinite(time)) return null;
-  return Math.max(0, Math.floor((Date.now() - time) / 86400000));
 }

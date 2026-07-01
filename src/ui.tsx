@@ -19,6 +19,7 @@ export function TGIcon({ name, size = 22, color = 'currentColor', stroke = 2 }: 
     plus: <path d="M12 5v14M5 12h14" {...p} />,
     copy: <g {...p}><rect x="8" y="8" width="11" height="11" rx="2.5" /><path d="M5 15.5V6a2 2 0 012-2h8.5" /></g>,
     arrowUp: <path d="M12 19V6M6 11l6-6 6 6" {...p} />,
+    arrowRight: <path d="M5 12h14M13 6l6 6-6 6" {...p} />,
     code: <path d="M9 8l-4 4 4 4M15 8l4 4-4 4" {...p} />,
     server: <g {...p}><rect x="4" y="4" width="16" height="6.5" rx="2" /><rect x="4" y="13.5" width="16" height="6.5" rx="2" /><path d="M8 7.25h0M8 16.75h0" /></g>,
     beaker: <path d="M9 3h6M10 3v6l-4.5 8.5A2 2 0 007.3 21h9.4a2 2 0 001.8-3L14 9V3" {...p} />,
@@ -439,31 +440,67 @@ export function ProgressRing({ T, value, size = 172, label, color }: {
 }
 
 // ── Bold 1c: stage-coloured event card (chat feed system message) ──
-export function EventCard({ T, palette = 'neutral', icon, chip, title, children }: {
-  T: Theme; palette?: keyof typeof EVENT_PALETTES; icon?: string; chip?: string;
-  title: React.ReactNode; children?: React.ReactNode;
+// Stage-coloured system-event card (the distinctive 1c chat treatment):
+// 40px icon tile · title + muted sub stacked · optional right-aligned action.
+export function EventCard({ T, palette = 'neutral', icon, title, sub, action, onAction }: {
+  T: Theme; palette?: keyof typeof EVENT_PALETTES; icon?: string;
+  title: React.ReactNode; sub?: React.ReactNode; action?: string; onAction?: () => void;
 }) {
   const p: EventPalette = EVENT_PALETTES[palette];
   return (
     <div style={{
-      background: p.bg, border: `1px solid ${p.border}`, borderRadius: 16, padding: '13px 15px',
-      display: 'flex', flexDirection: 'column', gap: children ? 7 : 0,
+      background: p.bg, border: `1px solid ${p.border}`, borderRadius: 16, padding: '13px 14px',
+      display: 'flex', alignItems: 'center', gap: 13,
+      animation: 'tgbubble .32s cubic-bezier(.2,.8,.2,1)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {icon && (
-          <div style={{ width: 30, height: 30, borderRadius: 9, background: p.chip, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <TGIcon name={icon} size={17} color={p.accent} stroke={2} />
-          </div>
-        )}
-        <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 700, color: T.text, flex: 1, letterSpacing: -0.2 }}>{title}</div>
-        {chip && (
-          <span style={{
-            fontFamily: T.font, fontSize: 11, fontWeight: 700, color: p.accent, background: p.chip,
-            padding: '3px 9px', borderRadius: 999, letterSpacing: 0.2,
-          }}>{chip}</span>
-        )}
+      {icon && (
+        <div style={{ width: 40, height: 40, borderRadius: 12, background: p.chip, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <TGIcon name={icon} size={20} color={p.accent} stroke={2} />
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 700, color: T.text, letterSpacing: -0.2, lineHeight: '20px' }}>{title}</div>
+        {sub && <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '18px', marginTop: 2 }}>{sub}</div>}
       </div>
-      {children && <div style={{ fontFamily: T.font, fontSize: 13.5, lineHeight: '19px', color: T.sub, paddingLeft: icon ? 40 : 0 }}>{children}</div>}
+      {action && (
+        <button onClick={onAction} style={{
+          ...btnReset, flexShrink: 0, padding: '9px 16px', borderRadius: 12,
+          background: p.accent, color: '#FBF8EF', fontFamily: T.font, fontSize: 14, fontWeight: 700,
+        }}>{action}</button>
+      )}
+    </div>
+  );
+}
+
+// Terracotta bordered quick-reply chips (wrap); tapping sends the label.
+export function QuickReplies({ T, options, onPick }: {
+  T: Theme; options: string[]; onPick: (label: string) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+      {options.map(o => (
+        <button key={o} onClick={() => onPick(o)} style={{
+          ...btnReset, padding: '11px 18px', borderRadius: 999,
+          background: '#FBF3EC', color: T.accentPressed, border: `1.5px solid ${T.accent}`,
+          fontFamily: T.font, fontSize: 15, fontWeight: 600, letterSpacing: -0.1,
+          transition: 'transform .1s ease',
+        }}>{o}</button>
+      ))}
+    </div>
+  );
+}
+
+// Dashboard status chip — uppercase label + coloured dot + bold value.
+export function StatusChip({ T, label, value, dot }: {
+  T: Theme; label: string; value: string; dot?: string;
+}) {
+  return (
+    <div style={{ flex: 1, minWidth: 0, background: T.cardBg, border: `1px solid ${T.sep}`, borderRadius: 14, padding: '11px 12px' }}>
+      <div style={{ fontFamily: T.font, fontSize: 11, fontWeight: 700, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+        {dot && <span style={{ width: 8, height: 8, borderRadius: 999, background: dot, flexShrink: 0 }} />}
+        <span style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 700, color: T.text, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
+      </div>
     </div>
   );
 }
