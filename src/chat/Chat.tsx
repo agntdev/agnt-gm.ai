@@ -117,11 +117,18 @@ const EVENT_KIND: Record<string, { palette: Pal; icon: string }> = {
   resume: { palette: 'green', icon: 'play' },
 };
 
-interface EventData { kind?: string; action?: string; label?: string; title?: string; sub?: string; detail?: string; status?: string; }
+interface EventData { kind?: string; action?: string; label?: string; title?: string; sub?: string; detail?: string; status?: string; metadata?: { stage?: string } }
 
 function eventLook(msg: ChatMessage): { palette: Pal; icon: string } {
   const d = (msg.data || {}) as EventData;
   const key = d.kind && d.kind !== 'action' ? d.kind : (d.action || '');
+  // go-live message: "published_with_gaps" reads amber (live, but polish me);
+  // clean "publishing" stays green celebratory.
+  if (key === 'bot_deploy') {
+    return d.metadata?.stage === 'published_with_gaps'
+      ? { palette: 'amber', icon: 'spark' }
+      : { palette: 'green', icon: 'spark' };
+  }
   if (EVENT_KIND[key]) return EVENT_KIND[key];
   const probe = `${msg.content || ''} ${JSON.stringify(msg.data ?? '')} ${d.status || ''}`.toLowerCase();
   return /fail|error|crash|broken|🔴|❌|⛔|✗/.test(probe)
