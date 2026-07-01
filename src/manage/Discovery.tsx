@@ -315,39 +315,21 @@ function LoadingRows({ T, C }: { T: Theme; C: DiscoveryPalette }) {
 }
 
 function discoveryPalette(T: Theme): DiscoveryPalette {
-  if (T.dark) {
-    return {
-      page: '#0e1621',
-      panel: '#151e28',
-      row: '#151e28',
-      rowPressed: 'rgba(255,255,255,0.055)',
-      edge: 'rgba(210,224,238,0.075)',
-      edgeStrong: 'rgba(210,224,238,0.12)',
-      ink: '#f3f6f8',
-      muted: '#8d9aa7',
-      live: '#52c48f',
-      liveBg: 'rgba(82,196,143,0.12)',
-      blue: '#65a9e8',
-      blueBg: 'rgba(101,169,232,0.12)',
-      amber: '#dca24a',
-      amberBg: 'rgba(220,162,74,0.12)',
-    };
-  }
   return {
-    page: '#eef1f5',
-    panel: '#ffffff',
-    row: '#ffffff',
-    rowPressed: 'rgba(13,22,32,0.045)',
-    edge: 'rgba(13,22,32,0.075)',
-    edgeStrong: 'rgba(13,22,32,0.11)',
-    ink: '#0d1620',
-    muted: '#68737f',
-    live: '#178557',
-    liveBg: 'rgba(23,133,87,0.09)',
-    blue: '#236fae',
-    blueBg: 'rgba(35,111,174,0.09)',
-    amber: '#a46a14',
-    amberBg: 'rgba(164,106,20,0.09)',
+    page: T.pageBg,
+    panel: T.cardBg,
+    row: T.cardBg,
+    rowPressed: T.nestedBg,
+    edge: T.sep,
+    edgeStrong: T.sepStrong,
+    ink: T.text,
+    muted: T.sub,
+    live: T.green,
+    liveBg: T.greenSoft,
+    blue: T.accent,
+    blueBg: T.accentSoft,
+    amber: T.gold,
+    amberBg: T.goldSoft,
   };
 }
 

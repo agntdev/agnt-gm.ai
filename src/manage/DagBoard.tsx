@@ -281,7 +281,7 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
                 ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
                 padding: '12px 14px',
               }}>
-                <div style={{ width: 28, height: 28, borderRadius: 9, background: T.dark ? 'rgba(255,255,255,0.06)' : 'rgba(15,22,32,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 28, height: 28, borderRadius: 9, background: T.nestedBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <TGIcon name="server" size={15} color={T.hint} stroke={1.9} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -419,7 +419,7 @@ function TaskRow({ T, t, first, nested, detail, open, onToggle, onOpen }: {
               {d.skill_refs.map(s => (
                 <span key={s} style={{
                   fontFamily: T.mono, fontSize: 11, color: T.sub, padding: '2px 8px', borderRadius: 7,
-                  background: T.dark ? 'rgba(255,255,255,0.05)' : 'rgba(15,22,32,0.04)',
+                  background: T.nestedBg,
                 }}>{s}</span>
               ))}
             </div>
@@ -498,7 +498,7 @@ function FilterChip({ T, label, count, active, color, onClick }: {
     <button onClick={onClick} style={{
       ...btnReset, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 11px',
       borderRadius: 999, fontFamily: T.font, fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
-      background: active ? hexA(color, T.dark ? 0.22 : 0.12) : (T.dark ? 'rgba(255,255,255,0.05)' : 'rgba(15,22,32,0.04)'),
+      background: active ? hexA(color, 0.12) : T.nestedBg,
       color: active ? color : T.sub,
       border: `1px solid ${active ? hexA(color, 0.4) : 'transparent'}`,
     }}>

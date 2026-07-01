@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Theme, btnReset } from '../theme';
 import { TgUser } from '../telegram';
-import { TGIcon, Spinner } from '../ui';
+import { TGIcon, Spinner, Wordmark } from '../ui';
 
 // Each example is a short button (title + blurb) that drops a rich, detailed
 // brief into the prompt box. That brief is what gets sent verbatim as the
@@ -131,9 +131,9 @@ function Avatar({ T, user }: { T: Theme; user?: TgUser | null }) {
 
 export type StartBtn = { label: string; disabled?: boolean; busy?: boolean; onClick?: () => void };
 
-export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, error, startBtn }: {
+export function PromptScreen({ T, idea, setIdea, changed, user, error, startBtn }: {
   T: Theme; idea: string; setIdea: (v: string) => void; changed: boolean;
-  user?: TgUser | null; onToggleTheme: () => void; error?: string | null;
+  user?: TgUser | null; onToggleTheme?: () => void; error?: string | null;
   startBtn?: StartBtn | null;
 }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -141,17 +141,11 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
   // Three random ideas, chosen once on mount; the shuffle button re-rolls them.
   const [shownIdeas, setShownIdeas] = useState<IdeaExample[]>(() => pickIdeas(IDEAS_SHOWN));
   return (
-    <div style={{ padding: '12px 18px 20px', display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      {/* avatar · theme switcher */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+    <div style={{ padding: '14px 22px 20px', display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      {/* brand lockup · user avatar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <Wordmark T={T} size={30} />
         <Avatar T={T} user={user} />
-        <button onClick={onToggleTheme} style={{
-          ...btnReset, width: 38, height: 38, borderRadius: 999,
-          background: T.dark ? 'rgba(255,255,255,0.07)' : 'rgba(15,22,32,0.05)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <TGIcon name={T.dark ? 'sun' : 'moon'} size={18} color={T.sub} stroke={1.9} />
-        </button>
       </div>
 
       {changed && (
@@ -166,15 +160,15 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
         </div>
       )}
 
-      <div style={{ fontFamily: T.font, fontSize: 27, fontWeight: 700, color: T.text, letterSpacing: -0.5, lineHeight: '32px', textAlign: 'center' }}>
+      <div style={{ fontFamily: T.font, fontSize: 30, fontWeight: 800, color: T.text, letterSpacing: -1, lineHeight: '34px', textAlign: 'center' }}>
         What should your<br />bot do?
       </div>
-      <div style={{ fontFamily: T.font, fontSize: 15, color: T.sub, marginTop: 8, lineHeight: '21px', textAlign: 'center' }}>
+      <div style={{ fontFamily: T.font, fontSize: 15, color: T.sub, marginTop: 10, lineHeight: '21px', textAlign: 'center' }}>
         Describe your idea in plain words — you can refine it next.
       </div>
 
       <div style={{
-        marginTop: 18, borderRadius: 18, background: T.cardBg, border: `1.5px solid ${idea ? T.accentBorder : T.sep}`,
+        marginTop: 20, borderRadius: 18, background: T.cardBg, border: `1.5px solid ${idea ? T.accentBorder : T.sep}`,
         boxShadow: T.shadow, padding: 16, transition: 'border-color .2s',
       }}>
         <textarea
@@ -193,11 +187,12 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
               disabled={startBtn.disabled}
               style={{
                 ...btnReset, display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 13px', borderRadius: 999,
-                background: startBtn.disabled ? (T.dark ? '#243140' : '#dfe4ea') : T.accent,
+                padding: '7px 14px', borderRadius: 999,
+                background: startBtn.disabled ? T.nestedBg : T.accent,
                 color: startBtn.disabled ? T.hint : T.accentText,
-                fontFamily: T.font, fontSize: 13, fontWeight: 600, letterSpacing: 0.1,
+                fontFamily: T.font, fontSize: 13, fontWeight: 700, letterSpacing: 0.1,
                 cursor: startBtn.disabled ? 'default' : 'pointer',
+                boxShadow: startBtn.disabled ? 'none' : T.ctaShadow,
                 animation: 'tgfade .2s', whiteSpace: 'nowrap',
               }}
             >
@@ -229,11 +224,13 @@ export function PromptScreen({ T, idea, setIdea, changed, user, onToggleTheme, e
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
         {shownIdeas.map((ex) => (
           <button key={ex.title} onClick={() => setIdea(ex.prompt)} style={{
-            ...btnReset, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-            borderRadius: 13, background: T.dark ? 'rgba(255,255,255,0.04)' : '#ffffff',
-            border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
+            ...btnReset, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px',
+            borderRadius: 14, background: T.cardBg,
+            border: `1px solid ${T.sep}`, boxShadow: T.shadow,
           }}>
-            <TGIcon name="spark" size={17} color={T.accent} />
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <TGIcon name="spark" size={16} color={T.accent} />
+            </div>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'block', fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text, lineHeight: '19px' }}>{ex.title}</span>
               <span style={{ display: 'block', fontFamily: T.font, fontSize: 12.5, color: T.hint, lineHeight: '16px', marginTop: 2 }}>{ex.blurb}</span>

@@ -67,7 +67,7 @@ export function BlockedBadge({ T, state, onClick }: { T: Theme; state: BlockedSt
   return (
     <button onClick={onClick} style={{
       ...btnReset, width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px',
-      borderRadius: 14, background: hexA(color, T.dark ? 0.16 : 0.1), border: `1px solid ${hexA(color, 0.4)}`,
+      borderRadius: 14, background: hexA(color, 0.1), border: `1px solid ${hexA(color, 0.4)}`,
     }}>
       <div style={{ width: 34, height: 34, borderRadius: 10, background: hexA(color, 0.18), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <TGIcon name={anyFailed ? 'shield' : 'chat'} size={18} color={color} stroke={2} />
@@ -120,7 +120,7 @@ export function TaskManagerInbox({ T, bot, onOpenTask }: {
                   width: 38,
                   height: 38,
                   borderRadius: 12,
-                  background: T.dark ? 'rgba(255,255,255,0.055)' : 'rgba(15,22,32,0.045)',
+                  background: T.nestedBg,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -218,7 +218,7 @@ function InboxItem({ T, bot, item, onOpen, onChanged }: {
           ) : (
             <div style={{ display: 'flex', gap: 9 }}>
               <button onClick={e => { e.stopPropagation(); setConfirmCancel(false); }} style={{
-                ...btnReset, flex: 1, height: 38, borderRadius: 10, background: T.dark ? 'rgba(255,255,255,0.06)' : '#f3f5f8',
+                ...btnReset, flex: 1, height: 38, borderRadius: 10, background: T.nestedBg,
                 color: T.text, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
               }}>Keep it</button>
               <button onClick={cancelReview} disabled={busy === 'cancel'} style={{ ...cancelBtn(T), flex: 1, background: T.red, color: '#fff' }}>

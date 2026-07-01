@@ -175,7 +175,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
               {task?.title || slug}
             </div>
           </div>
-          <button onClick={onClose} style={{ ...btnReset, width: 32, height: 32, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.dark ? 'rgba(255,255,255,0.06)' : 'rgba(15,22,32,0.05)' }}>
+          <button onClick={onClose} style={{ ...btnReset, width: 32, height: 32, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.nestedBg }}>
             <TGIcon name="close" size={18} color={T.hint} stroke={2.2} />
           </button>
         </div>
@@ -259,7 +259,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
           {skills.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {skills.map(s => (
-                <span key={s} style={{ fontFamily: T.mono, fontSize: 11, color: T.sub, padding: '3px 8px', borderRadius: 7, background: T.dark ? 'rgba(255,255,255,0.05)' : 'rgba(15,22,32,0.04)' }}>{s}</span>
+                <span key={s} style={{ fontFamily: T.mono, fontSize: 11, color: T.sub, padding: '3px 8px', borderRadius: 7, background: T.nestedBg }}>{s}</span>
               ))}
             </div>
           )}
@@ -370,7 +370,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
             <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '19px' }}>{cancelWarning}</div>
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
               <button onClick={() => setCancelWarning(null)} style={{
-                ...btnReset, flex: 1, height: 42, borderRadius: 11, background: T.dark ? 'rgba(255,255,255,0.06)' : '#f3f5f8',
+                ...btnReset, flex: 1, height: 42, borderRadius: 11, background: T.nestedBg,
                 color: T.text, fontFamily: T.font, fontSize: 14, fontWeight: 600,
               }}>Keep it</button>
               <button onClick={() => doCancel(true)} disabled={busy === 'cancel'} style={{
@@ -413,7 +413,7 @@ function ActionBox({ T, placeholder, value, onChange, onSend, busy, cta, primary
       <button onClick={can ? onSend : undefined} style={{
         ...btnReset, height: 40, padding: '0 14px', borderRadius: 12, flexShrink: 0,
         display: 'flex', alignItems: 'center', gap: 6,
-        background: can ? (primary ? T.accent : T.accentSoft) : (T.dark ? '#243140' : '#dfe4ea'),
+        background: can ? (primary ? T.accent : T.accentSoft) : T.nestedBg,
         color: can ? (primary ? '#fff' : T.accent) : T.hint,
         fontFamily: T.font, fontSize: 13.5, fontWeight: 600, cursor: can ? 'pointer' : 'default',
       }}>

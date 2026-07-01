@@ -103,7 +103,7 @@ export function FeedbackComposer({ T, bot, live, onGrown }: {
           }} />
         <button onClick={can ? () => void send() : undefined} style={{
           ...btnReset, width: 42, height: 42, borderRadius: 999, flexShrink: 0,
-          background: can ? T.accent : (T.dark ? '#243140' : '#dfe4ea'),
+          background: can ? T.accent : T.nestedBg,
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: can ? 'pointer' : 'default',
         }}>
           {sending ? <Spinner color="#fff" size={18} /> : <TGIcon name="send" size={20} color={can ? '#fff' : T.hint} stroke={2} />}

@@ -11,7 +11,7 @@ import {
   botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
-import { TGIcon, Card, Pill, Dot, BotAvatar, Spinner } from '../ui';
+import { TGIcon, Card, Pill, Dot, BotAvatar, Spinner, ProgressRing } from '../ui';
 import { MyBot } from './MyBots';
 import { ActivityTimeline, relTime, withDeployments } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
@@ -73,7 +73,7 @@ function PhaseStrip({ T, dag }: { T: Theme; dag: DagInfo }) {
             flex: 1, height: 3, borderRadius: 2,
             background: i < idx ? T.accent
               : i === idx ? (failed ? T.red : T.accent)
-              : (T.dark ? 'rgba(255,255,255,0.1)' : 'rgba(15,22,32,0.08)'),
+              : hexA(T.text, 0.1),
             opacity: i < idx ? 0.55 : 1,
           }} />
         ))}
@@ -105,7 +105,7 @@ function BuildProgress({ T, steps }: { T: Theme; steps: ProgressStep[] }) {
             <div key={s.label} style={{ minWidth: 0 }}>
               <div style={{
                 height: 4, borderRadius: 999,
-                background: s.state === 'todo' ? (T.dark ? 'rgba(255,255,255,0.1)' : 'rgba(15,22,32,0.08)') : color,
+                background: s.state === 'todo' ? hexA(T.text, 0.1) : color,
                 opacity: s.state === 'done' ? 0.72 : 1,
               }} />
               <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
@@ -183,24 +183,35 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
   const hiddenIters = allIters.length - ITER_VISIBLE;
   const visibleIters = showAllIters || hiddenIters <= 0 ? allIters : allIters.slice(-ITER_VISIBLE);
   const showIterToggle = hiddenIters > 0;
+  const failed = bp.stage === 'failed';
+  const live = bp.stage === 'live' || bp.phase === 'published';
+  // stat tiles sit on the dark hero — a faint cream-tinted lighter green
+  const tileBg = hexA(T.accentText, 0.07);
+  const statTile = (value: string, label: string) => (
+    <div style={{ flex: 1, background: tileBg, borderRadius: 14, padding: '11px 6px', textAlign: 'center' }}>
+      <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.accentText, letterSpacing: -0.5 }}>{value}</div>
+      <div style={{ fontFamily: T.font, fontSize: 11.5, color: hexA(T.accentText, 0.6), marginTop: 2 }}>{label}</div>
+    </div>
+  );
   return (
-    <Card T={T} pad={0}>
-      <div style={{ padding: '14px 16px 13px' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          <span style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 650, color: T.text, lineHeight: '19px' }}>{buildStatusLabel(bp)}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* dark-green build hero — ring + status + iteration stats */}
+      <div style={{ background: T.text, borderRadius: 20, boxShadow: T.heroShadow, padding: '18px 16px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <Dot color={failed ? T.red : live ? T.green : T.accent} size={8} pulse={!live && !failed} />
+          <span style={{ fontFamily: T.font, fontSize: 14, fontWeight: 700, color: T.accentText, letterSpacing: -0.2 }}>
+            {failed ? 'Needs a fix' : live ? 'Live!' : `${buildStatusLabel(bp)}…`}
+          </span>
         </div>
-        <div style={{ marginTop: 11, height: 7, borderRadius: 999, background: T.dark ? 'rgba(255,255,255,0.1)' : 'rgba(15,22,32,0.08)', overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: bp.stage === 'failed' ? T.red : T.accent, transition: 'width .5s ease' }} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
-          <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>≈ {bp.percent}%</span>
-          {bp.pass_current > 0 && (
-            <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>iteration {bp.pass_current}</span>
-          )}
+        <ProgressRing T={T} value={pct} label={failed ? 'needs fix' : live ? 'complete' : 'building'} color={failed ? T.red : undefined} />
+        <div style={{ display: 'flex', gap: 10 }}>
+          {statTile(String(bp.pass_current), 'round')}
+          {statTile(String(bp.merged_passes), 'approved')}
+          {statTile(String(bp.pass_floor), 'target')}
         </div>
       </div>
       {allIters.length > 0 && (
-        <div style={{ borderTop: `0.5px solid ${T.sep}` }}>
+        <Card T={T} pad={0}>
           {showIterToggle && (
             <button onClick={() => setShowAllIters(v => !v)} style={{ ...btnReset, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px' }}>
               <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.accent }}>
@@ -225,9 +236,9 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
               </div>
             );
           })}
-        </div>
+        </Card>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -640,7 +651,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             gap: 8,
             padding: '0 8px 0 11px',
             borderRadius: 999,
-            background: T.dark ? 'rgba(255,255,255,0.045)' : 'rgba(15,22,32,0.035)',
+            background: T.nestedBg,
             border: `0.5px solid ${T.sep}`,
           }}>
             <TGIcon name="compass" size={14} color={discoverable ? T.accent : T.hint} stroke={2} />
@@ -690,7 +701,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                 disabled={!agentAssigned || creatingBot}
                 style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px', borderTop: `0.5px solid ${T.sep}`, cursor: agentAssigned ? 'pointer' : 'default', opacity: agentAssigned ? 1 : 0.55 }}
               >
-                <div style={{ width: 38, height: 38, borderRadius: 11, background: agentAssigned ? T.accentSoft : (T.dark ? 'rgba(255,255,255,0.055)' : 'rgba(15,22,32,0.045)'), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 38, height: 38, borderRadius: 11, background: agentAssigned ? T.accentSoft : T.nestedBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {creatingBot ? <Spinner color={T.accent} size={18} /> : <TGIcon name="send" size={19} color={agentAssigned ? T.accent : T.hint} stroke={1.9} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -727,7 +738,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       ) : buildRunning ? (
         <div style={{
           width: '100%', minHeight: 54, borderRadius: 15, padding: '0 16px',
-          background: T.dark ? 'rgba(255,255,255,0.05)' : 'rgba(15,22,32,0.04)',
+          background: T.nestedBg,
           border: `1px solid ${T.sep}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           fontFamily: T.font, fontSize: 15.5, fontWeight: 600, color: T.sub, textAlign: 'center', lineHeight: '20px',
@@ -790,7 +801,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                 width: 28,
                 height: 28,
                 borderRadius: 9,
-                background: T.dark ? 'rgba(255,255,255,0.055)' : 'rgba(15,22,32,0.045)',
+                background: T.nestedBg,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -988,7 +999,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submitNewTask(); } }}
                     placeholder="Describe a task to add…" rows={1}
                     style={{ flex: 1, resize: 'none', maxHeight: 200, minHeight: 38, overflowY: 'auto', padding: '9px 12px', borderRadius: 12, background: T.inputBg, border: `0.5px solid ${T.sep}`, color: T.text, fontFamily: T.font, fontSize: 14, lineHeight: '19px', outline: 'none', boxSizing: 'border-box' }} />
-                  <button onClick={() => void submitNewTask()} style={{ ...btnReset, width: 38, height: 38, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: taskDraft.trim() && !addBusy ? T.accent : (T.dark ? '#243140' : '#dfe4ea') }}>
+                  <button onClick={() => void submitNewTask()} style={{ ...btnReset, width: 38, height: 38, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: taskDraft.trim() && !addBusy ? T.accent : T.nestedBg }}>
                     {addBusy ? <Spinner color="#fff" size={16} /> : <TGIcon name="send" size={17} color={taskDraft.trim() ? '#fff' : T.hint} stroke={2} />}
                   </button>
                 </div>
@@ -1052,7 +1063,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           {botUsername && (
           <div style={{
             display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 10, padding: '9px 11px',
-            borderRadius: 10, background: T.dark ? 'rgba(255,255,255,0.04)' : 'rgba(15,22,32,0.04)',
+            borderRadius: 10, background: T.nestedBg,
           }}>
             <TGIcon name="shield" size={15} color={T.amber} stroke={1.9} />
             <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.sub, lineHeight: '17px' }}>
@@ -1065,7 +1076,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
             <button onClick={() => setConfirmDelete(false)} style={{
               ...btnReset, flex: 1, height: 42, borderRadius: 11,
-              background: T.dark ? 'rgba(255,255,255,0.06)' : '#f3f5f8',
+              background: T.nestedBg,
               color: T.text, fontFamily: T.font, fontSize: 14, fontWeight: 600,
             }}>
               Cancel
@@ -1199,7 +1210,7 @@ function Switch({ T, on, onClick, busy, size = 'regular' }: {
   return (
     <button onClick={busy ? undefined : onClick} aria-pressed={on} style={{
       ...btnReset, width: trackW, height: trackH, borderRadius: 999, flexShrink: 0, position: 'relative',
-      background: on ? T.accent : (T.dark ? 'rgba(255,255,255,0.16)' : 'rgba(15,22,32,0.16)'),
+      background: on ? T.accent : hexA(T.text, 0.16),
       transition: 'background .2s', opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer',
     }}>
       <span style={{

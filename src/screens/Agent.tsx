@@ -53,7 +53,7 @@ export function ModePicker({ T, mode, onMode }: { T: Theme; mode: BuildMode; onM
           }}>
             <div style={{
               width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-              background: sel ? T.accentSoft : (T.dark ? 'rgba(255,255,255,0.05)' : '#f3f5f8'),
+              background: sel ? T.accentSoft : T.nestedBg,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <TGIcon name={meta.glyph} size={20} color={sel ? T.accent : T.sub} stroke={1.9} />
@@ -64,9 +64,9 @@ export function ModePicker({ T, mode, onMode }: { T: Theme; mode: BuildMode; onM
             </div>
             <div style={{
               width: 22, height: 22, borderRadius: 999, flexShrink: 0,
-              border: `2px solid ${sel ? T.accent : (T.dark ? 'rgba(255,255,255,0.2)' : 'rgba(15,22,32,0.18)')}`,
+              border: `2px solid ${sel ? T.accent : T.sepStrong}`,
               background: sel ? T.accent : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>{sel && <TGIcon name="check" size={14} color="#fff" stroke={3} />}</div>
+            }}>{sel && <TGIcon name="check" size={14} color={T.accentText} stroke={3} />}</div>
           </button>
         );
       })}
@@ -209,8 +209,8 @@ export function CopyCard({ T, text, mono, small }: { T: Theme; text: string; mon
       }}>{text}</div>
       <button onClick={copy} style={{
         ...btnReset, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-        padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`,
-        background: T.dark ? 'rgba(255,255,255,0.03)' : '#f7f9fb',
+        padding: '10px 14px', borderTop: `1px solid ${T.sep}`,
+        background: T.nestedBg,
         color: copied ? T.green : T.accent, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
       }}>
         <TGIcon name={copied ? 'check' : 'copy'} size={16} color={copied ? T.green : T.accent} stroke={2} />
