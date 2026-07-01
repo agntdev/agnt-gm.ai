@@ -40,6 +40,7 @@ const TaskDetail = lazy(() => import('./manage/TaskDetail').then(m => ({ default
 const ActivityPage = lazy(() => import('./manage/Activity').then(m => ({ default: m.ActivityPage })));
 const AgentManager = lazy(() => import('./manage/AgentManager').then(m => ({ default: m.AgentManager })));
 const ConnectAgent = lazy(() => import('./manage/ConnectAgent').then(m => ({ default: m.ConnectAgent })));
+const BlueprintScreen = lazy(() => import('./manage/Blueprint').then(m => ({ default: m.BlueprintScreen })));
 
 const STEPS = ['prompt', 'clarify', 'agent'] as const;
 type StepId = typeof STEPS[number];
@@ -209,7 +210,7 @@ export default function App() {
   const [myBots, setMyBots] = useState<MyBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(false);
   const [manageBot, setManageBot] = useState<string | null>(null);
-  const [manageView, setManageView] = useState<'overview' | 'board' | 'taskboard' | 'inbox' | 'chat' | 'activity' | 'connect'>('overview');
+  const [manageView, setManageView] = useState<'overview' | 'board' | 'taskboard' | 'inbox' | 'chat' | 'activity' | 'connect' | 'plan'>('overview');
   const [detailTask, setDetailTask] = useState<string | null>(null); // task_manager TaskDetail overlay (slug)
   const [hiddenBots, setHiddenBots] = useState<Set<string>>(loadHidden);
   const [pausedBots, setPausedBots] = useState<Set<string>>(loadPaused);
@@ -749,7 +750,7 @@ export default function App() {
   const header = insideTelegram ? null : (tab === 'manage'
     ? (activeBot
       ? <TGHeader T={T}
-          title={manageView === 'activity' ? t('Activity', 'События') : manageView === 'connect' ? t('Connect agent', 'Подключить агента') : manageView === 'board' || manageView === 'taskboard' ? t('Build board', 'Доска сборки') : manageView === 'inbox' ? t('Needs you', 'Требует внимания') : activeBot.name}
+          title={manageView === 'activity' ? t('Activity', 'События') : manageView === 'plan' ? t('The plan', 'План') : manageView === 'connect' ? t('Connect agent', 'Подключить агента') : manageView === 'board' || manageView === 'taskboard' ? t('Build board', 'Доска сборки') : manageView === 'inbox' ? t('Needs you', 'Требует внимания') : activeBot.name}
           subtitle={manageView === 'overview' || manageView === 'chat' ? '@' + activeBot.handle + ' · ' + activeBot.version : '@' + activeBot.handle}
           onBack={closeChat} />
       : <TGHeader T={T} title={t('My Bots', 'Мои боты')} subtitle={t('Deployed on AgentBot', 'Развёрнуто на AgentBot')} />)
@@ -776,6 +777,8 @@ export default function App() {
         : manageView === 'inbox'
         ? <TaskManagerInbox T={T} bot={activeBot}
             onOpenTask={(slug) => { setDir(1); setDetailTask(slug); }} />
+        : manageView === 'plan'
+        ? <BlueprintScreen T={T} projectId={activeBot.id} />
         : manageView === 'connect'
         ? <ConnectAgent T={T} bot={activeBot} onConnected={() => {
             // a local agent now owns the bot — it supersedes any cloud agent
@@ -791,6 +794,7 @@ export default function App() {
             onOpenChat={() => { setDir(1); setManageView('chat'); }}
             onOpenBoard={() => { setDir(1); setManageView('taskboard'); }}
             onOpenInbox={() => { setDir(1); setManageView('inbox'); }}
+            onOpenPlan={() => { setDir(1); setManageView('plan'); }}
             onViewActivity={() => { setDir(1); setManageView('activity'); }}
             onManageAgents={() => setAgentSheet(true)}
             onCloudDetected={() => markCloudDeployed(activeBot.id)}

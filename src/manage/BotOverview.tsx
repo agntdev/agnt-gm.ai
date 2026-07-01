@@ -8,10 +8,10 @@ import { Theme, btnReset, hexA } from '../theme';
 import {
   ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, BotInitiate, BuildProgress as BuildProgressDTO,
   getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
+  botIsLive, retryDeploy, setAutoMerge, setBuildModeApi, BuildMode, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
-import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, StatusChip } from '../ui';
+import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, StatusChip, Segmented } from '../ui';
 import { MyBot } from './MyBots';
 import { ActivityTimeline, relTime, withDeployments } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
@@ -250,6 +250,15 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
           })}
         </Card>
       )}
+      {/* reassurance — "found gaps" is progress, not failure (Bold terracotta tint) */}
+      {!live && !failed && (
+        <div style={{ background: '#FBF3EC', border: '1px solid #eccfbf', borderRadius: 16, padding: '13px 15px', display: 'flex', gap: 11 }}>
+          <TGIcon name="shield" size={18} color={T.accentPressed} stroke={2} />
+          <span style={{ fontFamily: T.font, fontSize: 13, color: T.accentPressed, lineHeight: '18px' }}>
+            {t('“Found gaps” is normal. After each round we compare your bot to the plan and fix anything missing — that’s progress, not a failure.', '«Найдены пробелы» — это норма. После каждого раунда мы сверяем бота с планом и дописываем недостающее — это прогресс, а не ошибка.')}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -283,9 +292,9 @@ interface OvSnap {
 }
 const OV_CACHE = new Map<string, OvSnap>();
 
-export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onDelete, onViewActivity, onManageAgents, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause, discoverable, onToggleDiscoverable }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onOpenPlan, onDelete, onViewActivity, onManageAgents, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause, discoverable, onToggleDiscoverable }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
-  onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onDelete: () => void;
+  onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onOpenPlan?: () => void; onDelete: () => void;
   onViewActivity: () => void; onManageAgents: () => void;
   onCloudDetected?: () => void; // API revealed a cloud agent this client hadn't recorded
   onCloudGone?: () => void;     // API says no cloud agent — clear a stale local mark
@@ -316,6 +325,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const [createBotErr, setCreateBotErr] = useState<string | null>(null);
   const [regenAvatar, setRegenAvatar] = useState(false);   // avatar regenerate in flight
   const [regenAvatarErr, setRegenAvatarErr] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);          // redeploy in flight
+  const [buildModeOverride, setBuildModeOverride] = useState<BuildMode | null>(null); // optimistic build-mode
+  const [autoMergeOverride, setAutoMergeOverride] = useState<boolean | null>(null);   // optimistic auto-updates
   const [addingTask, setAddingTask] = useState(false); // "Add new task" input open
   const [taskDraft, setTaskDraft] = useState('');
   const [addBusy, setAddBusy] = useState(false);
@@ -509,6 +521,14 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // the bot's blueprint (build brief) lives in the repo; the "Spec" action links it
   const blueprintUrl = repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/blueprint.md` : null;
 
+  // Settings controls (optimistic local override over the fetched detail).
+  const effBuildMode: BuildMode = buildModeOverride
+    ?? ((detail?.build_mode === 'local_agent' || detail?.build_mode === 'local') ? 'local' : 'platform');
+  const changeBuildMode = (m: BuildMode) => { setBuildModeOverride(m); setBuildModeApi(bot.id, m).catch(() => {}); };
+  const autoMergeOn = autoMergeOverride ?? !!detail?.auto_merge_enabled;
+  const toggleAutoMerge = () => { const next = !autoMergeOn; setAutoMergeOverride(next); setAutoMerge(bot.id, next).catch(() => {}); };
+  const onRetry = () => { if (retrying) return; setRetrying(true); retryDeploy(bot.id).catch(() => {}).finally(() => setTimeout(() => setRetrying(false), 4000)); };
+
   const sys = messages.filter(m => m.role === 'system');
   const activity = [...withDeployments(sys, deploys, lang)].reverse().slice(0, 4);
   // count only real work tasks (exclude epics = display-only containers, and
@@ -582,20 +602,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     { label: t('Live', 'В эфире'), state: live ? 'done' : latestDeployFailed ? 'failed' : latestDeployActive ? 'active' : 'todo' },
   ];
 
-  // One combined 3-up card: build progress · end-user reach · recency. The
-  // middle cell carries unique users (analytics.active_users — distinct users in
-  // the window) once the bot is live; '—' until the analytics endpoint ships.
-  type Stat = { value: string; label: string; tone?: 'green' };
-  const stats: Stat[] = [
-    wholeBot
-      ? { value: bp && bp.pass_current > 0 ? String(iterOffset(bp) + bp.pass_current) : '—', label: bp && (iterOffset(bp) + bp.pass_current) === 1 ? t('Iteration', 'Итерация') : t('Iterations', 'Итерации'), tone: bp && (live || bp.phase === 'published') ? 'green' : undefined }
-      : { value: total ? `${done}/${total}` : '—', label: t('Tasks done', 'Задачи готовы'), tone: allDone ? 'green' : undefined },
-    { value: human(analytics?.active_users), label: t('unique users', 'уник. польз.') },
-    {
-      value: latestDeploy?.deployed_at ? relTime(latestDeploy.deployed_at) : latestDeploy?.status || '—',
-      label: latestDeployFailed ? t('Deploy failed', 'Ошибка деплоя') : t('Last update', 'Последнее обновление'),
-    },
-  ];
 
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -652,17 +658,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </div>
       )}
 
-      {/* Show on Discovery — owner opt-out of the public Discover feed */}
-      {live && botUsername && (
-        <div style={{
-          alignSelf: 'flex-start', height: 34, display: 'inline-flex', alignItems: 'center', gap: 8,
-          padding: '0 8px 0 12px', borderRadius: 999, background: T.nestedBg, border: `1px solid ${T.sep}`,
-        }}>
-          <TGIcon name="compass" size={14} color={discoverable ? T.accent : T.hint} stroke={2} />
-          <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.sub }}>{t('Discover', 'Каталог')}</span>
-          <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
-        </div>
-      )}
 
       {/* Onboarding (either pipeline) before the bot exists: a two-step sequence —
           (1) assign a builder agent, then (2) create the bot, which is locked
@@ -749,34 +744,56 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         );
       })()}
 
-      {/* secondary actions — Test bot · Spec · Code */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px 28px', marginTop: -4 }}>
-        {(() => {
-          const canTest = !!botUsername && live && !pausedEffective;
-          return (
-        <button disabled={!canTest} onClick={() => canTest && openTgLink(`https://t.me/${botUsername}`)} style={{
-          ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600,
-          color: canTest ? T.accent : T.hint, cursor: canTest ? 'pointer' : 'default',
-        }}>
-          <TGIcon name="open" size={17} color={canTest ? T.accent : T.hint} stroke={2} /> {t('Test bot', 'Тест бота')}
-        </button>
-          );
-        })()}
-        {blueprintUrl && (
-          <button onClick={() => openExternal(blueprintUrl)} style={{
-            ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
+      {/* secondary — Pause/Resume · Retry (two tiles, per the prototype) */}
+      {live && botUsername && (
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onTogglePause} style={{
+            ...btnReset, flex: 1, height: 48, borderRadius: 14, background: T.cardBg,
+            border: `1px solid ${T.sep}`, boxShadow: T.shadow,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text,
           }}>
-            <TGIcon name="link" size={17} color={T.accent} stroke={2} /> {t('Spec', 'Спека')}
+            <TGIcon name={paused ? 'play' : 'pause'} size={18} color={T.sub} stroke={2} />
+            {paused ? t('Resume', 'Возобновить') : t('Pause', 'Пауза')}
           </button>
-        )}
-        {repoUrl && (
-          <button onClick={() => openExternal(repoUrl)} style={{
-            ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
+          <button onClick={onRetry} disabled={retrying} style={{
+            ...btnReset, flex: 1, height: 48, borderRadius: 14, background: T.cardBg,
+            border: `1px solid ${T.sep}`, boxShadow: T.shadow,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text,
+            cursor: retrying ? 'default' : 'pointer',
           }}>
-            <TGIcon name="code" size={17} color={T.accent} stroke={2} /> {t('Code', 'Код')}
+            {retrying ? <Spinner color={T.sub} size={17} /> : <TGIcon name="refresh" size={17} color={T.sub} stroke={2} />}
+            {t('Retry', 'Повтор')}
           </button>
-        )}
-      </div>
+        </div>
+      )}
+      {/* Test bot · Spec · Code — quiet deep links */}
+      {(botUsername || blueprintUrl || repoUrl) && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 22px', marginTop: -2 }}>
+          {botUsername && live && (
+            <button onClick={() => openTgLink(`https://t.me/${botUsername}`)} style={{
+              ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.accent,
+            }}>
+              <TGIcon name="open" size={16} color={T.accent} stroke={2} /> {t('Test bot', 'Тест бота')}
+            </button>
+          )}
+          {blueprintUrl && (
+            <button onClick={() => openExternal(blueprintUrl)} style={{
+              ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.accent,
+            }}>
+              <TGIcon name="link" size={16} color={T.accent} stroke={2} /> {t('Spec', 'Спека')}
+            </button>
+          )}
+          {repoUrl && (
+            <button onClick={() => openExternal(repoUrl)} style={{
+              ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.accent,
+            }}>
+              <TGIcon name="code" size={16} color={T.accent} stroke={2} /> {t('Code', 'Код')}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* task_manager: attention inbox — amber/red badge when something needs the
           owner, else a neutral "all clear" entry point */}
@@ -831,20 +848,86 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           update). Hidden while a whole_bot is building (the build card above
           carries the live status). */}
       {!wholeBotBuilding && (
-      <Card T={T} pad={0}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
-          {stats.map((s, i) => (
-            <div key={i} style={{
-              padding: '11px 8px', textAlign: 'center',
-              borderLeft: i % 3 ? `0.5px solid ${T.sep}` : 'none',
-              borderTop: i >= 3 ? `0.5px solid ${T.sep}` : 'none',
-            }}>
-              <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, letterSpacing: -0.4, color: s.tone === 'green' ? T.green : T.text }}>{s.value}</div>
-              <div style={{ fontFamily: T.font, fontSize: 11, color: T.hint, marginTop: 2 }}>{s.label}</div>
+        <div>
+          <SectionLabel T={T}>{t('Activity', 'Активность')}</SectionLabel>
+          <Card T={T} pad={16}>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1, background: T.nestedBg, borderRadius: 14, padding: '12px 13px' }}>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{t('Active users · 30d', 'Активные · 30д')}</div>
+                {analytics?.active_users == null ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                    <TGIcon name="clock" size={14} color={T.hint} stroke={2} />
+                    <span style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.hint }}>{t('no data yet', 'пока нет данных')}</span>
+                  </div>
+                ) : (
+                  <div style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: T.text, letterSpacing: -0.5, marginTop: 2 }}>{human(analytics.active_users)}</div>
+                )}
+              </div>
+              <div style={{ flex: 1, background: T.nestedBg, borderRadius: 14, padding: '12px 13px' }}>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{t('Releases', 'Релизы')}</div>
+                <div style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: T.text, letterSpacing: -0.5, marginTop: 2 }}>{deploys.length || '—'}</div>
+              </div>
             </div>
-          ))}
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 12 }}>
+              {live ? t('Live', 'В сети') : t('In progress', 'В процессе')}
+              {latestDeploy?.deployed_at ? ` · ${t('last update', 'обновлено')} ${relTime(latestDeploy.deployed_at)}` : ''}
+            </div>
+          </Card>
         </div>
-      </Card>
+      )}
+
+      {/* The plan — the readable "what we understood" spec (in-app viewer) */}
+      {(onOpenPlan || blueprintUrl) && (
+        <button onClick={() => { if (onOpenPlan) onOpenPlan(); else if (blueprintUrl) openExternal(blueprintUrl); }} style={{
+          ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 13,
+          padding: 14, borderRadius: 16, background: T.cardBg, border: `1px solid ${T.sep}`, boxShadow: T.shadow,
+        }}>
+          <div style={{ width: 38, height: 38, borderRadius: 11, background: T.sage, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <TGIcon name="check" size={19} color="#2f8f6f" stroke={2} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 700, color: T.text }}>{t('The plan', 'План')}</div>
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>{t('what we understood from your idea', 'что мы поняли из вашей идеи')}</div>
+          </div>
+          <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />
+        </button>
+      )}
+
+      {/* Settings — public visibility · auto-updates · who builds it */}
+      {live && botUsername && (
+        <div>
+          <SectionLabel T={T}>{t('Settings', 'Настройки')}</SectionLabel>
+          <Card T={T} pad={0}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px' }}>
+              <TGIcon name="compass" size={18} color={T.sub} stroke={2} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>{t('Show in Discover', 'Показывать в Каталоге')}</div>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>{discoverable ? t('Visible in the public catalog', 'Виден в публичном каталоге') : t('Hidden from the public catalog', 'Скрыт из публичного каталога')}</div>
+              </div>
+              <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderTop: `1px solid ${T.sep}` }}>
+              <TGIcon name="refresh" size={18} color={T.sub} stroke={2} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>{t('Apply updates automatically', 'Применять обновления автоматически')}</div>
+                <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>{autoMergeOn ? t('Changes ship without review', 'Изменения выходят без ревью') : t('Changes wait for your OK', 'Изменения ждут вашего подтверждения')}</div>
+              </div>
+              <Switch T={T} on={autoMergeOn} onClick={toggleAutoMerge} size="compact" />
+            </div>
+            <div style={{ padding: '13px 16px', borderTop: `1px solid ${T.sep}` }}>
+              <div style={{ fontFamily: T.font, fontSize: 12, fontWeight: 700, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 9 }}>{t('Who builds it', 'Кто собирает')}</div>
+              <Segmented<BuildMode>
+                T={T}
+                value={effBuildMode}
+                options={[
+                  { id: 'platform', label: t('We build it', 'Собираем мы') },
+                  { id: 'local', label: t('I will build it', 'Соберу сам') },
+                ]}
+                onChange={changeBuildMode}
+              />
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* assigned builder agent summary → add-an-agent sheet (cloud or local) */}
