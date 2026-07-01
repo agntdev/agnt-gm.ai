@@ -19,7 +19,6 @@ import { useT, useLang, tr, type Lang } from '../i18n';
 export interface BlockedState {
   items: BlockedItem[];
   failed: number;
-  questions: number;
   reachable: boolean; // false once a 404 tells us this isn't a task_manager project
   reload: () => void;
 }
@@ -33,9 +32,12 @@ export function useBlocked(botId: string | null, active: boolean): BlockedState 
     setItems([]); setReachable(true);
     if (!botId || !active) { pollNow.current = () => {}; return; }
     let cancelled = false;
+    let running = false; // in-flight guard: reload() during a fetch must not fork a second loop
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
-      if (cancelled) return;
+      if (cancelled || running) return;
+      running = true;
+      if (timer) { clearTimeout(timer); timer = undefined; }
       let next = 12000; // error/back-off default
       try {
         const r = await getBlockedItems(botId);
@@ -46,17 +48,18 @@ export function useBlocked(botId: string | null, active: boolean): BlockedState 
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) { if (!cancelled) { setItems([]); setReachable(false); } return; }
         // 401/403/429/network — keep the last snapshot, keep trying (relaxed)
+      } finally {
+        running = false;
       }
       if (!cancelled) timer = setTimeout(tick, next);
     };
-    pollNow.current = () => { if (timer) clearTimeout(timer); void tick(); };
+    pollNow.current = () => { void tick(); };
     void tick();
     return () => { cancelled = true; pollNow.current = () => {}; if (timer) clearTimeout(timer); };
   }, [botId, active]);
 
   const failed = items.filter(i => i.status === 'failed').length;
-  const questions = items.filter(i => i.node_kind === 'question' || i.status === 'blocked').length;
-  return { items, failed, questions, reachable, reload: () => pollNow.current() };
+  return { items, failed, reachable, reload: () => pollNow.current() };
 }
 
 // ── badge: "Needs your input (N) / M failed" — tappable, hidden when empty ──
@@ -97,7 +100,11 @@ export function TaskManagerInbox({ T, bot, onOpenTask }: {
   const t = useT();
   const state = useBlocked(bot.id, true);
   const [loaded, setLoaded] = useState(false);
-  useEffect(() => { const t = setTimeout(() => setLoaded(true), 400); return () => clearTimeout(t); }, [bot.id]);
+  useEffect(() => {
+    setLoaded(false); // reset on bot switch — never flash "clear" before the first fetch
+    const t = setTimeout(() => setLoaded(true), 400);
+    return () => clearTimeout(t);
+  }, [bot.id]);
 
   return (
     <div style={{ padding: '16px 16px 28px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -136,7 +143,7 @@ export function TaskManagerInbox({ T, bot, onOpenTask }: {
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 650, color: T.text }}>{t('Inbox is clear', 'Входящие пусты')}</div>
                   <div style={{ fontFamily: T.font, fontSize: 12.8, color: T.hint, lineHeight: '17px', marginTop: 2 }}>
-                    {t('Questions, failed tasks, and review holds will appear here.', 'Здесь появятся вопросы, невыполненные задачи и задержки проверки.')}
+                    {t('Questions, failed tasks, and review holds will appear here.', 'Здесь появятся вопросы, задачи с ошибкой и ревью на паузе.')}
                   </div>
                 </div>
               </div>
@@ -159,7 +166,7 @@ export function TaskManagerInbox({ T, bot, onOpenTask }: {
 function kindMeta(lang: Lang, T: Theme, it: BlockedItem): { icon: string; color: string; label: string } {
   if (it.status === 'failed') return { icon: 'refresh', color: T.red, label: tr(lang, 'Failed', 'С ошибкой') };
   if (it.node_kind === 'question') return { icon: 'chat', color: T.amber, label: tr(lang, 'Question', 'Вопрос') };
-  if (it.node_kind === 'review') return { icon: 'shield', color: T.red, label: tr(lang, 'Review', 'Проверка') };
+  if (it.node_kind === 'review') return { icon: 'shield', color: T.red, label: tr(lang, 'Review', 'Ревью') };
   return { icon: 'clock', color: T.amber, label: tr(lang, 'Blocked', 'Заблокировано') };
 }
 
@@ -201,7 +208,7 @@ function InboxItem({ T, bot, item, onOpen, onChanged }: {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <Pill T={T} tone="neutral" style={{ color: m.color, background: hexA(m.color, 0.14), height: 19, fontSize: 10, padding: '0 7px' }}>{m.label}</Pill>
-            {item.blocked_since && <span style={{ fontFamily: T.font, fontSize: 11.5, color: T.hint }}>{relTime(item.blocked_since)}</span>}
+            {item.blocked_since && <span style={{ fontFamily: T.font, fontSize: 11.5, color: T.hint }}>{relTime(item.blocked_since, lang)}</span>}
           </div>
           <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.text, lineHeight: '19px', marginTop: 4 }}>{item.title || item.slug}</div>
           <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 2 }}>
@@ -221,15 +228,15 @@ function InboxItem({ T, bot, item, onOpen, onChanged }: {
             <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.red, lineHeight: '17px' }}>{item.warning}</span>
           </div>
           {!confirmCancel ? (
-            <button onClick={e => { e.stopPropagation(); setConfirmCancel(true); }} style={cancelBtn(T)}>{t('Cancel review', 'Отменить проверку')}</button>
+            <button onClick={e => { e.stopPropagation(); setConfirmCancel(true); }} style={cancelBtn(T)}>{t('Cancel review', 'Отменить ревью')}</button>
           ) : (
             <div style={{ display: 'flex', gap: 9 }}>
               <button onClick={e => { e.stopPropagation(); setConfirmCancel(false); }} style={{
-                ...btnReset, flex: 1, height: 38, borderRadius: 10, background: T.nestedBg,
+                ...btnReset, flex: 1, minHeight: 38, padding: '8px 10px', borderRadius: 10, background: T.nestedBg,
                 color: T.text, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
               }}>{t('Keep it', 'Оставить')}</button>
               <button onClick={cancelReview} disabled={busy === 'cancel'} style={{ ...cancelBtn(T), flex: 1, background: T.red, color: '#fff' }}>
-                {busy === 'cancel' ? <Spinner size={14} /> : null} {t('Cancel review', 'Отменить проверку')}
+                {busy === 'cancel' ? <Spinner size={14} /> : null} {t('Cancel review', 'Отменить ревью')}
               </button>
             </div>
           )}
@@ -257,7 +264,8 @@ function InboxItem({ T, bot, item, onOpen, onChanged }: {
 
 function cancelBtn(T: Theme): React.CSSProperties {
   return {
-    ...btnReset, height: 38, padding: '0 14px', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    // minHeight (not height): the RU label wraps to 2 lines on 320px screens
+    ...btnReset, minHeight: 38, padding: '8px 14px', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
     background: T.redSoft, color: T.red, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
   };
 }

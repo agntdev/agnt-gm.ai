@@ -150,9 +150,11 @@ export const IDEA_EXAMPLES: IdeaExample[] = [
 
 function autoGrow(el: HTMLTextAreaElement | null) {
   if (!el) return;
+  // empty field is always the resting height — mount-time scrollHeight can lie
+  // (fonts/layout not settled) and must never stretch an empty box to the cap
+  if (!el.value.trim()) { el.style.height = '92px'; return; }
   el.style.height = 'auto';
-  // clamp: a transient bad scrollHeight at mount (before fonts/layout settle)
-  // must never balloon the field; long ideas scroll past the cap.
+  // clamp: long ideas scroll past the cap instead of growing unbounded
   el.style.height = Math.min(Math.max(92, el.scrollHeight), 260) + 'px';
 }
 

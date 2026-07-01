@@ -12,32 +12,26 @@ import { useT, useLang } from '../i18n';
 export const INSTALL_CMD = 'npx skills add agntdev/skills --all';
 
 export function firstPrompt(project: Project | null, code: string): string {
-  const slug = project?.slug || 'my-project';
+  // Without the project loaded we don't know the real slug — never bake a
+  // made-up one ("my-project") into a command the agent will actually run.
+  const slug = project?.slug || null;
   return [
     `Use the agnt-cli-builder skill to build my Telegram bot on agnt-gm.ai.`,
     ``,
-    `Project: ${project?.name || slug} (${slug})`,
+    ...(slug ? [`Project: ${project?.name || slug} (${slug})`] : []),
     `Connect code: ${code}`,
     ``,
     `1) If the agnt skills are missing, install them: ${INSTALL_CMD}`,
     `2) Run: agnt connect ${code}`,
-    `3) Then run \`agnt tasks ${slug}\` and build the tasks one by one as the skill instructs.`,
+    slug
+      ? `3) Then run \`agnt tasks ${slug}\` and build the tasks one by one as the skill instructs.`
+      : `3) Then run \`agnt tasks\` for the connected project and build the tasks one by one as the skill instructs.`,
   ].join('\n');
 }
 
-// the two ways to build — pick at creation, switch anytime from the overview
-export const MODE_META: Record<BuildMode, { title: string; desc: string; glyph: string }> = {
-  platform: {
-    title: 'Cloud agent',
-    desc: 'We build everything — agents write code and ship PRs from our platform. Zero setup.',
-    glyph: 'bolt',
-  },
-  local: {
-    title: 'Your agent',
-    desc: 'Your Claude or Codex does the work and pushes to the repo. We run checks & deploy.',
-    glyph: 'code',
-  },
-};
+// the two ways to build — pick at creation, switch anytime from the overview.
+// Labels live in ModePicker (localized); this is just the icon per mode.
+const MODE_GLYPH: Record<BuildMode, string> = { platform: 'bolt', local: 'code' };
 
 export function ModePicker({ T, mode, onMode }: { T: Theme; mode: BuildMode; onMode: (m: BuildMode) => void }) {
   const t = useT();
@@ -50,8 +44,7 @@ export function ModePicker({ T, mode, onMode }: { T: Theme; mode: BuildMode; onM
                 'Ваш Claude или Codex делает работу и пушит в репозиторий. Мы запускаем проверки и разворачиваем.') };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {(Object.keys(MODE_META) as BuildMode[]).map(m => {
-        const meta = MODE_META[m];
+      {(Object.keys(MODE_GLYPH) as BuildMode[]).map(m => {
         const text = label(m);
         const sel = mode === m;
         return (
@@ -66,7 +59,7 @@ export function ModePicker({ T, mode, onMode }: { T: Theme; mode: BuildMode; onM
               background: sel ? T.accentSoft : T.nestedBg,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <TGIcon name={meta.glyph} size={20} color={sel ? T.accent : T.sub} stroke={1.9} />
+              <TGIcon name={MODE_GLYPH[m]} size={20} color={sel ? T.accent : T.sub} stroke={1.9} />
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 600, color: T.text }}>{text.title}</div>
@@ -92,34 +85,39 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
   const t = useT();
   const { lang } = useLang();
   const [code, setCode] = useState<string | null>(null);
-  const stopped = useRef(false);
+  // latest onConnected without re-running the effect (same pattern as ConnectAgent)
+  const onConnectedRef = useRef(onConnected);
+  onConnectedRef.current = onConnected;
 
   useEffect(() => {
     if (connected || !project || mode !== 'local') return;
-    stopped.current = false;
+    // per-run flag (NOT a shared ref): a quick local→platform→local toggle
+    // resets a shared ref and revives the previous run's in-flight poll,
+    // forking an orphaned loop that can double-fire onConnected.
+    let stopped = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
     let remintTimer: ReturnType<typeof setTimeout> | undefined;
 
     const mint = async () => {
       try {
         const c = await mintAgentLink(project.id);
-        if (stopped.current) return;
+        if (stopped) return;
         setCode(c.code);
         // codes are one-time and short-lived — refresh shortly before expiry
         const ttl = (c.expires_in ?? 600) * 1000;
         remintTimer = setTimeout(mint, Math.max(30_000, ttl - 20_000));
       } catch {
-        remintTimer = setTimeout(mint, 5000); // transient — retry
+        if (!stopped) remintTimer = setTimeout(mint, 5000); // transient — retry
       }
     };
 
     const poll = async () => {
-      if (stopped.current) return;
+      if (stopped) return;
       try {
         const s = await getAgentLink(project.id);
-        if (stopped.current) return;
+        if (stopped) return;
         if (s.status === 'connected') {
-          onConnected(s.connected_client || null);
+          onConnectedRef.current(s.connected_client || null);
           return;
         }
       } catch { /* transient — keep polling */ }
@@ -129,7 +127,7 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
     void mint();
     pollTimer = setTimeout(poll, 2000);
     return () => {
-      stopped.current = true;
+      stopped = true;
       if (pollTimer) clearTimeout(pollTimer);
       if (remintTimer) clearTimeout(remintTimer);
     };
@@ -213,10 +211,22 @@ export function AgentScreen({ T, connected, agentName, project, mode, onMode, er
 export function CopyCard({ T, text, mono, small }: { T: Theme; text: string; mono?: boolean; small?: boolean }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
+  const flash = () => { setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  // legacy fallback for webviews without navigator.clipboard (older Telegram)
+  const legacyCopy = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { if (document.execCommand('copy')) flash(); } catch { /* give up quietly */ }
+    document.body.removeChild(ta);
+  };
+  // only show "Copied" when the copy actually landed
   const copy = () => {
-    navigator.clipboard?.writeText(text).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1400);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(flash).catch(legacyCopy);
+    } else {
+      legacyCopy();
+    }
   };
   return (
     <Card T={T} pad={0} style={{ overflow: 'hidden' }}>
@@ -226,7 +236,7 @@ export function CopyCard({ T, text, mono, small }: { T: Theme; text: string; mon
       }}>{text}</div>
       <button onClick={copy} style={{
         ...btnReset, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-        padding: '10px 14px', borderTop: `1px solid ${T.sep}`,
+        padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`,
         background: T.nestedBg,
         color: copied ? T.green : T.accent, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
       }}>

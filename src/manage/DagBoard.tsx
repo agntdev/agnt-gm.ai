@@ -55,6 +55,17 @@ function bucketLabel(lang: Lang, b: Bucket): string {
   }
 }
 
+// node_kind is a backend enum — translate the known values, pass through the rest
+function nodeKindLabel(lang: Lang, kind: string): string {
+  switch (kind) {
+    case 'question': return tr(lang, 'question', 'вопрос');
+    case 'review': return tr(lang, 'review', 'ревью');
+    case 'scaffold': return tr(lang, 'scaffold', 'каркас');
+    case 'epic': return tr(lang, 'epic', 'эпик');
+    default: return kind;
+  }
+}
+
 // summary-bar order (cancelled excluded — it has its own collapsed lane)
 const BAR_ORDER: Bucket[] = ['needsInput', 'failed', 'building', 'review', 'ready', 'backlog', 'done'];
 
@@ -90,6 +101,8 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
   const [errored, setErrored] = useState(false); // /dag failing on first load (no snapshot yet)
   const requested = useRef<Set<string>>(new Set());
   const fails = useRef(0);
+  const liveBot = useRef(bot.id); // always the on-screen bot — stale-fetch guard
+  liveBot.current = bot.id;
   const onKindRef = useRef(onKind);
   onKindRef.current = onKind;
   const t = useT();
@@ -140,14 +153,19 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [bot.id]);
 
-  // fetch each task's detail once — gives parent_id (grouping) + body_md (expand)
+  // fetch each task's detail once — gives parent_id (grouping) + body_md (expand).
+  // Capture bot.id per fetch: slugs repeat across bots ("scaffold-bot"), so a
+  // late response from the previous bot must not write into the new bot's map.
   useEffect(() => {
+    const forBot = bot.id;
     tasks.forEach(t => {
       if (requested.current.has(t.slug)) return;
       requested.current.add(t.slug);
       setDetails(prev => ({ ...prev, [t.slug]: 'loading' }));
-      void getTaskDetail(bot.id, t.slug).then(d =>
-        setDetails(prev => ({ ...prev, [t.slug]: d ?? 'none' })));
+      void getTaskDetail(forBot, t.slug).then(d => {
+        if (forBot !== liveBot.current) return; // stale — a different bot is on screen now
+        setDetails(prev => ({ ...prev, [t.slug]: d ?? 'none' }));
+      });
     });
   }, [tasks, bot.id]);
 
@@ -394,9 +412,9 @@ function TaskRow({ T, t, first, nested, detail, open, onToggle, onOpen }: {
         <div style={{ padding: nested ? '0 14px 13px 40px' : '0 14px 13px 31px', display: 'flex', flexDirection: 'column', gap: 9 }}>
           {/* meta line */}
           <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>
-            {[bucketLabel(lang, b), t.node_kind && t.node_kind !== 'feature' ? t.node_kind : null,
+            {[bucketLabel(lang, b), t.node_kind && t.node_kind !== 'feature' ? nodeKindLabel(lang, t.node_kind) : null,
               t.depends_on?.length ? tr(lang, `depends on ${t.depends_on.length}`, `зависит от ${t.depends_on.length}`) : null,
-              d?.blocked_since ? tr(lang, `blocked ${relTime(d.blocked_since)}`, `заблокирована ${relTime(d.blocked_since)}`) : null,
+              d?.blocked_since ? tr(lang, `blocked ${relTime(d.blocked_since, lang)}`, `заблокирована ${relTime(d.blocked_since, lang)}`) : null,
             ].filter(Boolean).join(' · ')}
           </div>
 
