@@ -11,10 +11,11 @@ import {
   botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
-import { TGIcon, Card, Pill, Dot, BotAvatar, Spinner, ProgressRing } from '../ui';
+import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing } from '../ui';
 import { MyBot } from './MyBots';
 import { ActivityTimeline, relTime, withDeployments } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
+import { useT, useLang, tr, type Lang } from '../i18n';
 
 // human-readable count: 3100 → "3.1k", 12000 → "12k"
 function human(n?: number): string {
@@ -62,7 +63,7 @@ function orderTasks(tasks: TaskItem[]): TaskItem[] {
 // the build pipeline's phases with the current one highlighted
 const PHASES = ['general', 'design', 'details', 'dev', 'tests'];
 
-function PhaseStrip({ T, dag }: { T: Theme; dag: DagInfo }) {
+function PhaseStrip({ T, dag, lang }: { T: Theme; dag: DagInfo; lang: Lang }) {
   const idx = PHASES.indexOf(dag.current_phase || '');
   const failed = dag.phase_status === 'failed';
   return (
@@ -80,10 +81,10 @@ function PhaseStrip({ T, dag }: { T: Theme; dag: DagInfo }) {
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
         <span style={{ fontFamily: T.font, fontSize: 12, fontWeight: 600, color: failed ? T.red : T.accent }}>
-          {dag.current_phase} phase{failed ? ' · fixing issues' : dag.phase_status && dag.phase_status !== 'open' ? ` · ${dag.phase_status}` : ''}
+          {lang === 'ru' ? `фаза ${dag.current_phase}` : `${dag.current_phase} phase`}{failed ? tr(lang, ' · fixing issues', ' · исправление ошибок') : dag.phase_status && dag.phase_status !== 'open' ? ` · ${dag.phase_status}` : ''}
         </span>
         {idx >= 0 && (
-          <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{idx + 1} of {PHASES.length}</span>
+          <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{idx + 1} {tr(lang, 'of', 'из')} {PHASES.length}</span>
         )}
       </div>
     </div>
@@ -128,7 +129,7 @@ function BuildProgress({ T, steps }: { T: Theme; steps: ProgressStep[] }) {
 
 // whole_bot 4-step mapping for the top stepper (blueprint→Plan, building→Build,
 // tests→Test, published→Live).
-function wholeBotSteps(bp: BuildProgressDTO | null, live: boolean): ProgressStep[] {
+function wholeBotSteps(bp: BuildProgressDTO | null, live: boolean, lang: Lang): ProgressStep[] {
   const ph = bp?.phase || (live ? 'published' : 'building');
   const failed = ph === 'failed';
   const done = live || ph === 'published';
@@ -137,10 +138,10 @@ function wholeBotSteps(bp: BuildProgressDTO | null, live: boolean): ProgressStep
   // the assign step, so leave it as a not-started 'todo'.
   const awaitingAgent = bp?.stage === 'awaiting_agent' && !done;
   return [
-    { label: 'Plan', state: 'done' },
-    { label: 'Build', state: failed ? 'failed' : done || ph === 'tests' ? 'done' : awaitingAgent ? 'todo' : 'active' },
-    { label: 'Test', state: ph === 'tests' ? 'active' : done ? 'done' : 'todo' },
-    { label: 'Live', state: done ? 'done' : failed ? 'failed' : 'todo' },
+    { label: tr(lang, 'Plan', 'План'), state: 'done' },
+    { label: tr(lang, 'Build', 'Сборка'), state: failed ? 'failed' : done || ph === 'tests' ? 'done' : awaitingAgent ? 'todo' : 'active' },
+    { label: tr(lang, 'Test', 'Тест'), state: ph === 'tests' ? 'active' : done ? 'done' : 'todo' },
+    { label: tr(lang, 'Live', 'В эфире'), state: done ? 'done' : failed ? 'failed' : 'todo' },
   ];
 }
 
@@ -152,29 +153,40 @@ const PASS_TONE: Record<string, 'green' | 'accent' | 'hint' | 'red'> = {
 // headline. We deliberately drop the "N of M passes" floor counter (it reads as
 // a regression on a change/rebuild, where the count resets); the iteration
 // number rides alongside, small + gray, as a secondary detail.
-function buildStatusLabel(bp: BuildProgressDTO): string {
+function buildStatusLabel(bp: BuildProgressDTO, lang: Lang): string {
   switch (bp.stage) {
-    case 'blueprint': return 'Planning';
-    case 'building': return 'Building';
-    case 'reviewing': return 'Reviewing';
-    case 'testing': return 'Testing';
-    case 'deploying': return 'Deploying';
-    case 'live': return 'Live';
-    case 'failed': return 'Failed';
-    case 'awaiting_agent': return 'Waiting for agent';
+    case 'blueprint': return tr(lang, 'Planning', 'Планирование');
+    case 'building': return tr(lang, 'Building', 'Сборка');
+    case 'reviewing': return tr(lang, 'Reviewing', 'Проверка');
+    case 'testing': return tr(lang, 'Testing', 'Тестирование');
+    case 'deploying': return tr(lang, 'Deploying', 'Деплой');
+    case 'live': return tr(lang, 'Live', 'В эфире');
+    case 'failed': return tr(lang, 'Failed', 'Ошибка');
+    case 'awaiting_agent': return tr(lang, 'Waiting for agent', 'Ожидание агента');
   }
   switch (bp.phase) {
-    case 'tests': return 'Testing';
-    case 'published': return 'Live';
-    case 'failed': return 'Failed';
-    default: return 'Building';
+    case 'tests': return tr(lang, 'Testing', 'Тестирование');
+    case 'published': return tr(lang, 'Live', 'В эфире');
+    case 'failed': return tr(lang, 'Failed', 'Ошибка');
+    default: return tr(lang, 'Building', 'Сборка');
   }
 }
 
 // whole_bot build card: status headline + approx ETA + progress bar + per-
 // iteration timeline — the build screen's centerpiece while a whole_bot builds.
+// lifetime iteration number = iterations from prior builds (backend offset) +
+// this build's pass number. The offset is absent today, so this is a no-op (0)
+// until the backend ships it — at which point a change reads "Iteration 9"
+// instead of restarting at "Iteration 1". See BuildProgress.iteration_offset.
+function iterOffset(bp: BuildProgressDTO): number {
+  return bp.iteration_offset ?? 0;
+}
+
 function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
+  const t = useT();
+  const { lang } = useLang();
   const pct = Math.max(3, Math.min(100, bp.percent));
+  const iterBase = iterOffset(bp);
   // the iteration timeline can grow long (10+ rows) — keep it tidy by showing
   // only the most recent few, with a tap to expand the rest.
   const [showAllIters, setShowAllIters] = useState(false);
@@ -200,14 +212,14 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <Dot color={failed ? T.red : live ? T.green : T.accent} size={8} pulse={!live && !failed} />
           <span style={{ fontFamily: T.font, fontSize: 14, fontWeight: 700, color: T.accentText, letterSpacing: -0.2 }}>
-            {failed ? 'Needs a fix' : live ? 'Live!' : `${buildStatusLabel(bp)}…`}
+            {failed ? t('Needs a fix', 'Нужна правка') : live ? t('Live!', 'В эфире!') : `${buildStatusLabel(bp, lang)}…`}
           </span>
         </div>
-        <ProgressRing T={T} value={pct} label={failed ? 'needs fix' : live ? 'complete' : 'building'} color={failed ? T.red : undefined} />
+        <ProgressRing T={T} value={pct} label={failed ? t('needs fix', 'правка') : live ? t('complete', 'готово') : t('building', 'сборка')} color={failed ? T.red : undefined} />
         <div style={{ display: 'flex', gap: 10 }}>
-          {statTile(String(bp.pass_current), 'round')}
-          {statTile(String(bp.merged_passes), 'approved')}
-          {statTile(String(bp.pass_floor), 'target')}
+          {statTile(String(iterBase + bp.pass_current), t('round', 'раунд'))}
+          {statTile(String(bp.merged_passes), t('approved', 'принято'))}
+          {statTile(String(bp.pass_floor), t('target', 'цель'))}
         </div>
       </div>
       {allIters.length > 0 && (
@@ -215,7 +227,7 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
           {showIterToggle && (
             <button onClick={() => setShowAllIters(v => !v)} style={{ ...btnReset, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px' }}>
               <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.accent }}>
-                {showAllIters ? 'Show fewer' : `Show all ${allIters.length} iterations`}
+                {showAllIters ? t('Show fewer', 'Свернуть') : t(`Show all ${allIters.length} iterations`, `Показать все ${allIters.length} итераций`)}
               </span>
               <span style={{ display: 'inline-flex', transform: showAllIters ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}>
                 <TGIcon name="chevDown" size={14} color={T.accent} stroke={2.2} />
@@ -230,7 +242,7 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
                 {p.status === 'reviewed' && p.complete
                   ? <TGIcon name="check" size={14} color={T.green} stroke={2.6} />
                   : <Dot color={color} size={7} pulse={p.status === 'building'} />}
-                <span style={{ flex: 1, fontFamily: T.font, fontSize: 13, color: T.text }}>Iteration {p.pass_no}</span>
+                <span style={{ flex: 1, fontFamily: T.font, fontSize: 13, color: T.text }}>{t('Iteration', 'Итерация')} {iterBase + p.pass_no}</span>
                 <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{p.label}</span>
                 {p.pr_number != null && <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.accent }}>#{p.pr_number}</span>}
               </div>
@@ -280,6 +292,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
   discoverable: boolean; onToggleDiscoverable: () => void;
 }) {
+  const t = useT();
+  const { lang } = useLang();
   const seed = OV_CACHE.get(bot.id); // instant re-open from the last snapshot
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [detail, setDetail] = useState<Project | null>(seed?.detail ?? null);
@@ -331,7 +345,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         void fetchProjectTasks(bot.id).then(t => { setTasks(t.tasks); setDag(t.dag ?? null); }).catch(() => {});
       }, 3000);
     } catch (e) {
-      setAddErr(e instanceof ApiError ? (e.status === 429 ? 'Too many requests — try again shortly.' : e.message) : 'network error — try again');
+      setAddErr(e instanceof ApiError ? (e.status === 429 ? t('Too many requests — try again shortly.', 'Слишком много запросов — попробуйте чуть позже.') : e.message) : t('network error — try again', 'ошибка сети — попробуйте снова'));
     } finally { setAddBusy(false); }
   };
 
@@ -357,7 +371,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       if (init.deep_link) openTgLink(init.deep_link);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) setBotInit({}); // already exists — just poll
-      else setCreateBotErr(e instanceof ApiError ? `Couldn't start — ${e.message}` : 'network error — try again');
+      else setCreateBotErr(e instanceof ApiError ? `${t("Couldn't start", 'Не удалось начать')} — ${e.message}` : t('network error — try again', 'ошибка сети — попробуйте снова'));
     } finally { setCreatingBot(false); }
   };
 
@@ -496,14 +510,13 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const blueprintUrl = repoUrl ? `${repoUrl.replace(/\/$/, '')}/blob/main/docs/blueprint.md` : null;
 
   const sys = messages.filter(m => m.role === 'system');
-  const activity = [...withDeployments(sys, deploys)].reverse().slice(0, 4);
+  const activity = [...withDeployments(sys, deploys, lang)].reverse().slice(0, 4);
   // count only real work tasks (exclude epics = display-only containers, and
   // cancelled) so the overview total matches the board. Phase projects: count all.
   const countable = isTaskManager ? tasks.filter(t => t.node_kind !== 'epic' && t.status !== 'cancelled') : tasks;
   const done = countable.filter(t => t.status === 'done').length;
   const total = countable.length;
   const allDone = total > 0 && done >= total;
-  const prodDeploys = deploys.filter(d => d.kind !== 'preview' && !d.failure_reason).length;
   const latestDeploy = deploys[0] ?? null;
   const latestDeployFailed = deployFailed(latestDeploy);
   const latestDeployActive = deployActive(latestDeploy);
@@ -551,53 +564,38 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
   const testResult = latestTests(sys);
   const testsFailed = !!testResult && testResult.passed < testResult.total;
-  const hasUsageAnalytics = !!analytics && (
-    typeof analytics.active_users === 'number'
-    || typeof analytics.messages_today === 'number'
-    || typeof analytics.delta_pct === 'number'
-  );
   const statusState = (() => {
-    if (pausedEffective) return { label: `Paused · ${bot.version}`, tone: 'neutral' as const, color: T.hint, pulse: false };
-    if (live) return { label: `Live${uptime ? ` · up ${uptime}` : ''} · ${bot.version}`, tone: 'green' as const, color: T.green, pulse: false };
-    if (needsBot) return { label: 'Create bot to continue', tone: 'accent' as const, color: T.accent, pulse: true };
-    if (latestDeployFailed || testsFailed || buildFailed) return { label: 'Needs a fix', tone: 'neutral' as const, color: T.red, pulse: false };
-    if (blocked.items.length > 0) return { label: 'Needs you', tone: 'accent' as const, color: T.accent, pulse: true };
-    if (latestDeployActive) return { label: 'Deploying', tone: 'accent' as const, color: T.accent, pulse: true };
-    if (allDone && botUsername) return { label: 'Testing & deploy', tone: 'accent' as const, color: T.accent, pulse: true };
-    if (decomposing) return { label: 'Planning build', tone: 'accent' as const, color: T.accent, pulse: true };
-    return { label: bot.statusLabel || 'Building', tone: 'accent' as const, color: T.accent, pulse: true };
+    if (pausedEffective) return { label: `${t('Paused', 'На паузе')} · ${bot.version}`, tone: 'neutral' as const, color: T.hint, pulse: false };
+    if (live) return { label: `${t('Live', 'В эфире')}${uptime ? ` · ${t('up', 'работает')} ${uptime}` : ''} · ${bot.version}`, tone: 'green' as const, color: T.green, pulse: false };
+    if (needsBot) return { label: t('Create bot to continue', 'Создайте бота, чтобы продолжить'), tone: 'accent' as const, color: T.accent, pulse: true };
+    if (latestDeployFailed || testsFailed || buildFailed) return { label: t('Needs a fix', 'Нужна правка'), tone: 'neutral' as const, color: T.red, pulse: false };
+    if (blocked.items.length > 0) return { label: t('Needs you', 'Требуется ваше внимание'), tone: 'accent' as const, color: T.accent, pulse: true };
+    if (latestDeployActive) return { label: t('Deploying', 'Деплой'), tone: 'accent' as const, color: T.accent, pulse: true };
+    if (allDone && botUsername) return { label: t('Testing & deploy', 'Тесты и деплой'), tone: 'accent' as const, color: T.accent, pulse: true };
+    if (decomposing) return { label: t('Planning build', 'Планирование сборки'), tone: 'accent' as const, color: T.accent, pulse: true };
+    return { label: bot.statusLabel || t('Building', 'Сборка'), tone: 'accent' as const, color: T.accent, pulse: true };
   })();
-  const progressSteps: ProgressStep[] = wholeBot ? wholeBotSteps(bp, live) : [
-    { label: 'Plan', state: total > 0 || !decomposing ? 'done' : 'active' },
-    { label: 'Build', state: latestDeployFailed ? 'failed' : allDone ? 'done' : (total > 0 || decomposing ? 'active' : 'todo') },
-    { label: 'Test', state: testsFailed ? 'failed' : testResult ? 'done' : allDone ? 'active' : 'todo' },
-    { label: 'Live', state: live ? 'done' : latestDeployFailed ? 'failed' : latestDeployActive ? 'active' : 'todo' },
+  const progressSteps: ProgressStep[] = wholeBot ? wholeBotSteps(bp, live, lang) : [
+    { label: t('Plan', 'План'), state: total > 0 || !decomposing ? 'done' : 'active' },
+    { label: t('Build', 'Сборка'), state: latestDeployFailed ? 'failed' : allDone ? 'done' : (total > 0 || decomposing ? 'active' : 'todo') },
+    { label: t('Test', 'Тест'), state: testsFailed ? 'failed' : testResult ? 'done' : allDone ? 'active' : 'todo' },
+    { label: t('Live', 'В эфире'), state: live ? 'done' : latestDeployFailed ? 'failed' : latestDeployActive ? 'active' : 'todo' },
   ];
 
-  // Deployed-bot analytics (active users / today / vs. yest.) sit on top only
-  // when those usage fields exist; build stats stay visible either way.
-  // Both render in one compact 3-up grid — 1 row when there's no analytics yet,
-  // 2 rows once it does.
+  // One combined 3-up card: build progress · end-user reach · recency. The
+  // middle cell carries unique users (analytics.active_users — distinct users in
+  // the window) once the bot is live; '—' until the analytics endpoint ships.
   type Stat = { value: string; label: string; tone?: 'green' };
-  const buildStats: Stat[] = [
+  const stats: Stat[] = [
     wholeBot
-      ? { value: bp && bp.pass_current > 0 ? String(bp.pass_current) : '—', label: bp && bp.pass_current === 1 ? 'Iteration' : 'Iterations', tone: bp && (live || bp.phase === 'published') ? 'green' : undefined }
-      : { value: total ? `${done}/${total}` : '—', label: 'Tasks done', tone: allDone ? 'green' : undefined },
-    { value: prodDeploys > 0 ? String(prodDeploys) : '—', label: prodDeploys === 1 ? 'Deploy' : 'Deploys' },
+      ? { value: bp && bp.pass_current > 0 ? String(iterOffset(bp) + bp.pass_current) : '—', label: bp && (iterOffset(bp) + bp.pass_current) === 1 ? t('Iteration', 'Итерация') : t('Iterations', 'Итерации'), tone: bp && (live || bp.phase === 'published') ? 'green' : undefined }
+      : { value: total ? `${done}/${total}` : '—', label: t('Tasks done', 'Задачи готовы'), tone: allDone ? 'green' : undefined },
+    { value: human(analytics?.active_users), label: t('unique users', 'уник. польз.') },
     {
       value: latestDeploy?.deployed_at ? relTime(latestDeploy.deployed_at) : latestDeploy?.status || '—',
-      label: latestDeployFailed ? 'Deploy failed' : 'Last deploy',
+      label: latestDeployFailed ? t('Deploy failed', 'Ошибка деплоя') : t('Last update', 'Последнее обновление'),
     },
   ];
-  const analyticsStats: Stat[] = hasUsageAnalytics ? [
-    { value: human(analytics?.active_users), label: 'active users' },
-    { value: analytics?.messages_today != null ? human(analytics.messages_today) : '—', label: 'today' },
-    {
-      value: analytics?.delta_pct != null ? `${analytics.delta_pct > 0 ? '+' : ''}${analytics.delta_pct}%` : '—',
-      label: 'vs. yest.', tone: (analytics?.delta_pct ?? 0) >= 0 ? 'green' : undefined,
-    },
-  ] : [];
-  const stats: Stat[] = [...analyticsStats, ...buildStats];
 
   return (
     <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -606,7 +604,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         {/* avatar: AI-generated image when present (falls back to the monogram
             tile on error), with a small owner-only regenerate control beneath. */}
         <div style={{ position: 'relative', width: 72, height: 72 }}>
-          <BotAvatar T={T} name={bot.name} tone={bot.tone} avatarUrl={avatarUrl} size={72} radius={22} fontSize={30} />
+          <BotTile T={T} name={bot.name} tone={bot.tone} src={avatarUrl} size={72} radius={22} fontSize={30} />
           {regenAvatar && (
             <div style={{
               position: 'absolute', inset: 0, borderRadius: 22,
@@ -623,7 +621,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           cursor: regenAvatar ? 'default' : 'pointer',
         }}>
           <TGIcon name="refresh" size={13} color={regenAvatar ? T.hint : T.accent} stroke={2} />
-          {regenAvatar ? 'Generating…' : avatarUrl ? 'Regenerate avatar' : 'Generate avatar'}
+          {regenAvatar ? t('Generating…', 'Генерация…') : avatarUrl ? t('Regenerate avatar', 'Обновить аватар') : t('Generate avatar', 'Создать аватар')}
         </button>
         {regenAvatarErr && (
           <div style={{ fontFamily: T.font, fontSize: 11.5, color: T.amber, lineHeight: '15px', textAlign: 'center' }}>{regenAvatarErr}</div>
@@ -634,7 +632,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             bot that doesn't exist. */}
         {botUsername
           ? <div style={{ fontFamily: T.mono, fontSize: 14, color: T.accent }}>@{botUsername}</div>
-          : <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>Bot not created yet</div>}
+          : <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>{t('Bot not created yet', 'Бот ещё не создан')}</div>}
         <div style={{ marginTop: 3 }}>
           <Pill T={T} tone={statusState.tone}>
             <Dot color={statusState.color} size={6} pulse={statusState.pulse} /> {statusState.label}
@@ -655,9 +653,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             border: `0.5px solid ${T.sep}`,
           }}>
             <TGIcon name="compass" size={14} color={discoverable ? T.accent : T.hint} stroke={2} />
-            <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 650, color: T.sub }}>Discovery</span>
+            <span style={{ fontFamily: T.font, fontSize: 12.5, fontWeight: 650, color: T.sub }}>{t('Discovery', 'Discovery')}</span>
             <span style={{ fontFamily: T.font, fontSize: 12, fontWeight: 600, color: discoverable ? T.accent : T.hint }}>
-              {discoverable ? 'Visible' : 'Hidden'}
+              {discoverable ? t('Visible', 'Виден') : t('Hidden', 'Скрыт')}
             </span>
             <Switch T={T} on={discoverable} onClick={onToggleDiscoverable} size="compact" />
           </div>
@@ -675,8 +673,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
               <Spinner color={T.accent} size={18} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Finishing in Telegram…</div>
-                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>Create the bot in the window that opened — your bot starts building once it’s set up.</div>
+                <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>{t('Finishing in Telegram…', 'Завершаем в Telegram…')}</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>{t('Create the bot in the window that opened — your bot starts building once it’s set up.', 'Создайте бота в открывшемся окне — сборка начнётся, как только он будет настроен.')}</div>
               </div>
             </div>
           ) : (
@@ -687,10 +685,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                   {agentAssigned ? <TGIcon name="check" size={19} color={T.green} stroke={2.6} /> : <TGIcon name="cloud" size={19} color={T.accent} stroke={1.9} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 700, color: T.hint, letterSpacing: 0.4, textTransform: 'uppercase' }}>Step 1</div>
-                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text, marginTop: 1 }}>Assign a builder agent</div>
+                  <div style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 700, color: T.hint, letterSpacing: 0.4, textTransform: 'uppercase' }}>{t('Step 1', 'Шаг 1')}</div>
+                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text, marginTop: 1 }}>{t('Assign a builder agent', 'Назначьте агента-сборщика')}</div>
                   <div style={{ fontFamily: T.font, fontSize: 12.5, color: agentAssigned ? T.green : T.hint, marginTop: 1 }}>
-                    {agentAssigned ? (cloudActive ? 'Cloud agent ready' : `${agentClient || 'Local agent'} connected`) : 'Cloud, or connect your own local agent'}
+                    {agentAssigned ? (cloudActive ? t('Cloud agent ready', 'Облачный агент готов') : `${agentClient || t('Local agent', 'Локальный агент')} ${t('connected', 'подключён')}`) : t('Cloud, or connect your own local agent', 'Облачный или подключите свой локальный агент')}
                   </div>
                 </div>
                 {!agentAssigned && <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />}
@@ -705,10 +703,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                   {creatingBot ? <Spinner color={T.accent} size={18} /> : <TGIcon name="send" size={19} color={agentAssigned ? T.accent : T.hint} stroke={1.9} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 700, color: T.hint, letterSpacing: 0.4, textTransform: 'uppercase' }}>Step 2</div>
-                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: agentAssigned ? T.text : T.hint, marginTop: 1 }}>Create the bot</div>
+                  <div style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 700, color: T.hint, letterSpacing: 0.4, textTransform: 'uppercase' }}>{t('Step 2', 'Шаг 2')}</div>
+                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: agentAssigned ? T.text : T.hint, marginTop: 1 }}>{t('Create the bot', 'Создайте бота')}</div>
                   <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>
-                    {agentAssigned ? 'Set it up on Telegram — no BotFather or tokens' : 'Assign a builder agent first'}
+                    {agentAssigned ? t('Set it up on Telegram — no BotFather or tokens', 'Настройте в Telegram — без BotFather и токенов') : t('Assign a builder agent first', 'Сначала назначьте агента-сборщика')}
                   </div>
                 </div>
                 {agentAssigned && <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />}
@@ -722,31 +720,22 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       )}
 
       {/* primary action — the Lovable-style feedback loop. While a build is in
-          flight the change CTA is paused (the backend rejects changes mid-build);
-          it returns the moment the bot is live again. awaiting_agent is NOT a
-          running build — the build can't start until a builder agent is assigned,
-          so make it the action (one tap to the agents sheet) instead of a stalled
-          "Building" spinner. */}
+          flight the change CTA is paused (the backend rejects changes mid-build)
+          and there's nothing to show here — the build card below is the single
+          status surface. It returns the moment the bot is live again.
+          awaiting_agent is the exception: the build can't start until a builder
+          agent is assigned, so make that the action (one tap to the agents
+          sheet). */}
       {awaitingAgent ? (
         <button onClick={onManageAgents} style={{
           ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           fontFamily: T.font, fontSize: 17, fontWeight: 600, boxShadow: `0 6px 18px ${hexA(T.accent, 0.32)}`,
         }}>
-          <TGIcon name="cloud" size={20} color="#fff" stroke={2} /> Assign a builder agent
+          <TGIcon name="cloud" size={20} color="#fff" stroke={2} /> {t('Assign a builder agent', 'Назначить агента-сборщика')}
         </button>
-      ) : buildRunning ? (
-        <div style={{
-          width: '100%', minHeight: 54, borderRadius: 15, padding: '0 16px',
-          background: T.nestedBg,
-          border: `1px solid ${T.sep}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          fontFamily: T.font, fontSize: 15.5, fontWeight: 600, color: T.sub, textAlign: 'center', lineHeight: '20px',
-        }}>
-          <Spinner color={T.hint} size={17} /> Building — you can ask for changes once it’s live
-        </div>
-      ) : (() => {
-        const label = live ? 'Ask for change' : latestDeployFailed || testsFailed || buildFailed ? 'Fix with agent' : 'Message agent';
+      ) : buildRunning ? null : (() => {
+        const label = live ? t('Ask for change', 'Запросить изменение') : latestDeployFailed || testsFailed || buildFailed ? t('Fix with agent', 'Исправить с агентом') : t('Message agent', 'Написать агенту');
         return (
         <button onClick={onOpenChat} style={{
           ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
@@ -767,7 +756,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600,
           color: canTest ? T.accent : T.hint, cursor: canTest ? 'pointer' : 'default',
         }}>
-          <TGIcon name="open" size={17} color={canTest ? T.accent : T.hint} stroke={2} /> Test bot
+          <TGIcon name="open" size={17} color={canTest ? T.accent : T.hint} stroke={2} /> {t('Test bot', 'Тест бота')}
         </button>
           );
         })()}
@@ -775,14 +764,14 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           <button onClick={() => openExternal(blueprintUrl)} style={{
             ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
           }}>
-            <TGIcon name="link" size={17} color={T.accent} stroke={2} /> Spec
+            <TGIcon name="link" size={17} color={T.accent} stroke={2} /> {t('Spec', 'Спека')}
           </button>
         )}
         {repoUrl && (
           <button onClick={() => openExternal(repoUrl)} style={{
             ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.accent,
           }}>
-            <TGIcon name="code" size={17} color={T.accent} stroke={2} /> Code
+            <TGIcon name="code" size={17} color={T.accent} stroke={2} /> {t('Code', 'Код')}
           </button>
         )}
       </div>
@@ -810,31 +799,35 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                 <TGIcon name="check" size={15} color={T.green} stroke={2.2} />
               </div>
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 650, color: T.text }}>Inbox clear</div>
-                <div style={{ fontFamily: T.font, fontSize: 12.2, color: T.hint, marginTop: 1 }}>No questions or failed tasks</div>
+                <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 650, color: T.text }}>{t('Inbox clear', 'Входящие пусты')}</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.2, color: T.hint, marginTop: 1 }}>{t('No questions or failed tasks', 'Нет вопросов и неудавшихся задач')}</div>
               </div>
               <TGIcon name="chevRight" size={16} color={T.hint} stroke={2} />
             </button>
           )
       )}
 
-      <div>
-        <SectionLabel T={T}>Build progress</SectionLabel>
-        <BuildProgress T={T} steps={progressSteps} />
-        {buildRunning && bp && (
-          <div style={{ marginTop: 10 }}>
-            <WholeBotBuildCard T={T} bp={bp} />
-          </div>
-        )}
-      </div>
+      {/* Build progress — for whole_bot the build card IS the single status
+          surface (status word + bar + % + iteration timeline), so the Plan→Build→
+          Test→Live stepper is dropped to avoid stacking three redundant status
+          indicators. The stepper stays for task_manager/phase bots, which have no
+          build card. */}
+      {(!wholeBot || (buildRunning && bp)) && (
+        <div>
+          <SectionLabel T={T}>{t('Build progress', 'Прогресс сборки')}</SectionLabel>
+          {wholeBot && bp
+            ? <WholeBotBuildCard T={T} bp={bp} />
+            : <BuildProgress T={T} steps={progressSteps} />}
+        </div>
+      )}
 
       {/* shipping a change lives in the chat (the "Ask for change" button above),
           same as task_manager bots — no separate composer here. A live chat
           message routes to the build/feedback flow and the bot rebuilds. */}
 
-      {/* stats — compact 3-up grid; wraps to a 2nd row when analytics is live.
-          Hidden while a whole_bot is building (the build card above carries the
-          live status), shown once it's live (analytics + deploy stats). */}
+      {/* stats — one compact 3-up row (build progress · unique users · last
+          update). Hidden while a whole_bot is building (the build card above
+          carries the live status). */}
       {!wholeBotBuilding && (
       <Card T={T} pad={0}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
@@ -854,7 +847,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
 
       {/* assigned builder agent summary → add-an-agent sheet (cloud or local) */}
       <div>
-        <SectionLabel T={T}>Builder</SectionLabel>
+        <SectionLabel T={T}>{t('Builder', 'Сборщик')}</SectionLabel>
         <button onClick={onManageAgents} style={{ ...btnReset, width: '100%', textAlign: 'left' }}>
           <Card T={T} pad={0}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
@@ -863,18 +856,18 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>
-                  {cloudActive ? 'Cloud agent' : connected ? 'Local agent' : 'Builder agents'}
+                  {cloudActive ? t('Cloud agent', 'Облачный агент') : connected ? t('Local agent', 'Локальный агент') : t('Builder agents', 'Агенты-сборщики')}
                 </div>
                 <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {cloudActive
-                    ? <><Dot color={T.green} size={6} /> running</>
+                    ? <><Dot color={T.green} size={6} /> {t('running', 'работает')}</>
                     : connected
-                      ? <><Dot color={T.green} size={6} /> {agentClient || 'Claude'} · online</>
-                      : 'Optional cloud/local builder controls'}
+                      ? <><Dot color={T.green} size={6} /> {agentClient || 'Claude'} · {t('online', 'онлайн')}</>
+                      : t('Optional cloud/local builder controls', 'Опциональные настройки облачного/локального сборщика')}
                 </div>
               </div>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.accent }}>
-                Manage <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
+                {t('Manage', 'Управление')} <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
               </span>
             </div>
           </Card>
@@ -895,26 +888,26 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       <div>
         <SectionLabel T={T} right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {total > 0 && <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{done}/{total} done</span>}
+            {total > 0 && <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{done}/{total} {t('done', 'готово')}</span>}
             <button onClick={onOpenBoard} style={{ ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent }}>
-              Board <TGIcon name="chevRight" size={15} color={T.accent} stroke={2} />
+              {t('Board', 'Доска')} <TGIcon name="chevRight" size={15} color={T.accent} stroke={2} />
             </button>
           </div>
-        }>Tasks</SectionLabel>
+        }>{t('Tasks', 'Задачи')}</SectionLabel>
         <Card T={T} pad={0}>
           {/* phases are a phase-pipeline concept — task_manager is epics + tasks, no phase strip */}
-          {dag?.current_phase && !isTaskManager && <PhaseStrip T={T} dag={dag} />}
+          {dag?.current_phase && !isTaskManager && <PhaseStrip T={T} dag={dag} lang={lang} />}
           {tasks.length === 0 && (
             decomposing ? (
               <div style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Spinner color={T.accent} size={15} />
                 <span style={{ fontFamily: T.font, fontSize: 13.5, color: T.sub, lineHeight: '18px' }}>
-                  Decomposing your idea into tasks — this can take a minute. They'll stream in here as they're built.
+                  {t("Decomposing your idea into tasks — this can take a minute. They'll stream in here as they're built.", 'Разбиваем вашу идею на задачи — это может занять минуту. Они появятся здесь по мере готовности.')}
                 </span>
               </div>
             ) : (
               <div style={{ padding: 14, fontFamily: T.font, fontSize: 13.5, color: T.hint }}>
-                Build starting — your plan and tasks will appear here in a moment.
+                {t('Build starting — your plan and tasks will appear here in a moment.', 'Сборка начинается — ваш план и задачи скоро появятся здесь.')}
               </div>
             )
           )}
@@ -938,7 +931,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                     ...(open ? {} : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
                   }}>{open ? t.title : t.title.replace(/^Fix:\s*/i, '')}</span>
                   <Pill T={T} tone={t.status === 'done' ? 'neutral' : 'accent'} style={{ height: 19, fontSize: 10, padding: '0 7px' }}>
-                    {t.node_kind || t.difficulty || 'task'}
+                    {t.node_kind || t.difficulty || tr(lang, 'task', 'задача')}
                   </Pill>
                   <TGIcon name="chevDown" size={14} color={T.hint} stroke={2} />
                 </button>
@@ -947,9 +940,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                   <div style={{ padding: '0 14px 13px 39px', display: 'flex', flexDirection: 'column', gap: 9 }}>
                     {/* meta line */}
                     <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>
-                      {[t.phase && `${t.phase} phase`, t.status,
-                        (t.claimers_count || 0) > 0 && `${t.claimers_count} agent${t.claimers_count! > 1 ? 's' : ''} on it`,
-                        t.depends_on?.length ? `depends on ${t.depends_on.length}` : null,
+                      {[t.phase && (lang === 'ru' ? `фаза ${t.phase}` : `${t.phase} phase`), t.status,
+                        (t.claimers_count || 0) > 0 && (lang === 'ru' ? `${t.claimers_count} агент(ов) в работе` : `${t.claimers_count} agent${t.claimers_count! > 1 ? 's' : ''} on it`),
+                        t.depends_on?.length ? (lang === 'ru' ? `зависит от ${t.depends_on.length}` : `depends on ${t.depends_on.length}`) : null,
                       ].filter(Boolean).join(' · ')}
                     </div>
 
@@ -957,7 +950,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                     {detail === 'loading' && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Spinner color={T.hint} size={13} />
-                        <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>Loading description…</span>
+                        <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>{tr(lang, 'Loading description…', 'Загрузка описания…')}</span>
                       </div>
                     )}
                     {detail && detail !== 'loading' && detail !== 'none' && detail.body_md && (
@@ -967,7 +960,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                       }}>{detail.body_md}</div>
                     )}
                     {(detail === 'none' || (typeof detail === 'object' && !detail.body_md)) && !t.claim_reason && (
-                      <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>No further details for this task.</div>
+                      <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>{tr(lang, 'No further details for this task.', 'Больше деталей по этой задаче нет.')}</div>
                     )}
                     {t.claim_reason && t.status !== 'done' && (
                       <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.amber, lineHeight: '17px' }}>{t.claim_reason}</div>
@@ -981,8 +974,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                       if (!pr && !issue) return null;
                       return (
                         <div style={{ display: 'flex', gap: 8 }}>
-                          {pr && <LinkChip T={T} label="View PR" onClick={() => openExternal(pr)} />}
-                          {issue && <LinkChip T={T} label="GitHub issue" onClick={() => openExternal(issue)} />}
+                          {pr && <LinkChip T={T} label={tr(lang, 'View PR', 'Открыть PR')} onClick={() => openExternal(pr)} />}
+                          {issue && <LinkChip T={T} label={tr(lang, 'GitHub issue', 'GitHub-задача')} onClick={() => openExternal(issue)} />}
                         </div>
                       );
                     })()}
@@ -997,14 +990,14 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
                   <textarea ref={addTaskRef} autoFocus value={taskDraft} onChange={e => setTaskDraft(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submitNewTask(); } }}
-                    placeholder="Describe a task to add…" rows={1}
+                    placeholder={t('Describe a task to add…', 'Опишите задачу для добавления…')} rows={1}
                     style={{ flex: 1, resize: 'none', maxHeight: 200, minHeight: 38, overflowY: 'auto', padding: '9px 12px', borderRadius: 12, background: T.inputBg, border: `0.5px solid ${T.sep}`, color: T.text, fontFamily: T.font, fontSize: 14, lineHeight: '19px', outline: 'none', boxSizing: 'border-box' }} />
                   <button onClick={() => void submitNewTask()} style={{ ...btnReset, width: 38, height: 38, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: taskDraft.trim() && !addBusy ? T.accent : T.nestedBg }}>
                     {addBusy ? <Spinner color="#fff" size={16} /> : <TGIcon name="send" size={17} color={taskDraft.trim() ? '#fff' : T.hint} stroke={2} />}
                   </button>
                 </div>
                 {addErr && <span style={{ fontFamily: T.font, fontSize: 12, color: T.amber, lineHeight: '16px' }}>{addErr}</span>}
-                <button onClick={() => { setAddingTask(false); setTaskDraft(''); setAddErr(null); }} style={{ ...btnReset, alignSelf: 'flex-start', fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.hint }}>Cancel</button>
+                <button onClick={() => { setAddingTask(false); setTaskDraft(''); setAddErr(null); }} style={{ ...btnReset, alignSelf: 'flex-start', fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.hint }}>{t('Cancel', 'Отмена')}</button>
               </div>
             ) : (
               <button onClick={() => setAddingTask(true)} style={{
@@ -1012,7 +1005,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent,
               }}>
-                <TGIcon name="plus" size={15} color={T.accent} stroke={2.2} /> Add new task
+                <TGIcon name="plus" size={15} color={T.accent} stroke={2.2} /> {t('Add new task', 'Добавить задачу')}
               </button>
             )
           ) : (
@@ -1021,7 +1014,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
                 ...btnReset, width: '100%', padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`,
                 fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.accent, textAlign: 'center',
               }}>
-                {showAllTasks ? 'Show less' : `Show all ${tasks.length} tasks`}
+                {showAllTasks ? t('Show less', 'Свернуть') : t(`Show all ${tasks.length} tasks`, `Показать все задачи (${tasks.length})`)}
               </button>
             )
           )}
@@ -1036,8 +1029,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       {/* recent activity — moved to the bottom; timeline preview + view all */}
       <div>
         <SectionLabel T={T} right={
-          <button onClick={onViewActivity} style={{ ...btnReset, fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.accent }}>View all</button>
-        }>Recent activity</SectionLabel>
+          <button onClick={onViewActivity} style={{ ...btnReset, fontFamily: T.font, fontSize: 13.5, fontWeight: 600, color: T.accent }}>{t('View all', 'Показать все')}</button>
+        }>{t('Recent activity', 'Последние события')}</SectionLabel>
         <div style={{ padding: '2px 4px 0' }}>
           <ActivityTimeline T={T} events={activity} clamp />
         </div>
@@ -1050,15 +1043,15 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           ...btnReset, alignSelf: 'center', marginTop: 4, padding: '9px 16px', borderRadius: 999,
           color: T.red, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
         }}>
-          Delete this bot
+          {t('Delete this bot', 'Удалить этого бота')}
         </button>
       ) : (
         <Card T={T} pad={14} style={{ border: `1px solid ${T.redSoft}` }}>
           <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>
-            Delete {bot.name}?
+            {t('Delete', 'Удалить')} {bot.name}?
           </div>
           <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '18px', marginTop: 5 }}>
-            Removes this project from your AgentBot list.
+            {t('Removes this project from your AgentBot list.', 'Удаляет этот проект из вашего списка AgentBot.')}
           </div>
           {botUsername && (
           <div style={{
@@ -1067,9 +1060,15 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           }}>
             <TGIcon name="shield" size={15} color={T.amber} stroke={1.9} />
             <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.sub, lineHeight: '17px' }}>
-              The Telegram bot @{botUsername} keeps running — to delete it completely, open{' '}
-              <span onClick={() => openTgLink('https://t.me/BotFather')} style={{ color: T.accent, fontWeight: 600, cursor: 'pointer' }}>@BotFather</span>
-              {' '}and send <span style={{ fontFamily: T.mono }}>/deletebot</span>.
+              {lang === 'ru' ? <>
+                Telegram-бот @{botUsername} продолжит работать — чтобы удалить его полностью, откройте{' '}
+                <span onClick={() => openTgLink('https://t.me/BotFather')} style={{ color: T.accent, fontWeight: 600, cursor: 'pointer' }}>@BotFather</span>
+                {' '}и отправьте <span style={{ fontFamily: T.mono }}>/deletebot</span>.
+              </> : <>
+                The Telegram bot @{botUsername} keeps running — to delete it completely, open{' '}
+                <span onClick={() => openTgLink('https://t.me/BotFather')} style={{ color: T.accent, fontWeight: 600, cursor: 'pointer' }}>@BotFather</span>
+                {' '}and send <span style={{ fontFamily: T.mono }}>/deletebot</span>.
+              </>}
             </span>
           </div>
           )}
@@ -1079,13 +1078,13 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
               background: T.nestedBg,
               color: T.text, fontFamily: T.font, fontSize: 14, fontWeight: 600,
             }}>
-              Cancel
+              {t('Cancel', 'Отмена')}
             </button>
             <button onClick={onDelete} style={{
               ...btnReset, flex: 1, height: 42, borderRadius: 11,
               background: T.red, color: '#fff', fontFamily: T.font, fontSize: 14, fontWeight: 600,
             }}>
-              Delete
+              {t('Delete', 'Удалить')}
             </button>
           </div>
         </Card>
@@ -1102,6 +1101,7 @@ function TaskManagerControls({ T, projectId, live, autoMergeEnabled, hasBot, spe
   T: Theme; projectId: string; live: boolean;
   autoMergeEnabled?: boolean; hasBot: boolean; specOnly?: boolean;
 }) {
+  const t = useT();
   // Auto-merge (§6.6): seed from the project DTO; optimistic flip, revert on error.
   const [amOn, setAmOn] = useState(autoMergeEnabled ?? true);
   const [amBusy, setAmBusy] = useState(false);
@@ -1112,7 +1112,7 @@ function TaskManagerControls({ T, projectId, live, autoMergeEnabled, hasBot, spe
     const next = !amOn;
     setAmOn(next); setAmBusy(true); setAmError(null);
     try { await setAutoMerge(projectId, next); }
-    catch (e) { setAmOn(!next); setAmError(e instanceof ApiError ? e.message : 'network error — try again'); }
+    catch (e) { setAmOn(!next); setAmError(e instanceof ApiError ? e.message : t('network error — try again', 'ошибка сети — попробуйте снова')); }
     finally { setAmBusy(false); }
   };
 
@@ -1129,7 +1129,7 @@ function TaskManagerControls({ T, projectId, live, autoMergeEnabled, hasBot, spe
     try { await retryDeploy(projectId); setDpPending(true); }
     catch (e) {
       setDpPending(false);
-      setDpError(e instanceof ApiError ? (e.warning || `${e.message}${e.details ? ` — ${e.details}` : ''}`) : 'network error — try again');
+      setDpError(e instanceof ApiError ? (e.warning || `${e.message}${e.details ? ` — ${e.details}` : ''}`) : t('network error — try again', 'ошибка сети — попробуйте снова'));
     } finally { setDpBusy(false); }
   };
 
@@ -1144,11 +1144,11 @@ function TaskManagerControls({ T, projectId, live, autoMergeEnabled, hasBot, spe
               background: T.accentSoft, color: T.accent, fontFamily: T.font, fontSize: 14, fontWeight: 600,
             }}>
               {dpBusy ? <Spinner color={T.accent} size={15} /> : <TGIcon name="refresh" size={16} color={T.accent} stroke={2} />}
-              Retry deploy
+              {t('Retry deploy', 'Повторить деплой')}
             </button>
             {dpPending && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: T.font, fontSize: 12.5, color: T.accent, lineHeight: '17px' }}>
-                <Spinner color={T.accent} size={13} /> Deploy started - watching for it to come online...
+                <Spinner color={T.accent} size={13} /> {t('Deploy started - watching for it to come online...', 'Деплой запущен — ждём, когда бот выйдет в онлайн...')}
               </div>
             )}
             {dpError && (
@@ -1163,9 +1163,9 @@ function TaskManagerControls({ T, projectId, live, autoMergeEnabled, hasBot, spe
       <Card T={T} pad={0}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>Auto-merge PRs</div>
+            <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>{t('Auto-merge PRs', 'Авто-мёрж PR')}</div>
             <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>
-              {amOn ? 'Approved PRs merge automatically.' : 'Approved PRs stay open — merge them on GitHub.'}
+              {amOn ? t('Approved PRs merge automatically.', 'Одобренные PR мёржатся автоматически.') : t('Approved PRs stay open — merge them on GitHub.', 'Одобренные PR остаются открытыми — мёржите их на GitHub.')}
             </div>
           </div>
           <Switch T={T} on={amOn} busy={amBusy} onClick={() => void toggleAutoMerge()} />
@@ -1181,11 +1181,11 @@ function TaskManagerControls({ T, projectId, live, autoMergeEnabled, hasBot, spe
               background: T.accentSoft, color: T.accent, fontFamily: T.font, fontSize: 14, fontWeight: 600,
             }}>
               {dpBusy ? <Spinner color={T.accent} size={15} /> : <TGIcon name="refresh" size={16} color={T.accent} stroke={2} />}
-              {live ? 'Redeploy bot' : 'Retry deploy'}
+              {live ? t('Redeploy bot', 'Передеплоить бота') : t('Retry deploy', 'Повторить деплой')}
             </button>
             {dpPending && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: T.font, fontSize: 12.5, color: T.accent, lineHeight: '17px' }}>
-                <Spinner color={T.accent} size={13} /> Deploy started — watching for it to come online…
+                <Spinner color={T.accent} size={13} /> {t('Deploy started — watching for it to come online…', 'Деплой запущен — ждём, когда бот выйдет в онлайн…')}
               </div>
             )}
             {dpError && (

@@ -4,34 +4,52 @@
 import { Theme, btnReset, toneFor } from '../theme';
 import { Project, ChatMessage } from '../api/client';
 import { ChatThread } from '../chat/Chat';
-import { TGIcon, Mark, Bubble, Spinner, BotAvatar, Pill, Dot } from '../ui';
+import { useT, useLang, tr, Lang } from '../i18n';
+import { TGIcon, Mark, Bubble, Spinner, BotTile, Pill, Dot } from '../ui';
 
 export interface MyBot {
   id: string;
   name: string;
   handle: string;
   tone: string;
+  avatarUrl?: string; // generated bot avatar (falls back to the name monogram)
   version: string;
   status: string;
   inProgress: boolean; // not deployed yet — tapping resumes the build pipeline
   statusLabel: string;
   preview: string;
-  avatarUrl?: string; // AI-generated bot avatar (bot_avatar_url); absent until generated
   // task_manager (living DAG) vs the legacy phase pipeline. From the project's
   // build_pipeline once it ships (gap #1); undefined today → the board/overview
   // fall back to probing /dag for node_kind. Drives which board/inbox to show.
   isTaskManager?: boolean;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: 'Clarifying idea…',
-  validating: 'Generating spec…',
-  generating: 'Building…', // task_manager decompose/build state
-  ready_to_publish: 'In progress',
-  publishing: 'Publishing…',
-  live: 'Building…',
-  completed: 'Build complete',
+// Status chrome. Keyed by raw project status; VALUES are user-facing → translated.
+const STATUS_LABELS: Record<string, [string, string]> = {
+  draft: ['Clarifying idea…', 'Уточняем идею…'],
+  validating: ['Generating spec…', 'Генерация спеки…'],
+  generating: ['Building…', 'Идёт сборка…'], // task_manager decompose/build state
+  ready_to_publish: ['In progress', 'В процессе'],
+  publishing: ['Publishing…', 'Публикация…'],
+  live: ['Building…', 'Идёт сборка…'],
+  completed: ['Build complete', 'Сборка готова'],
 };
+
+function statusLabel(lang: Lang, status: string): string {
+  const pair = STATUS_LABELS[status];
+  return pair ? tr(lang, pair[0], pair[1]) : status;
+}
+
+// Default descriptions when a bot carries no server description. Defined once so
+// botFromProject and the render-site translation (previewText) stay byte-identical.
+const DEPLOYED_FALLBACK = 'Your bot is deployed and running.';
+const WIP_FALLBACK = 'Build in progress — open for status and changes.';
+
+function previewText(lang: Lang, preview: string): string {
+  if (preview === DEPLOYED_FALLBACK) return tr(lang, DEPLOYED_FALLBACK, 'Ваш бот развёрнут и работает.');
+  if (preview === WIP_FALLBACK) return tr(lang, WIP_FALLBACK, 'Сборка идёт — откройте, чтобы увидеть статус и внести изменения.');
+  return preview;
+}
 
 export function botFromProject(p: Project): MyBot {
   const isTaskManager = p.build_pipeline ? p.build_pipeline === 'task_manager' : undefined;
@@ -39,31 +57,35 @@ export function botFromProject(p: Project): MyBot {
   const legacyLive = isTaskManager !== true && (p.status === 'live' || p.status === 'completed');
   const deployed = runtimeLive || legacyLive;
   const desc = p.short_description || p.goal_of_project || (deployed
-    ? 'Your bot is deployed and running.'
-    : 'Build in progress — open for status and changes.');
+    ? DEPLOYED_FALLBACK
+    : WIP_FALLBACK);
   return {
     id: p.id,
     name: p.name,
     handle: p.bot_username || `${p.slug.replace(/-/g, '_')}_bot`,
     tone: toneFor(p.slug),
+    avatarUrl: p.bot_avatar_url || p.logo_url || p.preview_image_url || undefined,
     version: 'v1.0',
     status: deployed ? 'live' : p.status,
     inProgress: !deployed,
-    statusLabel: deployed ? 'Live' : (STATUS_LABELS[p.status] || p.status),
+    statusLabel: deployed ? 'Live' : statusLabel('en', p.status),
     preview: desc,
-    avatarUrl: p.bot_avatar_url,
     // undefined until the DTO carries build_pipeline; the board/overview probe /dag otherwise
     isTaskManager,
   };
 }
 
-function botsSummary(bots: MyBot[]): string {
+function botsSummary(lang: Lang, bots: MyBot[]): string {
   const deployed = bots.filter(b => !b.inProgress).length;
   const wip = bots.length - deployed;
   const parts: string[] = [];
-  if (deployed) parts.push(`${deployed} deployed`);
-  if (wip) parts.push(`${wip} in progress`);
-  return `${parts.join(' · ')}. Open one to ${deployed ? 'request an update or ' : ''}continue building.`;
+  if (deployed) parts.push(tr(lang, `${deployed} deployed`, `${deployed} развёрнуто`));
+  if (wip) parts.push(tr(lang, `${wip} in progress`, `${wip} в процессе`));
+  const joined = parts.join(' · ');
+  const more = deployed ? tr(lang, 'request an update or ', 'запросить обновление или ') : '';
+  return tr(lang,
+    `${joined}. Open one to ${more}continue building.`,
+    `${joined}. Откройте бота, чтобы ${more}продолжить сборку.`);
 }
 
 // ── inbox list ────────────────────────────────────────────────
@@ -71,11 +93,13 @@ export function MyBotsList({ T, bots, loading, authed, onOpen, onBuildFirst }: {
   T: Theme; bots: MyBot[]; loading: boolean; authed: boolean;
   onOpen: (id: string) => void; onBuildFirst: () => void;
 }) {
+  const t = useT();
+  const { lang } = useLang();
   return (
     <div style={{ padding: '16px 16px 24px', display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '2px 2px 0' }}>
         <div style={{ fontFamily: T.font, fontSize: 26, fontWeight: 800, color: T.text, letterSpacing: -0.6 }}>
-          My bots
+          {t('My bots', 'Мои боты')}
         </div>
         {authed && bots.length > 0 && (
           <button onClick={onBuildFirst} style={{
@@ -87,9 +111,9 @@ export function MyBotsList({ T, bots, loading, authed, onOpen, onBuildFirst }: {
         )}
       </div>
       <div style={{ fontFamily: T.font, fontSize: 14, color: T.sub, lineHeight: '20px', padding: '6px 2px 0' }}>
-        {loading ? 'Loading your bots…' : bots.length
-          ? botsSummary(bots)
-          : authed ? 'Nothing deployed yet.' : 'Your bots are tied to your Telegram account.'}
+        {loading ? t('Loading your bots…', 'Загрузка ваших ботов…') : bots.length
+          ? botsSummary(lang, bots)
+          : authed ? t('Nothing deployed yet.', 'Пока ничего не развёрнуто.') : t('Your bots are tied to your Telegram account.', 'Ваши боты привязаны к вашему аккаунту Telegram.')}
       </div>
 
       {loading && (
@@ -99,11 +123,11 @@ export function MyBotsList({ T, bots, loading, authed, onOpen, onBuildFirst }: {
       )}
 
       {!loading && !authed && (
-        <EmptyAction T={T} icon="user" label="Open in Telegram" sub="Sign-in is automatic inside the mini-app" onClick={() => {}} />
+        <EmptyAction T={T} icon="user" label={t('Open in Telegram', 'Открыть в Telegram')} sub={t('Sign-in is automatic inside the mini-app', 'Вход выполняется автоматически в мини-приложении')} onClick={() => {}} />
       )}
 
       {!loading && authed && bots.length === 0 && (
-        <EmptyAction T={T} icon="bolt" label="Build your first bot" sub="Describe it in plain words — we do the rest" onClick={onBuildFirst} />
+        <EmptyAction T={T} icon="bolt" label={t('Build your first bot', 'Соберите своего первого бота')} sub={t('Describe it in plain words — we do the rest', 'Опишите его простыми словами — остальное сделаем мы')} onClick={onBuildFirst} />
       )}
 
       <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -115,7 +139,7 @@ export function MyBotsList({ T, bots, loading, authed, onOpen, onBuildFirst }: {
               padding: 15, borderRadius: T.cardRadius, background: T.cardBg,
               border: `1px solid ${T.sep}`, boxShadow: T.shadow,
             }}>
-              <BotAvatar T={T} name={bot.name} tone={bot.tone} avatarUrl={bot.avatarUrl} size={48} radius={15} />
+              <BotTile T={T} name={bot.name} tone={bot.tone} src={bot.avatarUrl} size={48} radius={15} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
                   fontFamily: T.font, fontSize: 16, fontWeight: 700, color: T.text, letterSpacing: -0.2,
@@ -125,7 +149,7 @@ export function MyBotsList({ T, bots, loading, authed, onOpen, onBuildFirst }: {
               </div>
               <Pill T={T} tone={liveB ? 'green' : 'gold'} style={{ flexShrink: 0 }}>
                 <Dot color={liveB ? '#2f8f6f' : T.gold} size={6} pulse={!liveB} />
-                {liveB ? 'Live' : bot.statusLabel}
+                {liveB ? t('Live', 'Работает') : statusLabel(lang, bot.status)}
               </Pill>
             </button>
           );
@@ -163,11 +187,13 @@ export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onO
   loading?: boolean; showIdentity?: boolean; onOption?: (label: string) => void;
   onConnectAgent?: () => void; cloudAgent?: boolean;
 }) {
+  const t = useT();
+  const { lang } = useLang();
   return (
     <div style={{ padding: '16px 14px 18px', display: 'flex', flexDirection: 'column', gap: 10, minHeight: '100%' }}>
       {showIdentity && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 2px 6px' }}>
-          <BotAvatar T={T} name={bot.name} tone={bot.tone} avatarUrl={bot.avatarUrl} size={38} radius={12} />
+          <BotTile T={T} name={bot.name} tone={bot.tone} src={bot.avatarUrl} size={38} radius={12} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 700, color: T.text, letterSpacing: -0.2 }}>{bot.name}</div>
             <div style={{ fontFamily: T.mono, fontSize: 12, color: T.hint, marginTop: 1 }}>@{bot.handle} · {bot.version}</div>
@@ -181,7 +207,9 @@ export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onO
       }}>
         <Mark T={T} size={17} radius={5} />
         <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint, fontWeight: 500 }}>
-          {cloudAgent ? 'Cloud agent · runs tasks & makes changes' : 'Build agent · updates ship live'}
+          {cloudAgent
+            ? t('Cloud agent · runs tasks & makes changes', 'Облачный агент · выполняет задачи и вносит изменения')
+            : t('Build agent · updates ship live', 'Агент сборки · обновления сразу в эфире')}
         </span>
       </div>
 
@@ -195,8 +223,8 @@ export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onO
             <TGIcon name="bolt" size={18} color={T.accent} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.text }}>Connect an agent</div>
-            <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>Put your Claude or Codex on this bot's tasks</div>
+            <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.text }}>{t('Connect an agent', 'Подключить агента')}</div>
+            <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>{t("Put your Claude or Codex on this bot's tasks", 'Поручите задачи бота вашему Claude или Codex')}</div>
           </div>
           <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />
         </button>
@@ -211,8 +239,12 @@ export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onO
       {!loading && messages.length === 0 && !thinking && (
         <Bubble T={T} from="bot">
           <span style={{ whiteSpace: 'pre-line' }}>{cloudAgent
-            ? `I'm your cloud agent for ${bot.name}. Ask me to finish a task, change something, or run an action — I'll do it and report back.`
-            : `I'm live 🟢 ${bot.preview} Tell me anything you'd like to change and I'll ship it.`}</span>
+            ? t(
+                `I'm your cloud agent for ${bot.name}. Ask me to finish a task, change something, or run an action — I'll do it and report back.`,
+                `Я ваш облачный агент для ${bot.name}. Попросите завершить задачу, что-то изменить или выполнить действие — я всё сделаю и отчитаюсь.`)
+            : t(
+                `I'm live 🟢 ${previewText(lang, bot.preview)} Tell me anything you'd like to change and I'll ship it.`,
+                `Я в эфире 🟢 ${previewText(lang, bot.preview)} Скажите, что хотите изменить, и я выпущу обновление.`)}</span>
         </Bubble>
       )}
 
@@ -226,6 +258,7 @@ export function Composer({ T, draft, onChange, onSend, disabled, placeholder }: 
   T: Theme; draft: string; onChange: (v: string) => void; onSend: () => void; disabled: boolean;
   placeholder?: string;
 }) {
+  const t = useT();
   const can = !!draft.trim() && !disabled;
   return (
     <div style={{ padding: '9px 10px 11px', background: T.headerBg, borderTop: `1px solid ${T.sep}`, position: 'relative', zIndex: 5 }}>
@@ -234,7 +267,7 @@ export function Composer({ T, draft, onChange, onSend, disabled, placeholder }: 
           value={draft}
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (can) onSend(); } }}
-          placeholder={placeholder || (disabled ? 'Shipping your update…' : 'Describe an update to ship…')}
+          placeholder={placeholder || (disabled ? t('Shipping your update…', 'Отправляем обновление…') : t('Describe an update to ship…', 'Опишите обновление для отправки…'))}
           rows={1}
           style={{
             flex: 1, resize: 'none', maxHeight: 96, minHeight: 42, padding: '11px 15px', borderRadius: 21,

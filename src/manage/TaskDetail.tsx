@@ -12,6 +12,7 @@
 //   • Reopen  — failed → POST /reopen
 import { useEffect, useRef, useState } from 'react';
 import { Theme, btnReset, hexA } from '../theme';
+import { useT, useLang, tr, type Lang } from '../i18n';
 import {
   ApiError, TaskComment, TaskDetail as TaskFull, ClaimerBrief,
   getTaskDetail, getTaskThread, answerQuestion, addTaskComment, cancelTask, reopenTask,
@@ -22,16 +23,29 @@ import { relTime } from './Activity';
 
 const TERMINAL = new Set(['done', 'cancelled']);
 
+// Russian noun pluralisation (1 попытка / 2 попытки / 5 попыток).
+function ruPlural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+function attemptsLabel(lang: Lang, n: number): string {
+  return lang === 'ru'
+    ? `${n} ${ruPlural(n, 'попытка', 'попытки', 'попыток')}`
+    : `${n} attempt${n > 1 ? 's' : ''}`;
+}
+
 // status → badge tone/label (mirrors the board buckets)
-function statusMeta(T: Theme, status?: string): { label: string; color: string; bg: string } {
+function statusMeta(T: Theme, lang: Lang, status?: string): { label: string; color: string; bg: string } {
   switch (status) {
-    case 'in_progress': return { label: 'Building', color: T.accent, bg: T.accentSoft };
-    case 'in_review': return { label: 'In review', color: T.accent, bg: T.accentSoft };
-    case 'blocked': return { label: 'Needs you', color: T.amber, bg: hexA(T.amber, 0.14) };
-    case 'done': return { label: 'Done', color: T.green, bg: T.greenSoft };
-    case 'failed': return { label: 'Failed', color: T.red, bg: T.redSoft };
-    case 'cancelled': return { label: 'Cancelled', color: T.hint, bg: hexA(T.hint, 0.12) };
-    default: return { label: 'Open', color: T.sub, bg: hexA(T.hint, 0.12) };
+    case 'in_progress': return { label: tr(lang, 'Building', 'В процессе'), color: T.accent, bg: T.accentSoft };
+    case 'in_review': return { label: tr(lang, 'In review', 'На ревью'), color: T.accent, bg: T.accentSoft };
+    case 'blocked': return { label: tr(lang, 'Needs you', 'Требуется решение'), color: T.amber, bg: hexA(T.amber, 0.14) };
+    case 'done': return { label: tr(lang, 'Done', 'Готово'), color: T.green, bg: T.greenSoft };
+    case 'failed': return { label: tr(lang, 'Failed', 'Ошибка'), color: T.red, bg: T.redSoft };
+    case 'cancelled': return { label: tr(lang, 'Cancelled', 'Отменено'), color: T.hint, bg: hexA(T.hint, 0.12) };
+    default: return { label: tr(lang, 'Open', 'Открыта'), color: T.sub, bg: hexA(T.hint, 0.12) };
   }
 }
 
@@ -57,6 +71,8 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
   const [cancelWarning, setCancelWarning] = useState<string | null>(null); // 409 confirm-to-cancel-review
   const [unblocked, setUnblocked] = useState<string[] | null>(null);
   const threadCanFetch = useRef(true); // 403/404 → stop hammering the thread poll
+  const t = useT();
+  const { lang } = useLang();
 
   const refreshTask = async () => {
     const d = await getTaskDetail(projectId, slug);
@@ -97,7 +113,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
   const canAnswer = isQuestion && status === 'open';
   const canReopen = status === 'failed';
   const canCancel = !!status && !TERMINAL.has(status);
-  const meta = statusMeta(T, status);
+  const meta = statusMeta(T, lang, status);
   const claimers = (task?.claimers || []) as ClaimerBrief[];
 
   const afterAction = async () => { await refreshTask(); onChanged?.(); threadCanFetch.current = true; };
@@ -110,7 +126,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
       const r = await answerQuestion(projectId, slug, body);
       setAnswerText(''); setUnblocked(r.unblocked || []);
       await afterAction();
-    } catch (e) { setActionError(errText(e)); }
+    } catch (e) { setActionError(errText(e, lang)); }
     finally { setBusy(null); }
   };
 
@@ -119,7 +135,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
     if (!body || busy) return;
     setBusy('note'); setActionError(null);
     try { await addTaskComment(projectId, slug, body); setNoteText(''); await afterAction(); }
-    catch (e) { setActionError(errText(e)); }
+    catch (e) { setActionError(errText(e, lang)); }
     finally { setBusy(null); }
   };
 
@@ -133,7 +149,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
     } catch (e) {
       // review tasks 409 with an actionable warning — show it verbatim, then re-send confirmed
       if (e instanceof ApiError && e.status === 409 && e.warning) setCancelWarning(e.warning);
-      else setActionError(errText(e));
+      else setActionError(errText(e, lang));
     } finally { setBusy(null); }
   };
 
@@ -141,7 +157,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
     if (busy) return;
     setBusy('reopen'); setActionError(null);
     try { await reopenTask(projectId, slug); await afterAction(); }
-    catch (e) { setActionError(errText(e)); }
+    catch (e) { setActionError(errText(e, lang)); }
     finally { setBusy(null); }
   };
 
@@ -185,7 +201,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
           {loadingTask && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '14px 0' }}>
               <Spinner color={T.hint} size={15} />
-              <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>Loading task…</span>
+              <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>{t('Loading task…', 'Загрузка задачи…')}</span>
             </div>
           )}
 
@@ -193,10 +209,10 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
           {task && (
             <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, lineHeight: '17px' }}>
               {[
-                typeof task.attempt_count === 'number' && task.attempt_count > 0 ? `${task.attempt_count} attempt${task.attempt_count > 1 ? 's' : ''}` : null,
-                task.blocked_since ? `blocked ${relTime(task.blocked_since)}` : null,
-                task.parent_id ? 'in an epic' : null,
-                task.assignee_type === 'owner' ? 'owner task' : null,
+                typeof task.attempt_count === 'number' && task.attempt_count > 0 ? attemptsLabel(lang, task.attempt_count) : null,
+                task.blocked_since ? tr(lang, `blocked ${relTime(task.blocked_since)}`, `заблокирована ${relTime(task.blocked_since)}`) : null,
+                task.parent_id ? t('in an epic', 'в эпике') : null,
+                task.assignee_type === 'owner' ? t('owner task', 'задача владельца') : null,
               ].filter(Boolean).join(' · ') || null}
             </div>
           )}
@@ -208,10 +224,12 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
             <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 12px', borderRadius: 12, background: T.redSoft }}>
               <TGIcon name="refresh" size={16} color={T.red} stroke={2} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 700, color: T.red, lineHeight: '17px' }}>Why it failed</div>
+                <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 700, color: T.red, lineHeight: '17px' }}>{t('Why it failed', 'Почему не удалось')}</div>
                 <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.sub, lineHeight: '17px', marginTop: 3 }}>
                   {task?.failure_reason
-                    || `The build agent used up its retry budget${typeof task?.attempt_count === 'number' && task.attempt_count > 0 ? ` after ${task.attempt_count} attempt${task.attempt_count > 1 ? 's' : ''}` : ''} and stopped. Reopen below to let it try again.`}
+                    || (lang === 'ru'
+                      ? 'Агент сборки исчерпал бюджет попыток и остановился. Нажмите «Открыть заново» ниже, чтобы попробовать ещё раз.'
+                      : `The build agent used up its retry budget${typeof task?.attempt_count === 'number' && task.attempt_count > 0 ? ` after ${task.attempt_count} attempt${task.attempt_count > 1 ? 's' : ''}` : ''} and stopped. Reopen below to let it try again.`)}
                 </div>
               </div>
             </div>
@@ -233,7 +251,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
                 ))}
               </div>
               <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>
-                {claimers.map(c => c.username ? `@${c.username}` : (c.agent_id || 'agent').slice(0, 6)).slice(0, 2).join(', ')} working
+                {claimers.map(c => c.username ? `@${c.username}` : (c.agent_id || 'agent').slice(0, 6)).slice(0, 2).join(', ')} {t('working', 'в работе')}
               </span>
             </div>
           )}
@@ -248,7 +266,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
           {/* resolved spec details the task references */}
           {task?.spec_body && (
             <div>
-              <SubLabel T={T}>Details</SubLabel>
+              <SubLabel T={T}>{t('Details', 'Детали')}</SubLabel>
               <Card T={T} pad={12} style={{ background: T.inputBg }}>
                 <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '19px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{task.spec_body}</div>
               </Card>
@@ -267,16 +285,16 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
           {/* links */}
           {(pr || issue) && (
             <div style={{ display: 'flex', gap: 8 }}>
-              {pr && <LinkChip T={T} label="View PR" onClick={() => openExternal(pr)} />}
-              {issue && <LinkChip T={T} label="GitHub issue" onClick={() => openExternal(issue)} />}
+              {pr && <LinkChip T={T} label={t('View PR', 'Открыть PR')} onClick={() => openExternal(pr)} />}
+              {issue && <LinkChip T={T} label={t('GitHub issue', 'Issue на GitHub')} onClick={() => openExternal(issue)} />}
             </div>
           )}
 
           {/* thread */}
           <div>
-            <SubLabel T={T}>Thread</SubLabel>
+            <SubLabel T={T}>{t('Thread', 'Обсуждение')}</SubLabel>
             {comments.length === 0 ? (
-              <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>No messages yet.</div>
+              <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>{t('No messages yet.', 'Пока нет сообщений.')}</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {comments.map(c => {
@@ -290,7 +308,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                         <span style={{ fontFamily: T.font, fontSize: 11.5, fontWeight: 700, color: fg, textTransform: 'capitalize' }}>{c.author_role || 'agent'}</span>
-                        {isAnswer && <span style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 600, color: T.green }}>· answer</span>}
+                        {isAnswer && <span style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 600, color: T.green }}>· {t('answer', 'ответ')}</span>}
                         {c.created_at && <span style={{ fontFamily: T.font, fontSize: 11, color: T.hint }}>{relTime(c.created_at)}</span>}
                       </div>
                       <div style={{ fontFamily: T.font, fontSize: 13.5, color: T.text, lineHeight: '19px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 2 }}>{c.body_md}</div>
@@ -304,7 +322,11 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
           {unblocked && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: T.font, fontSize: 12.5, color: T.green }}>
               <TGIcon name="check" size={15} color={T.green} stroke={2.4} />
-              {unblocked.length ? `Answered — unblocked ${unblocked.length} task${unblocked.length > 1 ? 's' : ''}.` : 'Answered.'}
+              {unblocked.length
+                ? (lang === 'ru'
+                    ? `Ответ отправлен — разблокировано ${unblocked.length} ${ruPlural(unblocked.length, 'задача', 'задачи', 'задач')}.`
+                    : `Answered — unblocked ${unblocked.length} task${unblocked.length > 1 ? 's' : ''}.`)
+                : t('Answered.', 'Ответ отправлен.')}
             </div>
           )}
           {actionError && (
@@ -319,16 +341,16 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
           background: T.headerBg, display: 'flex', flexDirection: 'column', gap: 10,
         }}>
           {canAnswer && (
-            <ActionBox T={T} placeholder="Type your answer to unblock the build…"
+            <ActionBox T={T} placeholder={t('Type your answer to unblock the build…', 'Введите ответ, чтобы разблокировать сборку…')}
               value={answerText} onChange={setAnswerText} busy={busy === 'answer'}
-              cta="Send answer" onSend={sendAnswer} primary icon="check" />
+              cta={t('Send answer', 'Отправить ответ')} onSend={sendAnswer} primary icon="check" />
           )}
 
           {/* note box — collapsible-feel: always available for back-and-forth */}
           {!loadingTask && task && (
-            <ActionBox T={T} placeholder="Add a note (doesn't unblock)…"
+            <ActionBox T={T} placeholder={t("Add a note (doesn't unblock)…", 'Добавить заметку (не разблокирует)…')}
               value={noteText} onChange={setNoteText} busy={busy === 'note'}
-              cta="Note" onSend={sendNote} />
+              cta={t('Note', 'Заметка')} onSend={sendNote} />
           )}
 
           {(canReopen || canCancel) && (
@@ -338,7 +360,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
                   ...btnReset, flex: 1, height: 42, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
                   background: T.accent, color: '#fff', fontFamily: T.font, fontSize: 14, fontWeight: 600,
                 }}>
-                  {busy === 'reopen' ? <Spinner size={15} /> : <TGIcon name="refresh" size={16} color="#fff" stroke={2} />} Reopen
+                  {busy === 'reopen' ? <Spinner size={15} /> : <TGIcon name="refresh" size={16} color="#fff" stroke={2} />} {t('Reopen', 'Открыть заново')}
                 </button>
               )}
               {canCancel && (
@@ -348,7 +370,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
                   background: T.redSoft, color: T.red, fontFamily: T.font, fontSize: 14, fontWeight: 600,
                 }}>
                   {busy === 'cancel' && !cancelWarning ? <Spinner size={15} color={T.red} /> : null}
-                  Cancel{isReview ? ' review' : ''}
+                  {t('Cancel', 'Отменить')}{isReview ? t(' review', ' ревью') : ''}
                 </button>
               )}
             </div>
@@ -365,19 +387,19 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
           <Card T={T} pad={16} style={{ maxWidth: 360, width: '100%', border: `1px solid ${T.redSoft}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
               <TGIcon name="shield" size={18} color={T.red} stroke={2} />
-              <span style={{ fontFamily: T.font, fontSize: 15, fontWeight: 700, color: T.text }}>Cancel this review?</span>
+              <span style={{ fontFamily: T.font, fontSize: 15, fontWeight: 700, color: T.text }}>{t('Cancel this review?', 'Отменить это ревью?')}</span>
             </div>
             <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub, lineHeight: '19px' }}>{cancelWarning}</div>
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
               <button onClick={() => setCancelWarning(null)} style={{
                 ...btnReset, flex: 1, height: 42, borderRadius: 11, background: T.nestedBg,
                 color: T.text, fontFamily: T.font, fontSize: 14, fontWeight: 600,
-              }}>Keep it</button>
+              }}>{t('Keep it', 'Оставить')}</button>
               <button onClick={() => doCancel(true)} disabled={busy === 'cancel'} style={{
                 ...btnReset, flex: 1, height: 42, borderRadius: 11, background: T.red, color: '#fff',
                 fontFamily: T.font, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
               }}>
-                {busy === 'cancel' ? <Spinner size={15} /> : null} Cancel review
+                {busy === 'cancel' ? <Spinner size={15} /> : null} {t('Cancel review', 'Отменить ревью')}
               </button>
             </div>
           </Card>
@@ -387,12 +409,12 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
   );
 }
 
-function errText(e: unknown): string {
+function errText(e: unknown, lang: Lang): string {
   if (e instanceof ApiError) {
-    if (e.status === 429) return `Slow down — ${e.message}`;
+    if (e.status === 429) return `${tr(lang, 'Slow down —', 'Не так быстро —')} ${e.message}`;
     return `${e.message}${e.details ? ` — ${e.details}` : ''}`;
   }
-  return 'network error — try again';
+  return tr(lang, 'network error — try again', 'ошибка сети — попробуйте снова');
 }
 
 function ActionBox({ T, placeholder, value, onChange, onSend, busy, cta, primary, icon }: {

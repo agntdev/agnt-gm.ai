@@ -14,6 +14,7 @@ import {
   DagTask, TaskDetail, ClaimerBrief, getProjectDag, getTaskDetail,
 } from '../api/client';
 import { openExternal } from '../telegram';
+import { useT, useLang, tr, type Lang } from '../i18n';
 import { TGIcon, Card, Pill, Dot, Spinner } from '../ui';
 import { MyBot } from './MyBots';
 import { relTime } from './Activity';
@@ -41,10 +42,18 @@ const RANK: Record<Bucket, number> = {
   needsInput: 0, failed: 1, building: 2, review: 3, ready: 4, backlog: 5, done: 6, cancelled: 7,
 };
 
-const BUCKET_LABEL: Record<Bucket, string> = {
-  needsInput: 'Needs you', failed: 'Failed', building: 'Building', review: 'In review',
-  ready: 'Ready', backlog: 'Backlog', done: 'Done', cancelled: 'Cancelled',
-};
+function bucketLabel(lang: Lang, b: Bucket): string {
+  switch (b) {
+    case 'needsInput': return tr(lang, 'Needs you', 'Требуется решение');
+    case 'failed': return tr(lang, 'Failed', 'Ошибка');
+    case 'building': return tr(lang, 'Building', 'В процессе');
+    case 'review': return tr(lang, 'In review', 'На ревью');
+    case 'ready': return tr(lang, 'Ready', 'Свободна');
+    case 'backlog': return tr(lang, 'Backlog', 'Очередь');
+    case 'done': return tr(lang, 'Done', 'Готово');
+    case 'cancelled': return tr(lang, 'Cancelled', 'Отменено');
+  }
+}
 
 // summary-bar order (cancelled excluded — it has its own collapsed lane)
 const BAR_ORDER: Bucket[] = ['needsInput', 'failed', 'building', 'review', 'ready', 'backlog', 'done'];
@@ -83,6 +92,8 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
   const fails = useRef(0);
   const onKindRef = useRef(onKind);
   onKindRef.current = onKind;
+  const t = useT();
+  const { lang } = useLang();
 
   // report the pipeline off our own poll (node_kind ⇒ task_manager) so the
   // BoardView wrapper can route + self-heal without a separate /dag probe.
@@ -202,7 +213,7 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
   if (loading && tasks.length === 0) {
     return (
       <Centered T={T}><Spinner color={T.accent} size={22} />
-        <span style={{ fontFamily: T.font, fontSize: 14, color: T.hint }}>Loading the board…</span>
+        <span style={{ fontFamily: T.font, fontSize: 14, color: T.hint }}>{t('Loading the board…', 'Загрузка доски…')}</span>
       </Centered>
     );
   }
@@ -211,8 +222,8 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
       <Centered T={T}><Spinner color={T.accent} size={20} />
         <span style={{ fontFamily: T.font, fontSize: 14.5, color: T.hint, textAlign: 'center', maxWidth: 260 }}>
           {errored
-            ? "Couldn't reach the build server — retrying…"
-            : 'Decomposing your idea into a task graph — tasks will appear here in a moment.'}
+            ? t("Couldn't reach the build server — retrying…", 'Не удалось связаться с сервером сборки — повторная попытка…')
+            : t('Decomposing your idea into a task graph — tasks will appear here in a moment.', 'Разбиваем вашу идею на граф задач — задачи скоро появятся здесь.')}
         </span>
       </Centered>
     );
@@ -222,13 +233,13 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
     <div style={{ padding: '14px 16px 28px', display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* heading + progress */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 2px' }}>
-        <div style={{ fontFamily: T.font, fontSize: 21, fontWeight: 700, color: T.text, letterSpacing: -0.3 }}>Build board</div>
-        <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>{done}/{total} done</div>
+        <div style={{ fontFamily: T.font, fontSize: 21, fontWeight: 700, color: T.text, letterSpacing: -0.3 }}>{t('Build board', 'Доска сборки')}</div>
+        <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>{done}/{total} {t('done', 'готово')}</div>
       </div>
 
       {!hasNodeKind && (
         <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, lineHeight: '17px', padding: '0 2px' }}>
-          This bot uses the older phase pipeline — its build is tracked on the overview. Shown below as a flat task list.
+          {t('This bot uses the older phase pipeline — its build is tracked on the overview. Shown below as a flat task list.', 'Этот бот использует старый конвейер фаз — его сборка отслеживается на обзоре. Ниже показан плоский список задач.')}
         </div>
       )}
 
@@ -238,7 +249,7 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <TGIcon name="shield" size={16} color={T.red} stroke={2} />
             <span style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.red, lineHeight: '17px' }}>
-              A review failed — it's holding the go-live gate until it's resolved.
+              {t("A review failed — it's holding the go-live gate until it's resolved.", 'Ревью завершилось ошибкой — оно блокирует запуск, пока не будет решено.')}
             </span>
           </div>
         </Card>
@@ -246,10 +257,10 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
 
       {/* status summary bar — filters the board */}
       <div style={{ display: 'flex', gap: 7, overflowX: 'auto', padding: '0 2px 2px', margin: '0 -2px' }}>
-        <FilterChip T={T} label="All" count={total} active={filter === null} color={T.accent}
+        <FilterChip T={T} label={t('All', 'Все')} count={total} active={filter === null} color={T.accent}
           onClick={() => setFilter(null)} />
         {BAR_ORDER.filter(b => counts[b]).map(b => (
-          <FilterChip key={b} T={T} label={BUCKET_LABEL[b]} count={counts[b]}
+          <FilterChip key={b} T={T} label={bucketLabel(lang, b)} count={counts[b]}
             active={filter === b} color={bucketColor(T, b)} onClick={() => setFilter(f => (f === b ? null : b))} />
         ))}
       </div>
@@ -257,7 +268,7 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
       {/* General (ungrouped) — header only when epics exist */}
       {general.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {epics.length > 0 && <GroupLabel T={T}>General</GroupLabel>}
+          {epics.length > 0 && <GroupLabel T={T}>{t('General', 'Общие')}</GroupLabel>}
           <Card T={T} pad={0}>
             {general.map((t, i) => (
               <TaskRow key={t.slug} T={T} t={t} first={i === 0}
@@ -287,7 +298,7 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{epic.title}</div>
                   <div style={{ fontFamily: T.font, fontSize: 11.5, color: T.hint, marginTop: 1 }}>
-                    Epic · {children.length === 0 && detailsPending ? 'loading…' : `${epicDone}/${children.length} done`}
+                    {t('Epic', 'Эпик')} · {children.length === 0 && detailsPending ? t('loading…', 'загрузка…') : `${epicDone}/${children.length} ${t('done', 'готово')}`}
                   </div>
                 </div>
                 <TGIcon name={collapsed ? 'chevRight' : 'chevDown'} size={16} color={T.hint} stroke={2} />
@@ -300,8 +311,8 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
               {!collapsed && shown.length === 0 && (
                 <div style={{ padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`, display: 'flex', alignItems: 'center', gap: 8, fontFamily: T.font, fontSize: 12.5, color: T.hint }}>
                   {detailsPending
-                    ? <><Spinner color={T.hint} size={12} /> Loading tasks…</>
-                    : 'No tasks in this epic yet.'}
+                    ? <><Spinner color={T.hint} size={12} /> {t('Loading tasks…', 'Загрузка задач…')}</>
+                    : t('No tasks in this epic yet.', 'В этом эпике пока нет задач.')}
                 </div>
               )}
             </Card>
@@ -312,7 +323,9 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
       {/* filtered-to-nothing */}
       {filter && general.length === 0 && epicGroups.every(g => g.children.filter(passesFilter).length === 0) && (
         <div style={{ fontFamily: T.font, fontSize: 13.5, color: T.hint, textAlign: 'center', padding: '12px 0' }}>
-          No {BUCKET_LABEL[filter].toLowerCase()} tasks.
+          {lang === 'ru'
+            ? `Нет задач в статусе «${bucketLabel(lang, filter).toLowerCase()}».`
+            : `No ${bucketLabel(lang, filter).toLowerCase()} tasks.`}
         </div>
       )}
 
@@ -324,7 +337,7 @@ export function DagBoard({ T, bot, onOpenTask, onKind }: {
             fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.hint,
           }}>
             <TGIcon name={showCancelled ? 'chevDown' : 'chevRight'} size={14} color={T.hint} stroke={2} />
-            Cancelled ({cancelled.length})
+            {t('Cancelled', 'Отменено')} ({cancelled.length})
           </button>
           {showCancelled && (
             <Card T={T} pad={0} style={{ marginTop: 6, opacity: 0.7 }}>
@@ -349,6 +362,7 @@ function TaskRow({ T, t, first, nested, detail, open, onToggle, onOpen }: {
   detail: TaskDetail | 'loading' | 'none' | undefined; open: boolean; onToggle: () => void;
   onOpen?: () => void;
 }) {
+  const { lang } = useLang();
   const navigates = !!onOpen;
   const isOpen = navigates ? false : open;
   const b = bucketOf(t);
@@ -380,9 +394,9 @@ function TaskRow({ T, t, first, nested, detail, open, onToggle, onOpen }: {
         <div style={{ padding: nested ? '0 14px 13px 40px' : '0 14px 13px 31px', display: 'flex', flexDirection: 'column', gap: 9 }}>
           {/* meta line */}
           <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>
-            {[BUCKET_LABEL[b], t.node_kind && t.node_kind !== 'feature' ? t.node_kind : null,
-              t.depends_on?.length ? `depends on ${t.depends_on.length}` : null,
-              d?.blocked_since ? `blocked ${relTime(d.blocked_since)}` : null,
+            {[bucketLabel(lang, b), t.node_kind && t.node_kind !== 'feature' ? t.node_kind : null,
+              t.depends_on?.length ? tr(lang, `depends on ${t.depends_on.length}`, `зависит от ${t.depends_on.length}`) : null,
+              d?.blocked_since ? tr(lang, `blocked ${relTime(d.blocked_since)}`, `заблокирована ${relTime(d.blocked_since)}`) : null,
             ].filter(Boolean).join(' · ')}
           </div>
 
@@ -400,7 +414,7 @@ function TaskRow({ T, t, first, nested, detail, open, onToggle, onOpen }: {
           {detail === 'loading' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Spinner color={T.hint} size={13} />
-              <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>Loading details…</span>
+              <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>{tr(lang, 'Loading details…', 'Загрузка деталей…')}</span>
             </div>
           )}
           {d?.body_md && (
@@ -410,7 +424,7 @@ function TaskRow({ T, t, first, nested, detail, open, onToggle, onOpen }: {
             }}>{d.body_md}</div>
           )}
           {(detail === 'none' || (d && !d.body_md)) && !t.claim_reason && (
-            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>No further details for this task.</div>
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint }}>{tr(lang, 'No further details for this task.', 'Больше деталей по этой задаче нет.')}</div>
           )}
 
           {/* skills the task references */}
@@ -428,8 +442,8 @@ function TaskRow({ T, t, first, nested, detail, open, onToggle, onOpen }: {
           {/* links */}
           {(pr || issue) && (
             <div style={{ display: 'flex', gap: 8 }}>
-              {pr && <LinkChip T={T} label="View PR" onClick={() => openExternal(pr)} />}
-              {issue && <LinkChip T={T} label="GitHub issue" onClick={() => openExternal(issue)} />}
+              {pr && <LinkChip T={T} label={tr(lang, 'View PR', 'Открыть PR')} onClick={() => openExternal(pr)} />}
+              {issue && <LinkChip T={T} label={tr(lang, 'GitHub issue', 'Issue на GitHub')} onClick={() => openExternal(issue)} />}
             </div>
           )}
         </div>
@@ -445,25 +459,27 @@ function t_pr(_t: DagTask, d: TaskDetail | null): string | undefined {
 
 // the right-side badges: Ready/Backlog, node_kind (question/review/fix)
 function NodeBadges({ T, t, b }: { T: Theme; t: DagTask; b: Bucket }) {
+  const { lang } = useLang();
   if (t.node_kind === 'review') {
     const failed = t.status === 'failed';
     return (
       <Pill T={T} tone={failed ? 'neutral' : 'accent'} style={failed ? { color: T.red, background: T.redSoft, height: 19, fontSize: 10, padding: '0 7px' } : { height: 19, fontSize: 10, padding: '0 7px' }}>
-        {failed ? 'go-live' : 'review'}
+        {failed ? tr(lang, 'go-live', 'запуск') : tr(lang, 'review', 'ревью')}
       </Pill>
     );
   }
   if (t.node_kind === 'question') {
-    return <Pill T={T} tone="neutral" style={{ color: T.amber, background: hexA(T.amber, 0.14), height: 19, fontSize: 10, padding: '0 7px' }}>answer</Pill>;
+    return <Pill T={T} tone="neutral" style={{ color: T.amber, background: hexA(T.amber, 0.14), height: 19, fontSize: 10, padding: '0 7px' }}>{tr(lang, 'answer', 'ответ')}</Pill>;
   }
   // Ready / Backlog for actionable open tasks; nothing for in-flight/terminal
-  if (b === 'ready') return <Pill T={T} tone="accent" style={{ height: 19, fontSize: 10, padding: '0 7px' }}>Ready</Pill>;
-  if (b === 'backlog') return <Pill T={T} tone="neutral" style={{ height: 19, fontSize: 10, padding: '0 7px' }}>Backlog</Pill>;
-  if (isFix(t)) return <Pill T={T} tone="neutral" style={{ height: 19, fontSize: 10, padding: '0 7px' }}>fix</Pill>;
+  if (b === 'ready') return <Pill T={T} tone="accent" style={{ height: 19, fontSize: 10, padding: '0 7px' }}>{tr(lang, 'Ready', 'Свободна')}</Pill>;
+  if (b === 'backlog') return <Pill T={T} tone="neutral" style={{ height: 19, fontSize: 10, padding: '0 7px' }}>{tr(lang, 'Backlog', 'Очередь')}</Pill>;
+  if (isFix(t)) return <Pill T={T} tone="neutral" style={{ height: 19, fontSize: 10, padding: '0 7px' }}>{tr(lang, 'fix', 'фикс')}</Pill>;
   return null;
 }
 
 function ClaimerStack({ T, claimers }: { T: Theme; claimers: ClaimerBrief[] }) {
+  const { lang } = useLang();
   const shown = claimers.slice(0, 3);
   const label = claimers
     .map(c => (c.username ? `@${c.username}` : (c.agent_id || 'agent').slice(0, 6)))
@@ -485,7 +501,7 @@ function ClaimerStack({ T, claimers }: { T: Theme; claimers: ClaimerBrief[] }) {
         ))}
       </div>
       <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>
-        {claimers.length === 1 ? `${label} working` : `${label}${claimers.length > 2 ? ` +${claimers.length - 2}` : ''} working`}
+        {claimers.length === 1 ? `${label} ${tr(lang, 'working', 'в работе')}` : `${label}${claimers.length > 2 ? ` +${claimers.length - 2}` : ''} ${tr(lang, 'working', 'в работе')}`}
       </span>
     </div>
   );

@@ -13,6 +13,7 @@ import { ApiError, BlockedItem, getBlockedItems, reopenTask, cancelTask } from '
 import { TGIcon, Card, Pill, Spinner } from '../ui';
 import { MyBot } from './MyBots';
 import { relTime } from './Activity';
+import { useT, useLang, tr, type Lang } from '../i18n';
 
 // ── hook: poll /blocked while active; 404 ⇒ a phase project (stop, hide) ──
 export interface BlockedState {
@@ -60,6 +61,7 @@ export function useBlocked(botId: string | null, active: boolean): BlockedState 
 
 // ── badge: "Needs your input (N) / M failed" — tappable, hidden when empty ──
 export function BlockedBadge({ T, state, onClick }: { T: Theme; state: BlockedState; onClick: () => void }) {
+  const t = useT();
   if (!state.reachable || state.items.length === 0) return null;
   const anyFailed = state.failed > 0;
   const color = anyFailed ? T.red : T.amber;
@@ -74,11 +76,13 @@ export function BlockedBadge({ T, state, onClick }: { T: Theme; state: BlockedSt
       </div>
       <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
         <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>
-          {needsCount > 0 ? `Needs your input (${needsCount})` : `${state.failed} failed task${state.failed > 1 ? 's' : ''}`}
+          {needsCount > 0
+            ? t(`Needs your input (${needsCount})`, `Требуется ваш ответ (${needsCount})`)
+            : t(`${state.failed} failed task${state.failed > 1 ? 's' : ''}`, `Задач с ошибкой: ${state.failed}`)}
         </div>
         <div style={{ fontFamily: T.font, fontSize: 12.5, color, marginTop: 1 }}>
-          {[needsCount > 0 && anyFailed ? `${state.failed} failed` : null,
-            needsCount > 0 ? 'tap to resolve' : 'reopen or cancel'].filter(Boolean).join(' · ')}
+          {[needsCount > 0 && anyFailed ? t(`${state.failed} failed`, `${state.failed} с ошибкой`) : null,
+            needsCount > 0 ? t('tap to resolve', 'нажмите, чтобы решить') : t('reopen or cancel', 'переоткрыть или отменить')].filter(Boolean).join(' · ')}
         </div>
       </div>
       <TGIcon name="chevRight" size={18} color={color} stroke={2} />
@@ -90,6 +94,7 @@ export function BlockedBadge({ T, state, onClick }: { T: Theme; state: BlockedSt
 export function TaskManagerInbox({ T, bot, onOpenTask }: {
   T: Theme; bot: MyBot; onOpenTask: (slug: string) => void;
 }) {
+  const t = useT();
   const state = useBlocked(bot.id, true);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { const t = setTimeout(() => setLoaded(true), 400); return () => clearTimeout(t); }, [bot.id]);
@@ -97,17 +102,17 @@ export function TaskManagerInbox({ T, bot, onOpenTask }: {
   return (
     <div style={{ padding: '16px 16px 28px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 2px' }}>
-        <div style={{ fontFamily: T.font, fontSize: 21, fontWeight: 700, color: T.text, letterSpacing: -0.3 }}>Needs your input</div>
+        <div style={{ fontFamily: T.font, fontSize: 21, fontWeight: 700, color: T.text, letterSpacing: -0.3 }}>{t('Needs your input', 'Требуется ваш ответ')}</div>
         {state.items.length > 0 && (
           <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}>
-            {state.items.length} item{state.items.length > 1 ? 's' : ''}
+            {t(`${state.items.length} item${state.items.length > 1 ? 's' : ''}`, `${state.items.length} шт.`)}
           </span>
         )}
       </div>
 
       {!state.reachable && (
         <div style={{ fontFamily: T.font, fontSize: 13.5, color: T.hint, lineHeight: '19px', padding: '0 2px' }}>
-          This bot uses the older phase pipeline — there's no task inbox for it.
+          {t("This bot uses the older phase pipeline — there's no task inbox for it.", 'Этот бот использует старый поэтапный конвейер — для него нет входящих задач.')}
         </div>
       )}
 
@@ -129,9 +134,9 @@ export function TaskManagerInbox({ T, bot, onOpenTask }: {
                   <TGIcon name="check" size={19} color={T.green} stroke={2.3} />
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 650, color: T.text }}>Inbox is clear</div>
+                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 650, color: T.text }}>{t('Inbox is clear', 'Входящие пусты')}</div>
                   <div style={{ fontFamily: T.font, fontSize: 12.8, color: T.hint, lineHeight: '17px', marginTop: 2 }}>
-                    Questions, failed tasks, and review holds will appear here.
+                    {t('Questions, failed tasks, and review holds will appear here.', 'Здесь появятся вопросы, невыполненные задачи и задержки проверки.')}
                   </div>
                 </div>
               </div>
@@ -151,20 +156,22 @@ export function TaskManagerInbox({ T, bot, onOpenTask }: {
   );
 }
 
-function kindMeta(T: Theme, it: BlockedItem): { icon: string; color: string; label: string } {
-  if (it.status === 'failed') return { icon: 'refresh', color: T.red, label: 'Failed' };
-  if (it.node_kind === 'question') return { icon: 'chat', color: T.amber, label: 'Question' };
-  if (it.node_kind === 'review') return { icon: 'shield', color: T.red, label: 'Review' };
-  return { icon: 'clock', color: T.amber, label: 'Blocked' };
+function kindMeta(lang: Lang, T: Theme, it: BlockedItem): { icon: string; color: string; label: string } {
+  if (it.status === 'failed') return { icon: 'refresh', color: T.red, label: tr(lang, 'Failed', 'С ошибкой') };
+  if (it.node_kind === 'question') return { icon: 'chat', color: T.amber, label: tr(lang, 'Question', 'Вопрос') };
+  if (it.node_kind === 'review') return { icon: 'shield', color: T.red, label: tr(lang, 'Review', 'Проверка') };
+  return { icon: 'clock', color: T.amber, label: tr(lang, 'Blocked', 'Заблокировано') };
 }
 
 function InboxItem({ T, bot, item, onOpen, onChanged }: {
   T: Theme; bot: MyBot; item: BlockedItem; onOpen: () => void; onChanged: () => void;
 }) {
+  const t = useT();
+  const { lang } = useLang();
   const [busy, setBusy] = useState<'reopen' | 'cancel' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const m = kindMeta(T, item);
+  const m = kindMeta(lang, T, item);
   const isFailed = item.status === 'failed';
   const isQuestion = item.node_kind === 'question' || item.status === 'blocked';
 
@@ -173,7 +180,7 @@ function InboxItem({ T, bot, item, onOpen, onChanged }: {
     if (busy) return;
     setBusy('reopen'); setError(null);
     try { await reopenTask(bot.id, item.slug); onChanged(); }
-    catch (err) { setError(errText(err)); }
+    catch (err) { setError(errText(lang, err)); }
     finally { setBusy(null); }
   };
   const cancelReview = async (e: React.MouseEvent) => {
@@ -181,7 +188,7 @@ function InboxItem({ T, bot, item, onOpen, onChanged }: {
     if (busy) return;
     setBusy('cancel'); setError(null);
     try { await cancelTask(bot.id, item.slug, true); setConfirmCancel(false); onChanged(); }
-    catch (err) { setError(errText(err)); }
+    catch (err) { setError(errText(lang, err)); }
     finally { setBusy(null); }
   };
 
@@ -198,9 +205,9 @@ function InboxItem({ T, bot, item, onOpen, onChanged }: {
           </div>
           <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.text, lineHeight: '19px', marginTop: 4 }}>{item.title || item.slug}</div>
           <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 2 }}>
-            {isFailed ? 'Retry budget exhausted — reopen to try again'
-              : isQuestion ? 'Tap to answer and unblock the build'
-              : 'Waiting on an owner action'}
+            {isFailed ? t('Retry budget exhausted — reopen to try again', 'Попытки исчерпаны — переоткройте, чтобы повторить')
+              : isQuestion ? t('Tap to answer and unblock the build', 'Нажмите, чтобы ответить и разблокировать сборку')
+              : t('Waiting on an owner action', 'Ожидает действия владельца')}
           </div>
         </div>
         <span style={{ marginTop: 4, display: 'flex' }}><TGIcon name="chevRight" size={18} color={T.hint} stroke={2} /></span>
@@ -214,15 +221,15 @@ function InboxItem({ T, bot, item, onOpen, onChanged }: {
             <span style={{ fontFamily: T.font, fontSize: 12.5, color: T.red, lineHeight: '17px' }}>{item.warning}</span>
           </div>
           {!confirmCancel ? (
-            <button onClick={e => { e.stopPropagation(); setConfirmCancel(true); }} style={cancelBtn(T)}>Cancel review</button>
+            <button onClick={e => { e.stopPropagation(); setConfirmCancel(true); }} style={cancelBtn(T)}>{t('Cancel review', 'Отменить проверку')}</button>
           ) : (
             <div style={{ display: 'flex', gap: 9 }}>
               <button onClick={e => { e.stopPropagation(); setConfirmCancel(false); }} style={{
                 ...btnReset, flex: 1, height: 38, borderRadius: 10, background: T.nestedBg,
                 color: T.text, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
-              }}>Keep it</button>
+              }}>{t('Keep it', 'Оставить')}</button>
               <button onClick={cancelReview} disabled={busy === 'cancel'} style={{ ...cancelBtn(T), flex: 1, background: T.red, color: '#fff' }}>
-                {busy === 'cancel' ? <Spinner size={14} /> : null} Cancel review
+                {busy === 'cancel' ? <Spinner size={14} /> : null} {t('Cancel review', 'Отменить проверку')}
               </button>
             </div>
           )}
@@ -236,7 +243,7 @@ function InboxItem({ T, bot, item, onOpen, onChanged }: {
             ...btnReset, width: '100%', height: 40, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
             background: T.accentSoft, color: T.accent, fontFamily: T.font, fontSize: 14, fontWeight: 600,
           }}>
-            {busy === 'reopen' ? <Spinner size={15} color={T.accent} /> : <TGIcon name="refresh" size={16} color={T.accent} stroke={2} />} Reopen task
+            {busy === 'reopen' ? <Spinner size={15} color={T.accent} /> : <TGIcon name="refresh" size={16} color={T.accent} stroke={2} />} {t('Reopen task', 'Переоткрыть задачу')}
           </button>
         </div>
       )}
@@ -255,10 +262,10 @@ function cancelBtn(T: Theme): React.CSSProperties {
   };
 }
 
-function errText(e: unknown): string {
+function errText(lang: Lang, e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 429) return `Slow down — ${e.message}`;
+    if (e.status === 429) return tr(lang, `Slow down — ${e.message}`, `Помедленнее — ${e.message}`);
     return e.warning || `${e.message}${e.details ? ` — ${e.details}` : ''}`;
   }
-  return 'network error — try again';
+  return tr(lang, 'network error — try again', 'сетевая ошибка — попробуйте снова');
 }

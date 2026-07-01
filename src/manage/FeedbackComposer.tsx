@@ -10,12 +10,14 @@ import { Theme, btnReset, hexA } from '../theme';
 import { ApiError, postFeedback, getProjectDag } from '../api/client';
 import { TGIcon, Spinner } from '../ui';
 import { MyBot } from './MyBots';
+import { useT } from '../i18n';
 
 interface Pending { id: number; text: string; baseline: number; done: boolean }
 
 export function FeedbackComposer({ T, bot, live, onGrown }: {
   T: Theme; bot: MyBot; live: boolean; onGrown?: () => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,8 +66,8 @@ export function FeedbackComposer({ T, bot, live, onGrown }: {
       setPending(prev => [...prev, { id: Date.now(), text, baseline, done: false }]);
     } catch (e) {
       setError(e instanceof ApiError
-        ? (e.status === 429 ? `Slow down — ${e.message} (20/hr).` : `${e.message}${e.details ? ` — ${e.details}` : ''}`)
-        : 'network error — try again');
+        ? (e.status === 429 ? t(`Slow down — ${e.message} (20/hr).`, `Помедленнее — ${e.message} (20/ч).`) : `${e.message}${e.details ? ` — ${e.details}` : ''}`)
+        : t('network error — try again', 'сетевая ошибка — попробуйте снова'));
     } finally { setSending(false); }
   };
 
@@ -74,7 +76,7 @@ export function FeedbackComposer({ T, bot, live, onGrown }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
       <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 2px' }}>
-        Request a change
+        {t('Request a change', 'Запросить изменение')}
       </div>
 
       {/* pending requests — optimistic until the DAG grows */}
@@ -85,7 +87,7 @@ export function FeedbackComposer({ T, bot, live, onGrown }: {
         }}>
           {p.done ? <TGIcon name="check" size={15} color={T.green} stroke={2.4} /> : <Spinner color={T.accent} size={14} />}
           <span style={{ flex: 1, minWidth: 0, fontFamily: T.font, fontSize: 12.5, color: p.done ? T.green : T.accent, lineHeight: '17px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {p.done ? 'Added to the build' : 'Adding tasks…'} · "{p.text}"
+            {p.done ? t('Added to the build', 'Добавлено в сборку') : t('Adding tasks…', 'Добавляем задачи…')} · "{p.text}"
           </span>
         </div>
       ))}
@@ -93,7 +95,7 @@ export function FeedbackComposer({ T, bot, live, onGrown }: {
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
         <textarea value={draft} onChange={e => setDraft(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (can) void send(); } }}
-          placeholder={live ? 'Describe a change or new feature…' : 'Available once your bot is live'}
+          placeholder={live ? t('Describe a change or new feature…', 'Опишите изменение или новую функцию…') : t('Available once your bot is live', 'Доступно, когда бот в эфире')}
           rows={1} disabled={!live}
           style={{
             flex: 1, resize: 'none', maxHeight: 96, minHeight: 42, padding: '11px 15px', borderRadius: 21,
@@ -113,7 +115,7 @@ export function FeedbackComposer({ T, bot, live, onGrown }: {
       {error && <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.amber, lineHeight: '17px', padding: '0 2px' }}>{error}</div>}
       {live && !error && (
         <div style={{ fontFamily: T.font, fontSize: 11.5, color: T.hint, padding: '0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <TGIcon name="spark" size={12} color={hexA(T.hint, 0.9)} /> Feedback becomes new tasks in your bot's living build.
+          <TGIcon name="spark" size={12} color={hexA(T.hint, 0.9)} /> {t("Feedback becomes new tasks in your bot's living build.", 'Отзывы становятся новыми задачами в живой сборке вашего бота.')}
         </div>
       )}
     </div>

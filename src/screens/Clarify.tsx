@@ -7,6 +7,7 @@ import { Theme } from '../theme';
 import { ChatMessage } from '../api/client';
 import { ChatThread } from '../chat/Chat';
 import { TGIcon, Bubble, Chip } from '../ui';
+import { useT } from '../i18n';
 
 // generation status driven by the real project lifecycle
 export type GenPhase = 'idle' | 'generating' | 'ready' | 'error';
@@ -17,6 +18,7 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
   gen: GenPhase; genError?: string | null;
   onOption: (label: string) => void; onRetry?: () => void;
 }) {
+  const t = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,10 +41,12 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
     <div ref={scrollRef} style={{ padding: '18px 16px 14px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: '100%' }}>
       <ChatThread T={T} messages={messages} thinking={thinking}
         onOption={handedOff ? undefined : onOption}
-        pendingNote={handedOff && gen === 'generating' ? 'Brief accepted — generating your spec…' : null} />
+        pendingNote={handedOff && gen === 'generating' ? t('Brief accepted — generating your spec…', 'Бриф принят — генерируем спецификацию…') : null} />
 
       {!handedOff && !thinking && answeredOnce && gen !== 'error' && (
         <button
+          // send stable English to the backend (it may key off this phrasing);
+          // the button label below is what the user sees, localized.
           onClick={() => onOption('Decide everything else yourself with sensible defaults and start building.')}
           style={{
             alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 7,
@@ -51,7 +55,7 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
             fontFamily: T.font, fontSize: 13.5, fontWeight: 600, WebkitTapHighlightColor: 'transparent',
           }}>
           <TGIcon name="spark" size={15} color={T.accent} />
-          Good enough — you decide the rest
+          {t('Good enough — you decide the rest', 'Достаточно — решите остальное сами')}
         </button>
       )}
 
@@ -59,7 +63,7 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
         <Bubble T={T} from="bot" animateIn>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <TGIcon name="spark" size={17} color={T.accent} />
-            Your bot’s ready — opening it now…
+            {t('Your bot’s ready — opening it now…', 'Ваш бот готов — открываем…')}
           </div>
         </Bubble>
       )}
@@ -69,11 +73,11 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
           <Bubble T={T} from="bot" animateIn>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <TGIcon name="refresh" size={17} color={T.amber} stroke={2} />
-              <span>I couldn't generate the spec{genError ? ` — ${genError}` : ''}. Want me to try again?</span>
+              <span>{t("I couldn't generate the spec", 'Не удалось сгенерировать спецификацию')}{genError ? ` — ${genError}` : ''}{t('. Want me to try again?', '. Попробовать ещё раз?')}</span>
             </div>
           </Bubble>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Chip T={T} selected onClick={onRetry}>Try again</Chip>
+            <Chip T={T} selected onClick={onRetry}>{t('Try again', 'Попробовать снова')}</Chip>
           </div>
         </>
       )}
