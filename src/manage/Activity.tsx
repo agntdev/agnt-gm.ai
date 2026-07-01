@@ -1,7 +1,7 @@
 // Activity — the bot's event feed, rendered as a vertical timeline (coloured
-// dots joined by a rail). `ActivityTimeline` is shared between the overview's
-// "Recent activity" preview and the full "View all" page. Events are the
-// chat's role=system messages (build/deploy + bot-runtime events).
+// dots joined by a rail) on the "View all" page. Events are the chat's
+// role=system messages (build/deploy + bot-runtime events). Also home of the
+// shared relTime() helper (the overview imports it for uptime/footers).
 import { useEffect, useState } from 'react';
 import { Theme } from '../theme';
 import { ChatMessage, Deployment, listDeployments } from '../api/client';
@@ -32,21 +32,22 @@ function deployEvent(d: Deployment, i: number, lang: Lang): ChatMessage | null {
 
 // Merge deployment events into the chronological (oldest-first) system feed.
 // Callers reverse/slice as before, so newest-first ordering still holds.
-export function withDeployments(sys: ChatMessage[], deploys: Deployment[], lang: Lang = 'en'): ChatMessage[] {
+function withDeployments(sys: ChatMessage[], deploys: Deployment[], lang: Lang = 'en'): ChatMessage[] {
   const dep = deploys.map((d, i) => deployEvent(d, i, lang)).filter((e): e is ChatMessage => !!e);
   if (dep.length === 0) return sys;
   return [...sys, ...dep].sort((a, b) =>
     new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
 }
 
-// relative "2m / 11m / 1h / 21d" — shared with the overview header (uptime).
-export function relTime(iso?: string): string {
+// relative "2m / 11m / 1h / 21d" (RU: «сейчас / 2м / 1ч / 21д») — shared with
+// the overview (uptime, usage footer) and the task screens (blocked-since).
+export function relTime(iso?: string, lang: Lang = 'en'): string {
   if (!iso) return '';
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return 'now';
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h`;
-  return `${Math.floor(s / 86400)}d`;
+  if (s < 60) return tr(lang, 'now', 'сейчас');
+  if (s < 3600) return `${Math.floor(s / 60)}${tr(lang, 'm', 'м')}`;
+  if (s < 86400) return `${Math.floor(s / 3600)}${tr(lang, 'h', 'ч')}`;
+  return `${Math.floor(s / 86400)}${tr(lang, 'd', 'д')}`;
 }
 
 // hoisted out of eventTone so they aren't recreated on every event (js-hoist-regexp)
@@ -56,7 +57,7 @@ const RE_RESOLVE = /resolv|✅|🟢|passing|succeed|success|complete/i;
 
 // dot colour by event kind — matches the mock: resolved=green, command/ship=
 // blue, escalation=amber, failure=red.
-export function eventTone(m: ChatMessage, T: Theme): string {
+function eventTone(m: ChatMessage, T: Theme): string {
   const c = m.content;
   if (RE_FAIL.test(c)) return T.red;
   if (RE_ESCALATE.test(c)) return T.amber;
@@ -71,10 +72,9 @@ function title(m: ChatMessage): string {
   return line || m.content || '—';
 }
 
-export function ActivityTimeline({ T, events, clamp }: {
-  T: Theme; events: ChatMessage[]; clamp?: boolean;
-}) {
+function ActivityTimeline({ T, events }: { T: Theme; events: ChatMessage[] }) {
   const t = useT();
+  const { lang } = useLang();
   if (events.length === 0) {
     return (
       <div style={{ fontFamily: T.font, fontSize: 13.5, color: T.hint, lineHeight: '19px' }}>
@@ -96,12 +96,9 @@ export function ActivityTimeline({ T, events, clamp }: {
               {!last && <div style={{ flex: 1, width: 2, borderRadius: 2, background: T.sep, marginTop: 5, minHeight: 22 }} />}
             </div>
             <div style={{ flex: 1, minWidth: 0, paddingBottom: last ? 0 : 18 }}>
-              <div style={{
-                fontFamily: T.font, fontSize: 14.5, color: T.text, lineHeight: '19px',
-                ...(clamp ? { overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const } : {}),
-              }}>{title(m)}</div>
+              <div style={{ fontFamily: T.font, fontSize: 14.5, color: T.text, lineHeight: '19px' }}>{title(m)}</div>
               <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 3 }}>
-                {relTime(m.created_at) === 'now' ? t('now', 'сейчас') : relTime(m.created_at)}
+                {relTime(m.created_at, lang)}
               </div>
             </div>
           </div>
@@ -131,7 +128,7 @@ export function ActivityPage({ T, bot, events }: { T: Theme; bot: MyBot; events:
         {bot.name} · {t('activity', 'активность')}
       </div>
       <Card T={T} pad={18}>
-        <ActivityTimeline T={T} events={ordered} clamp={false} />
+        <ActivityTimeline T={T} events={ordered} />
       </Card>
     </div>
   );

@@ -89,22 +89,33 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, slug]);
 
-  // poll the thread ~3s while open
+  // poll the thread every 5s while open. The loop never dies: a 403/404 only
+  // pauses fetching (threadCanFetch=false) while the heartbeat keeps ticking,
+  // so afterAction's flag reset resumes within one tick. threadWake gives
+  // actions an immediate refresh; the `running` guard makes it fork-proof.
+  const threadWake = useRef<() => void>(() => {});
   useEffect(() => {
     let cancelled = false;
+    let running = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
-      if (cancelled || !threadCanFetch.current) return;
-      try {
-        const r = await getTaskThread(projectId, slug);
-        if (!cancelled) setComments(r.comments || []);
-      } catch (e) {
-        if (e instanceof ApiError && (e.status === 403 || e.status === 404)) threadCanFetch.current = false;
+      if (cancelled || running) return;
+      running = true;
+      if (timer) { clearTimeout(timer); timer = undefined; }
+      if (threadCanFetch.current) {
+        try {
+          const r = await getTaskThread(projectId, slug);
+          if (!cancelled) setComments(r.comments || []);
+        } catch (e) {
+          if (e instanceof ApiError && (e.status === 403 || e.status === 404)) threadCanFetch.current = false;
+        }
       }
+      running = false;
       if (!cancelled) timer = setTimeout(tick, 5000);
     };
+    threadWake.current = () => { void tick(); };
     void tick();
-    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+    return () => { cancelled = true; threadWake.current = () => {}; if (timer) clearTimeout(timer); };
   }, [projectId, slug]);
 
   const status = task?.status;
@@ -116,7 +127,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
   const meta = statusMeta(T, lang, status);
   const claimers = (task?.claimers || []) as ClaimerBrief[];
 
-  const afterAction = async () => { await refreshTask(); onChanged?.(); threadCanFetch.current = true; };
+  const afterAction = async () => { await refreshTask(); onChanged?.(); threadCanFetch.current = true; threadWake.current(); };
 
   const sendAnswer = async () => {
     const body = answerText.trim();
@@ -210,7 +221,7 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
             <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, lineHeight: '17px' }}>
               {[
                 typeof task.attempt_count === 'number' && task.attempt_count > 0 ? attemptsLabel(lang, task.attempt_count) : null,
-                task.blocked_since ? tr(lang, `blocked ${relTime(task.blocked_since)}`, `заблокирована ${relTime(task.blocked_since)}`) : null,
+                task.blocked_since ? tr(lang, `blocked ${relTime(task.blocked_since, lang)}`, `заблокирована ${relTime(task.blocked_since, lang)}`) : null,
                 task.parent_id ? t('in an epic', 'в эпике') : null,
                 task.assignee_type === 'owner' ? t('owner task', 'задача владельца') : null,
               ].filter(Boolean).join(' · ') || null}
@@ -307,9 +318,11 @@ export function TaskDetail({ T, projectId, slug, onClose, onChanged }: {
                       padding: isAnswer ? '8px 10px' : '2px 0 2px 10px',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <span style={{ fontFamily: T.font, fontSize: 11.5, fontWeight: 700, color: fg, textTransform: 'capitalize' }}>{c.author_role || 'agent'}</span>
+                        <span style={{ fontFamily: T.font, fontSize: 11.5, fontWeight: 700, color: fg, textTransform: 'capitalize' }}>
+                          {c.author_role === 'owner' ? t('owner', 'владелец') : c.author_role === 'system' ? t('system', 'система') : t('agent', 'агент')}
+                        </span>
                         {isAnswer && <span style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 600, color: T.green }}>· {t('answer', 'ответ')}</span>}
-                        {c.created_at && <span style={{ fontFamily: T.font, fontSize: 11, color: T.hint }}>{relTime(c.created_at)}</span>}
+                        {c.created_at && <span style={{ fontFamily: T.font, fontSize: 11, color: T.hint }}>{relTime(c.created_at, lang)}</span>}
                       </div>
                       <div style={{ fontFamily: T.font, fontSize: 13.5, color: T.text, lineHeight: '19px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 2 }}>{c.body_md}</div>
                     </div>
@@ -428,7 +441,9 @@ function ActionBox({ T, placeholder, value, onChange, onSend, busy, cta, primary
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (can) onSend(); } }}
         placeholder={placeholder} rows={1}
         style={{
-          flex: 1, resize: 'none', maxHeight: 90, minHeight: 40, padding: '10px 14px', borderRadius: 18,
+          // minWidth:0 — a textarea's intrinsic min width (~170px) otherwise
+          // refuses to shrink and overflows the row on 320px screens
+          flex: 1, minWidth: 0, resize: 'none', maxHeight: 90, minHeight: 40, padding: '10px 14px', borderRadius: 18,
           background: T.inputBg, border: `0.5px solid ${T.sep}`, color: T.text,
           fontFamily: T.font, fontSize: 14, lineHeight: '19px', outline: 'none', boxSizing: 'border-box',
         }} />

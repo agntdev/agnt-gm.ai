@@ -376,7 +376,7 @@ export default function App() {
       setTab('manage');
       if (parts[1]) {
         setManageBot(parts[1]);
-        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'connect' ? 'connect' : parts[2] === 'taskboard' ? 'taskboard' : parts[2] === 'inbox' ? 'inbox' : parts[2] === 'board' ? 'board' : 'overview');
+        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'connect' ? 'connect' : parts[2] === 'taskboard' ? 'taskboard' : parts[2] === 'inbox' ? 'inbox' : parts[2] === 'board' ? 'board' : parts[2] === 'plan' ? 'plan' : 'overview');
       }
       routeReady.current = true;
     } else if (parts[0] === 'discover') {
@@ -392,7 +392,7 @@ export default function App() {
 
   useEffect(() => {
     if (!routeReady.current) return;
-    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'connect' ? '/connect' : manageView === 'taskboard' ? '/taskboard' : manageView === 'inbox' ? '/inbox' : manageView === 'board' ? '/board' : '';
+    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'connect' ? '/connect' : manageView === 'taskboard' ? '/taskboard' : manageView === 'inbox' ? '/inbox' : manageView === 'board' ? '/board' : manageView === 'plan' ? '/plan' : '';
     const h = tab === 'manage'
       ? (manageBot ? `#/bots/${manageBot}${sub}` : '#/bots')
       : tab === 'discover' ? '#/discover'
@@ -845,6 +845,9 @@ export default function App() {
   return (
     <div style={{
       height: '100%', display: 'flex', flexDirection: 'column', background: T.pageBg, transition: 'background .3s',
+      // clip the screen slide-in (scrIn translates ±22px) — without this the
+      // page widens for 0.32s per navigation and can rubber-band horizontally
+      overflowX: 'hidden',
       // in Telegram fullscreen (mobile) clear the status bar + floating controls;
       // 0 everywhere else (var is only set inside fullscreen) — see telegram.ts
       paddingTop: 'var(--tg-fs-top, 0px)',

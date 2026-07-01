@@ -257,25 +257,18 @@ export function TypingBubble({ T }: { T: Theme }) {
   );
 }
 
-// ── Progress bar ──────────────────────────────────────────────
-export function ProgressBar({ T, value, color }: { T: Theme; value: number; color?: string }) {
-  return (
-    <div style={{ height: 6, borderRadius: 4, background: hexA(T.text, 0.1), overflow: 'hidden' }}>
-      <div style={{ height: '100%', width: `${value}%`, borderRadius: 4, background: color || T.accent, transition: 'width .4s cubic-bezier(.3,.8,.3,1)' }} />
-    </div>
-  );
-}
-
 // ── Sparkline — tiny 7-day trend (area + line + last-point dot) ─
 export function Sparkline({ values, color, width = 92, height = 34 }: {
   values: number[]; color: string; width?: number; height?: number;
 }) {
   if (!values || values.length < 2) return null;
   const max = Math.max(...values), min = Math.min(...values);
-  const range = max - min || 1;
+  const range = max - min;
   const stepX = width / (values.length - 1);
   const pad = 3;
-  const pts = values.map((v, i) => [i * stepX, height - pad - ((v - min) / range) * (height - pad * 2)] as const);
+  // flat series (all equal) draws at mid-height instead of hugging the floor
+  const norm = (v: number) => (range === 0 ? 0.5 : (v - min) / range);
+  const pts = values.map((v, i) => [i * stepX, height - pad - norm(v) * (height - pad * 2)] as const);
   const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
   const area = `${line} L${width},${height} L0,${height} Z`;
   const last = pts[pts.length - 1];
@@ -366,65 +359,9 @@ export function BotTile({ T, name, tone, src, size = 38, radius = 12, fontSize }
   );
 }
 
-// ── bot avatar: AI-generated image, else the monogram tile ────
-// Shows the AI-generated avatar (bot_avatar_url) when present, else falls back to
-// the BotTile monogram. Also falls back if the image errors (broken/expired URL),
-// so the slot always shows something. Same size/shape as BotTile — a drop-in swap.
-export function BotAvatar({ T, name, tone, avatarUrl, size = 38, radius = 12, fontSize }: {
-  T: Theme; name: string; tone: string; avatarUrl?: string; size?: number; radius?: number; fontSize?: number;
-}) {
-  const [failed, setFailed] = React.useState(false);
-  // reset the error gate when the URL changes (e.g. a regenerate produced a new one)
-  React.useEffect(() => { setFailed(false); }, [avatarUrl]);
-  if (avatarUrl && !failed) {
-    return (
-      <img
-        src={avatarUrl}
-        alt={`${name} avatar`}
-        onError={() => setFailed(true)}
-        style={{
-          width: size, height: size, borderRadius: '50%', flexShrink: 0,
-          objectFit: 'cover', display: 'block', background: T.cardBg,
-        }}
-      />
-    );
-  }
-  return <BotTile T={T} name={name} tone={tone} size={size} radius={radius} fontSize={fontSize} />;
-}
-
-// ── shared small blocks used across screens ───────────────────
-export function SpecBlock({ T, title, children }: { T: Theme; title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.3, padding: '0 4px 9px' }}>{title}</div>
-      <Card T={T} pad={14}>{children}</Card>
-    </div>
-  );
-}
-
-export function MiniStat({ T, icon, label, value }: { T: Theme; icon: string; label: string; value: string }) {
-  return (
-    <Card T={T} pad={13} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 11 }}>
-      <div style={{ width: 34, height: 34, borderRadius: 10, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <TGIcon name={icon} size={18} color={T.accent} stroke={1.9} />
-      </div>
-      <div>
-        <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint }}>{label}</div>
-        <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>{value}</div>
-      </div>
-    </Card>
-  );
-}
-
-export function BigStat({ T, value, label, tone }: { T: Theme; value: string; label: string; tone: 'green' | 'accent' }) {
-  const color = tone === 'green' ? T.green : T.accent;
-  return (
-    <Card T={T} pad={15} style={{ flex: 1 }}>
-      <div style={{ fontFamily: T.font, fontSize: 28, fontWeight: 700, color, letterSpacing: -0.5 }}>{value}</div>
-      <div style={{ fontFamily: T.font, fontSize: 13, color: T.hint, marginTop: 2 }}>{label}</div>
-    </Card>
-  );
-}
+// (BotAvatar / SpecBlock / MiniStat / BigStat removed — BotTile carries the
+// avatar-with-fallback behaviour now; the stat blocks were superseded by the
+// Usage card and dark build hero.)
 
 // ── Bold 1c: brand wordmark lockup ────────────────────────────
 export function Wordmark({ T, size = 30 }: { T: Theme; size?: number }) {
@@ -512,72 +449,5 @@ export function QuickReplies({ T, options, onPick }: {
   );
 }
 
-// Dashboard status chip — uppercase label + coloured dot + bold value.
-export function StatusChip({ T, label, value, dot }: {
-  T: Theme; label: string; value: string; dot?: string;
-}) {
-  return (
-    <div style={{ flex: 1, minWidth: 0, background: T.cardBg, border: `1px solid ${T.sep}`, borderRadius: 14, padding: '11px 12px' }}>
-      <div style={{ fontFamily: T.font, fontSize: 11, fontWeight: 700, color: T.hint, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
-        {dot && <span style={{ width: 8, height: 8, borderRadius: 999, background: dot, flexShrink: 0 }} />}
-        <span style={{ fontFamily: T.font, fontSize: 15.5, fontWeight: 700, color: T.text, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Bold 1c: toast (bottom, above tab bar) ────────────────────
-export function Toast({ T, show, children, bottom = 92 }: {
-  T: Theme; show: boolean; children: React.ReactNode; bottom?: number;
-}) {
-  return (
-    <div style={{
-      position: 'fixed', left: 0, right: 0, bottom, display: 'flex', justifyContent: 'center',
-      pointerEvents: 'none', zIndex: 60, padding: '0 20px',
-      opacity: show ? 1 : 0, transform: show ? 'translateY(0)' : 'translateY(10px)',
-      transition: 'opacity .22s ease, transform .22s ease',
-    }}>
-      <div style={{
-        background: T.text, color: T.accentText, fontFamily: T.font, fontSize: 14, fontWeight: 600,
-        padding: '11px 18px', borderRadius: 14, boxShadow: T.heroShadow, maxWidth: '100%',
-        display: 'flex', alignItems: 'center', gap: 9, letterSpacing: -0.1,
-      }}>{children}</div>
-    </div>
-  );
-}
-
-// ── Bold 1c: toggle switch (48×28) ────────────────────────────
-export function Toggle({ T, on, onChange }: { T: Theme; on: boolean; onChange?: (v: boolean) => void }) {
-  return (
-    <button onClick={() => onChange?.(!on)} style={{
-      ...btnReset, width: 48, height: 28, borderRadius: 999, flexShrink: 0,
-      background: on ? T.green : T.sepStrong, position: 'relative', transition: 'background .2s ease',
-    }}>
-      <span style={{
-        position: 'absolute', top: 3, left: on ? 23 : 3, width: 22, height: 22, borderRadius: '50%',
-        background: '#FBF8EF', boxShadow: '0 1px 3px rgba(34,64,46,0.35)', transition: 'left .2s ease',
-      }} />
-    </button>
-  );
-}
-
-// ── Bold 1c: segmented control (active = green fill, cream text) ──
-export function Segmented<V extends string>({ T, value, options, onChange }: {
-  T: Theme; value: V; options: { id: V; label: string }[]; onChange: (v: V) => void;
-}) {
-  return (
-    <div style={{ display: 'flex', gap: 4, background: T.nestedBg, borderRadius: 13, padding: 4 }}>
-      {options.map(o => {
-        const on = o.id === value;
-        return (
-          <button key={o.id} onClick={() => onChange(o.id)} style={{
-            ...btnReset, flex: 1, height: 36, borderRadius: 10, fontFamily: T.font, fontSize: 13.5,
-            fontWeight: on ? 700 : 600, color: on ? T.accentText : T.sub,
-            background: on ? T.text : 'transparent', transition: 'background .18s ease, color .18s ease',
-          }}>{o.label}</button>
-        );
-      })}
-    </div>
-  );
-}
+// (StatusChip / Toast / Toggle / Segmented removed — superseded by the health
+// pill, chat-driven flows and the local Switch; nothing imports them anymore.)

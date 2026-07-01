@@ -535,7 +535,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const cloudActive = cloudApi === true || cloudDeployed;
   const agentClient = (link?.connected_client || '').split('/')[0];
   const since = detail?.published_at || detail?.created_at;
-  const uptime = since ? relTime(since) : null;
+  const uptime = since ? relTime(since, lang) : null;
   // the real go-live signal (NOT project.status): current_phase==='published'
   // OR the managed bot's container_state. Drives the feedback channel.
   const live = dag?.current_phase === 'published' || detail?.current_phase === 'published' || botIsLive(botRow);
@@ -582,12 +582,16 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     return { label: bot.statusLabel || t('Building', 'Сборка'), tone: 'accent' as const, color: T.accent, pulse: true };
   })();
   // One plain-language health line that folds container / status / build-stage /
-  // pause into a single actionable status (priority: building → paused → live-
-  // with-gaps → live → failed → other). Replaces the 3 look-alike chips.
+  // pause into a single actionable status (priority: awaiting → FAILED →
+  // building → paused → live-with-gaps → live → other). Failed must outrank
+  // building: a failed whole_bot still matches wholeBotBuilding (it isn't live),
+  // and must not read as an eternally running build.
   const gapsLive = wholeBot && bp?.stage === 'live_with_gaps';
   const health: { label: string; color: string; bg: string; pulse: boolean; action?: { label: string; icon: string; onClick: () => void } } = (() => {
     if (awaitingAgent) return { label: t('Waiting for a builder', 'Ожидает сборщика'), color: T.gold, bg: T.goldSoft, pulse: true,
       action: { label: t('Assign', 'Назначить'), icon: 'chevRight', onClick: onManageAgents } };
+    if (buildFailed || testsFailed || latestDeployFailed) return { label: t('Build needs a fix', 'Сборка требует правки'), color: T.red, bg: T.redSoft, pulse: false,
+      action: { label: t('Fix in chat', 'Исправить в чате'), icon: 'chat', onClick: onOpenChat } };
     if (buildRunning || wholeBotBuilding) {
       const p = bp ? Math.max(3, Math.min(100, bp.percent)) : null;
       return { label: `${t('Building your bot', 'Собираю бота')}${p != null ? ` · ${p}%` : '…'}`, color: T.gold, bg: T.goldSoft, pulse: true };
@@ -597,8 +601,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     if (gapsLive) return { label: t('Live · a few things to polish', 'В эфире · есть что доработать'), color: T.gold, bg: T.goldSoft, pulse: false,
       action: { label: t('Refine in chat', 'Доработать в чате'), icon: 'chat', onClick: onOpenChat } };
     if (live) return { label: `${t('Live', 'В эфире')} · ${t('running', 'работает')}`, color: '#2f8f6f', bg: T.sage, pulse: false };
-    if (buildFailed || testsFailed || latestDeployFailed) return { label: t('Build needs a fix', 'Сборка требует правки'), color: T.red, bg: T.redSoft, pulse: false,
-      action: { label: t('Fix in chat', 'Исправить в чате'), icon: 'chat', onClick: onOpenChat } };
     return { label: statusState.label, color: statusState.color, bg: T.nestedBg, pulse: statusState.pulse };
   })();
   const progressSteps: ProgressStep[] = wholeBot ? wholeBotSteps(bp, live, lang) : [
@@ -881,7 +883,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       {/* Usage — live summary of who's using the bot (degrades gracefully) */}
       {!wholeBotBuilding && (() => {
         const a = analytics;
-        const peopleToday = a?.people_today ?? a?.messages_today ?? null;
+        // people_today = distinct people (headline "answered N people");
+        // messages_today is a message count — honest fallback wording, not "people".
+        const isPeople = a?.people_today != null;
+        const todayCount = a?.people_today ?? a?.messages_today ?? null;
         const users7d = a?.users_7d && a.users_7d.length >= 2 ? a.users_7d : null;
         const usersTotal = a?.users_total ?? a?.active_users ?? null;
         const usersNew = a?.users_new_7d ?? null;
@@ -891,6 +896,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         const peopleWord = (n: number) => lang === 'ru'
           ? (n % 10 === 1 && n % 100 !== 11 ? 'человеку' : 'людям')
           : (n === 1 ? 'person' : 'people');
+        // ru plural: 1 релиз · 2–4 релиза · 5+ релизов (with 11–14 exception)
+        const releasesWord = (n: number) => lang === 'ru'
+          ? (n % 10 === 1 && n % 100 !== 11 ? 'релиз' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'релиза' : 'релизов')
+          : (n === 1 ? 'release' : 'releases');
         const newValue = usersNew != null ? `+${human(usersNew)}` : (delta != null ? `${delta > 0 ? '+' : ''}${delta}%` : '—');
         const newUp = usersNew != null ? usersNew > 0 : (delta != null ? delta > 0 : false);
         return (
@@ -899,17 +908,19 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           <Card T={T} pad={16}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                {peopleToday != null ? (
+                {todayCount != null ? (
                   <>
-                    <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub }}>{t('Today your bot answered', 'Сегодня бот ответил')}</div>
+                    <div style={{ fontFamily: T.font, fontSize: 13, color: T.sub }}>
+                      {isPeople ? t('Today your bot answered', 'Сегодня бот ответил') : t('Messages today', 'Сообщений сегодня')}
+                    </div>
                     <div style={{ fontFamily: T.font, fontSize: 26, fontWeight: 800, color: T.text, letterSpacing: -0.6, marginTop: 2 }}>
-                      {human(peopleToday)} <span style={{ fontSize: 15, fontWeight: 600, color: T.sub }}>{peopleWord(peopleToday)}</span>
+                      {human(todayCount)}{isPeople && <span style={{ fontSize: 15, fontWeight: 600, color: T.sub }}> {peopleWord(todayCount)}</span>}
                     </div>
                   </>
                 ) : (
                   <>
                     <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 700, color: T.text }}>{live ? t('Your bot is live', 'Бот в эфире') : t('Getting ready', 'Готовимся')}</div>
-                    <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 3, lineHeight: '17px' }}>{t('Usage shows up here as people start chatting with it.', 'Статистика появится, как только людьми начнут пользоваться.')}</div>
+                    <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 3, lineHeight: '17px' }}>{t('Usage shows up here as people start chatting with it.', 'Статистика появится, как только им начнут пользоваться.')}</div>
                   </>
                 )}
               </div>
@@ -924,8 +935,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
             )}
             <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 14 }}>
               {live ? t('Live', 'В сети') : t('In progress', 'В процессе')}
-              {latestDeploy?.deployed_at ? ` · ${t('last update', 'обновлено')} ${relTime(latestDeploy.deployed_at)}` : ''}
-              {deploys.length ? ` · ${deploys.length} ${t('releases', 'релизов')}` : ''}
+              {latestDeploy?.deployed_at ? ` · ${t('last update', 'обновлено')} ${relTime(latestDeploy.deployed_at, lang)}` : ''}
+              {deploys.length ? ` · ${deploys.length} ${releasesWord(deploys.length)}` : ''}
             </div>
           </Card>
         </div>
