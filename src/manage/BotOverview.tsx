@@ -11,7 +11,7 @@ import {
   botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
-import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, StatusChip, Sparkline } from '../ui';
+import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, Sparkline } from '../ui';
 import { MyBot } from './MyBots';
 import { relTime } from './Activity';
 import { useBlocked, BlockedBadge } from './TaskManagerInbox';
@@ -581,6 +581,26 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     if (decomposing) return { label: t('Planning build', 'Планирование сборки'), tone: 'accent' as const, color: T.accent, pulse: true };
     return { label: bot.statusLabel || t('Building', 'Сборка'), tone: 'accent' as const, color: T.accent, pulse: true };
   })();
+  // One plain-language health line that folds container / status / build-stage /
+  // pause into a single actionable status (priority: building → paused → live-
+  // with-gaps → live → failed → other). Replaces the 3 look-alike chips.
+  const gapsLive = wholeBot && bp?.stage === 'live_with_gaps';
+  const health: { label: string; color: string; bg: string; pulse: boolean; action?: { label: string; icon: string; onClick: () => void } } = (() => {
+    if (awaitingAgent) return { label: t('Waiting for a builder', 'Ожидает сборщика'), color: T.gold, bg: T.goldSoft, pulse: true,
+      action: { label: t('Assign', 'Назначить'), icon: 'chevRight', onClick: onManageAgents } };
+    if (buildRunning || wholeBotBuilding) {
+      const p = bp ? Math.max(3, Math.min(100, bp.percent)) : null;
+      return { label: `${t('Building your bot', 'Собираю бота')}${p != null ? ` · ${p}%` : '…'}`, color: T.gold, bg: T.goldSoft, pulse: true };
+    }
+    if (pausedEffective) return { label: t('Paused', 'На паузе'), color: T.hint, bg: T.nestedBg, pulse: false,
+      action: { label: t('Resume', 'Возобновить'), icon: 'play', onClick: onTogglePause } };
+    if (gapsLive) return { label: t('Live · a few things to polish', 'В эфире · есть что доработать'), color: T.gold, bg: T.goldSoft, pulse: false,
+      action: { label: t('Refine in chat', 'Доработать в чате'), icon: 'chat', onClick: onOpenChat } };
+    if (live) return { label: `${t('Live', 'В эфире')} · ${t('running', 'работает')}`, color: '#2f8f6f', bg: T.sage, pulse: false };
+    if (buildFailed || testsFailed || latestDeployFailed) return { label: t('Build needs a fix', 'Сборка требует правки'), color: T.red, bg: T.redSoft, pulse: false,
+      action: { label: t('Fix in chat', 'Исправить в чате'), icon: 'chat', onClick: onOpenChat } };
+    return { label: statusState.label, color: statusState.color, bg: T.nestedBg, pulse: statusState.pulse };
+  })();
   const progressSteps: ProgressStep[] = wholeBot ? wholeBotSteps(bp, live, lang) : [
     { label: t('Plan', 'План'), state: total > 0 || !decomposing ? 'done' : 'active' },
     { label: t('Build', 'Сборка'), state: latestDeployFailed ? 'failed' : allDone ? 'done' : (total > 0 || decomposing ? 'active' : 'todo') },
@@ -629,18 +649,31 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         <div style={{ fontFamily: T.font, fontSize: 11.5, color: T.amber, lineHeight: '15px' }}>{regenAvatarErr}</div>
       )}
 
-      {/* three SEPARATE state indicators — BOT (container) · PROJECT (status) · SETUP (phase) */}
+      {/* one smart health status (plain language + the single action that matters) */}
       {botUsername && (
-        <div style={{ display: 'flex', gap: 10 }}>
-          <StatusChip T={T} label={t('Bot', 'Бот')}
-            value={paused ? t('Paused', 'Пауза') : live ? t('Running', 'Работает') : t('Idle', 'Ожидает')}
-            dot={paused ? T.gold : live ? T.green : T.hint} />
-          <StatusChip T={T} label={t('Project', 'Проект')}
-            value={live ? t('Live', 'В сети') : statusState.label}
-            dot={statusState.color} />
-          <StatusChip T={T} label={t('Setup', 'Настройка')}
-            value={live ? t('Done', 'Готово') : (dag?.current_phase || '—')}
-            dot={live ? T.green : T.gold} />
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, padding: '8px 14px',
+              background: health.bg, color: health.color, fontFamily: T.font, fontSize: 14.5, fontWeight: 700, letterSpacing: -0.2,
+            }}>
+              <Dot color={health.color} size={8} pulse={health.pulse} />
+              {health.label}
+            </span>
+            {health.action && (
+              <button onClick={health.action.onClick} style={{
+                ...btnReset, display: 'inline-flex', alignItems: 'center', gap: 5,
+                fontFamily: T.font, fontSize: 13.5, fontWeight: 700, color: health.color,
+              }}>
+                <TGIcon name={health.action.icon} size={15} color={health.color} stroke={2.2} /> {health.action.label}
+              </button>
+            )}
+          </div>
+          {live && (
+            <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 7, padding: '0 2px' }}>
+              {bot.version}{uptime ? ` · ${t('up', 'в сети')} ${uptime}` : ''}
+            </div>
+          )}
         </div>
       )}
 
