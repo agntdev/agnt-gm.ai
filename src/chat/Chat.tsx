@@ -5,7 +5,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Theme } from '../theme';
 import { ChatMessage, getChatMessages, sendChatMessage } from '../api/client';
-import { Bubble, TypingBubble, Spinner, EventCard, QuickReplies } from '../ui';
+import { Bubble, TypingBubble, Spinner, EventCard, QuickReplies, TGIcon } from '../ui';
+import { ChatMarkdown } from './markdown';
+import { useT } from '../i18n';
 
 // adaptive polling: tight while an AI turn is running (the answer can land
 // any moment), relaxed when the chat is idle, and much slower when the chat
@@ -18,6 +20,7 @@ export interface ChatState {
   messages: ChatMessage[];
   thinking: boolean;
   send: (text: string) => void;
+  retry: (m: ChatMessage) => void; // re-send a failed optimistic message
 }
 
 export function useChat(projectId: string | null, active: boolean, focused = true): ChatState {
@@ -66,15 +69,26 @@ export function useChat(projectId: string | null, active: boolean, focused = tru
   const send = (text: string) => {
     const t = text.trim();
     if (!projectId || !t) return;
-    setMessages(prev => [...prev, { id: -Date.now(), role: 'owner', content: t }]); // optimistic
+    const tempId = -Date.now();
+    setMessages(prev => [...prev, { id: tempId, role: 'owner', content: t }]); // optimistic
     setThinking(true);
     // poll immediately once the server accepts — don't wait out the interval
     sendChatMessage(projectId, t)
       .then(() => pollNow.current())
-      .catch(() => {});
+      .catch(() => {
+        // keep the failed copy visible with a retry affordance — a message
+        // that silently vanishes reads as "the agent ignored me"
+        setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, failed: true } : m)));
+        setThinking(false);
+      });
   };
 
-  return { messages, thinking, send };
+  const retry = (m: ChatMessage) => {
+    setMessages(prev => prev.filter(x => x.id !== m.id));
+    send(m.content);
+  };
+
+  return { messages, thinking, send, retry };
 }
 
 // quick replies belong to the LAST assistant message with no owner reply after it
@@ -149,11 +163,13 @@ function EventRow({ T, msg }: { T: Theme; msg: ChatMessage }) {
   );
 }
 
-export function ChatThread({ T, messages, thinking, onOption, pendingNote }: {
+export function ChatThread({ T, messages, thinking, onOption, onRetry, pendingNote }: {
   T: Theme; messages: ChatMessage[]; thinking: boolean;
   onOption?: (label: string) => void;
+  onRetry?: (m: ChatMessage) => void; // re-send a failed owner message
   pendingNote?: string | null; // e.g. "Generating your spec…" once the chat hands off
 }) {
+  const t = useT();
   const opts = onOption ? activeOptions(messages) : null;
   return (
     <>
@@ -162,9 +178,24 @@ export function ChatThread({ T, messages, thinking, onOption, pendingNote }: {
         if (data?.kind === 'action' || m.role === 'system') return <EventRow key={m.id} T={T} msg={m} />;
         const own = m.role === 'owner';
         return (
-          <Bubble key={m.id} T={T} from={own ? 'user' : 'bot'} animateIn={m.id < 0}>
-            <span style={{ whiteSpace: 'pre-line' }}>{m.content}</span>
-          </Bubble>
+          <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, opacity: m.failed ? 0.65 : 1 }}>
+            <Bubble T={T} from={own ? 'user' : 'bot'} animateIn={m.id < 0}>
+              {own
+                ? <span style={{ whiteSpace: 'pre-line' }}>{m.content}</span>
+                : <ChatMarkdown T={T} text={m.content} />}
+            </Bubble>
+            {m.failed && (
+              <button onClick={onRetry ? () => onRetry(m) : undefined} style={{
+                alignSelf: 'flex-end', display: 'inline-flex', alignItems: 'center', gap: 5,
+                border: 'none', background: 'none', padding: '0 4px', cursor: onRetry ? 'pointer' : 'default',
+                fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.accent,
+                WebkitTapHighlightColor: 'transparent',
+              }}>
+                <TGIcon name="refresh" size={13} color={T.accent} stroke={2} />
+                {t('Not sent — tap to retry', 'Не отправлено — нажмите, чтобы повторить')}
+              </button>
+            )}
+          </div>
         );
       })}
       {thinking && <TypingBubble T={T} />}

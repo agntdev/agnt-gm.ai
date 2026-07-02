@@ -172,6 +172,8 @@ export interface ChatMessage {
   options?: string[];
   data?: unknown;
   created_at?: string;
+  // client-side only: an optimistic message whose POST failed (retryable)
+  failed?: boolean;
 }
 
 export interface ChatPoll {

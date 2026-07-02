@@ -576,15 +576,28 @@ export default function App() {
   // manageView gate this yanked the overview/other views to the bottom whenever
   // chat messages loaded.
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Whether the user is parked near the bottom of the scroll container —
+  // updated by the container's onScroll. New messages only auto-pin when this
+  // is true (or the user just sent one); yanking someone who scrolled up to
+  // read history loses their place.
+  const nearBottom = useRef(true);
+  const wasInChat = useRef(false);
   const activeBot = manageBot ? myBots.find(b => b.id === manageBot) ?? null : null;
   useEffect(() => {
-    if (!(tab === 'manage' && manageBot && manageView === 'chat')) return;
+    const inChat = tab === 'manage' && !!manageBot && manageView === 'chat';
+    const entering = inChat && !wasInChat.current;
+    wasInChat.current = inChat;
+    if (!inChat) return;
+    const last = manageChat.messages[manageChat.messages.length - 1];
+    const justSent = !!last && last.id < 0; // optimistic own message
+    if (!entering && !justSent && !nearBottom.current) return; // reading history — don't yank
     // defer to after paint: reading scrollHeight synchronously in the effect can
     // grab a stale (too-short) height before the thread's bubbles/fonts settle,
     // which leaves a long history parked near the top. Pin to bottom post-layout.
     const pin = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; };
     const r1 = requestAnimationFrame(() => { pin(); requestAnimationFrame(pin); });
     return () => cancelAnimationFrame(r1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, manageBot, manageView, manageChat.messages.length, manageChat.thinking]);
 
   // delete: real DELETE when the API grows it; local hide as the fallback
@@ -729,7 +742,8 @@ export default function App() {
         <ClarifyScreen T={T} messages={clarifyChat.messages} thinking={clarifyChat.thinking}
           status={project?.status ?? null} gen={gen} genError={genError}
           onOption={(label) => clarifyChat.send(label)}
-          onRetry={() => { if (project) { setGen('generating'); setGenError(null); pollPlan(project.id); } }} />
+          onRetry={() => { if (project) { setGen('generating'); setGenError(null); pollPlan(project.id); } }}
+          onRetrySend={clarifyChat.retry} />
       );
       case 'agent': return (
         <AgentScreen T={T} connected={connected} agentName={agentName} project={project}
@@ -763,6 +777,7 @@ export default function App() {
       ? (manageView === 'chat'
         ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking}
             showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)}
+            onRetry={manageChat.retry}
             cloudAgent={cloudBots.has(activeBot.id)} />
         : manageView === 'activity'
         ? <ActivityPage T={T} bot={activeBot} events={manageChat.messages.filter(m => m.role === 'system')} />
@@ -867,10 +882,15 @@ export default function App() {
       `}</style>
 
       {header}
-      <div ref={scrollRef} key={animKey} style={{
-        flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', position: 'relative',
-        ['--scr-dx' as string]: dir > 0 ? '22px' : '-22px', animation: 'scrIn .32s cubic-bezier(.2,.8,.2,1)',
-      }}>
+      <div ref={scrollRef} key={animKey}
+        onScroll={e => {
+          const el = e.currentTarget;
+          nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+        }}
+        style={{
+          flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', position: 'relative',
+          ['--scr-dx' as string]: dir > 0 ? '22px' : '-22px', animation: 'scrIn .32s cubic-bezier(.2,.8,.2,1)',
+        }}>
         <Suspense fallback={
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '48px 0' }}>
             <Spinner color={T.accent} size={22} />
