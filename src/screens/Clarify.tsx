@@ -12,19 +12,30 @@ import { useT } from '../i18n';
 // generation status driven by the real project lifecycle
 export type GenPhase = 'idle' | 'generating' | 'ready' | 'error';
 
-export function ClarifyScreen({ T, messages, thinking, status, gen, genError, onOption, onRetry }: {
+export function ClarifyScreen({ T, messages, thinking, status, gen, genError, onOption, onRetry, onRetrySend }: {
   T: Theme; messages: ChatMessage[]; thinking: boolean;
   status: string | null; // project status: draft | validating | ready_to_publish…
   gen: GenPhase; genError?: string | null;
   onOption: (label: string) => void; onRetry?: () => void;
+  onRetrySend?: (m: ChatMessage) => void; // re-send a failed chat message
 }) {
   const t = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // only pin to the bottom while the user is parked there — don't yank someone
+  // who scrolled up to re-read the conversation. The listener keeps the flag
+  // fresh; a programmatic pin re-fires it, so staying at the bottom sticks.
+  const nearBottom = useRef(true);
   useEffect(() => {
-    const el = scrollRef.current;
-    const sc = el && el.parentElement;
-    if (sc) sc.scrollTop = sc.scrollHeight;
+    const sc = scrollRef.current?.parentElement;
+    if (!sc) return;
+    const onScroll = () => { nearBottom.current = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120; };
+    sc.addEventListener('scroll', onScroll, { passive: true });
+    return () => sc.removeEventListener('scroll', onScroll);
+  }, []);
+  useEffect(() => {
+    const sc = scrollRef.current?.parentElement;
+    if (sc && nearBottom.current) sc.scrollTop = sc.scrollHeight;
   });
 
   // handed off = the brief is locked and the pipeline owns the project now.
@@ -56,6 +67,7 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
 
       <ChatThread T={T} messages={messages} thinking={thinking}
         onOption={handedOff ? undefined : onOption}
+        onRetry={onRetrySend}
         pendingNote={handedOff && gen === 'generating' ? t('Brief accepted — generating your spec…', 'Бриф принят — генерируем спецификацию…') : null} />
 
       {!handedOff && !thinking && answeredOnce && gen !== 'error' && (

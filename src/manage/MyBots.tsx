@@ -182,9 +182,10 @@ function EmptyAction({ T, icon, label, sub, onClick }: {
 // ── the update conversation — the project's REAL chat feed ────
 // showIdentity: inside Telegram our mocked header is hidden (Telegram draws
 // its own chrome), so the bot identity moves into the chat body.
-export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onOption, onConnectAgent, cloudAgent }: {
+export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onOption, onRetry, onConnectAgent, cloudAgent }: {
   T: Theme; bot: MyBot; messages: ChatMessage[]; thinking: boolean;
   loading?: boolean; showIdentity?: boolean; onOption?: (label: string) => void;
+  onRetry?: (m: ChatMessage) => void;
   onConnectAgent?: () => void; cloudAgent?: boolean;
 }) {
   const t = useT();
@@ -248,7 +249,7 @@ export function BotChat({ T, bot, messages, thinking, loading, showIdentity, onO
         </Bubble>
       )}
 
-      <ChatThread T={T} messages={messages} thinking={thinking} onOption={onOption} />
+      <ChatThread T={T} messages={messages} thinking={thinking} onOption={onOption} onRetry={onRetry} />
     </div>
   );
 }
