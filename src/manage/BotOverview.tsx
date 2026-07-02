@@ -163,6 +163,7 @@ function buildStatusLabel(bp: BuildProgressDTO, lang: Lang): string {
     case 'live': return tr(lang, 'Live', 'В эфире');
     case 'failed': return tr(lang, 'Failed', 'Ошибка');
     case 'awaiting_agent': return tr(lang, 'Waiting for agent', 'Ожидание агента');
+    case 'awaiting_bot': return tr(lang, 'Connect your bot', 'Подключите бота');
   }
   switch (bp.phase) {
     case 'tests': return tr(lang, 'Testing', 'Тестирование');
@@ -189,11 +190,15 @@ function WholeBotBuildCard({ T, bp }: { T: Theme; bp: BuildProgressDTO }) {
   // stage drives colour / branching only; stage_label is the ready status string.
   const failed = bp.stage === 'failed';
   const gaps = bp.stage === 'live_with_gaps';
-  const live = bp.stage === 'live' || gaps || bp.phase === 'published';
-  const arc = failed ? T.red : gaps ? T.gold : undefined;
-  const dotColor = failed ? T.red : gaps ? T.gold : live ? T.green : T.accent;
+  // awaiting_bot: built (phase=published) but NO Telegram bot connected — nothing
+  // deployed, so it must NOT render as live; the connect-bot CTA below finishes it.
+  const awaitingBot = bp.stage === 'awaiting_bot';
+  const live = (bp.stage === 'live' || gaps || bp.phase === 'published') && !awaitingBot;
+  const arc = failed ? T.red : (gaps || awaitingBot) ? T.gold : undefined;
+  const dotColor = failed ? T.red : (gaps || awaitingBot) ? T.gold : live ? T.green : T.accent;
   const label = bp.stage_label || buildStatusLabel(bp, lang);
   const ringLabel = failed ? t('needs fix', 'правка')
+    : awaitingBot ? t('needs bot', 'нужен бот')
     : gaps ? t('with gaps', 'с пробелами')
     : live ? t('complete', 'готово')
     : bp.eta_seconds > 0 ? `≈ ${bp.eta_seconds}${t('s', 'с')}`
@@ -555,10 +560,13 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const buildRunning = wholeBot && (wholeBotBuilding || bp?.phase === 'building' || bp?.phase === 'tests');
   const pausedEffective = paused || !!botRow?.paused;
   const needsBot = isTaskManager && !botUsername;          // managed bot not provisioned yet
-  // non-task_manager bot with no Telegram bot connected yet and not live — suggest
-  // wiring it up. `!!detail` gates the flash before the first poll lands; task_manager
-  // bots keep their own (stronger) "Create your bot" card above instead.
-  const suggestConnect = !isTaskManager && !!detail && !live && !botUsername;
+  // non-task_manager bot with no Telegram bot connected yet — suggest wiring it
+  // up. NOT gated on `live`: a build can finish (phase=published ⇒ live=true)
+  // without a bot ever being connected, and hiding the CTA then LOSES the state —
+  // nothing is deployed and the owner has no button left (the reported bug). With
+  // no bot_username there is nothing actually live, so the CTA must persist.
+  // `!!detail` still gates the flash before the first poll lands.
+  const suggestConnect = !isTaskManager && !!detail && !botUsername;
   // onboarding sequence on the overview: assign a builder agent FIRST, then
   // create the bot. `agentAssigned` gates the create step; `needsCreate` is the
   // pre-bot state (either pipeline) that shows the two-step onboarding card.
