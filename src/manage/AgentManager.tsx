@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Theme, btnReset } from '../theme';
 import { runCloudAgent } from '../api/client';
 import { payAndAssignCloudAgent, STAR_COST } from '../api/stars';
+import { openTgLink } from '../telegram';
 import { TGIcon, Spinner } from '../ui';
 import { useT } from '../i18n';
 
@@ -112,6 +113,19 @@ export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudD
                 right={busy ? <Spinner color={T.accent} size={18} />
                   : deployed ? <TGIcon name="check" size={20} color={T.green} stroke={2.4} />
                   : <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />} />
+
+              {/* where to top up — first-time payers often have no Stars balance */}
+              {!deployed && (
+                <button onClick={() => openTgLink('https://t.me/PremiumBot')} style={{
+                  ...btnReset, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '0 6px', marginTop: -4,
+                  fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.accent,
+                  WebkitTapHighlightColor: 'transparent',
+                }}>
+                  ⭐ {t('How to buy Stars — @PremiumBot', 'Как купить звёзды — @PremiumBot')}
+                  <TGIcon name="chevRight" size={13} color={T.accent} stroke={2.2} />
+                </button>
+              )}
 
               {/* local — connect your own agent with a code */}
               <Option T={T} icon="code"
