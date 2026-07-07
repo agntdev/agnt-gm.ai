@@ -5,8 +5,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Theme, btnReset } from '../theme';
 import { runCloudAgent } from '../api/client';
-import { payAndAssignCloudAgent, STAR_COST } from '../api/stars';
-import { openTgLink } from '../telegram';
 import { TGIcon, Spinner } from '../ui';
 import { useT } from '../i18n';
 
@@ -38,12 +36,10 @@ export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudD
     if (deployed || busy) return; // max one cloud agent per bot
     setBusy(true); setError(false);
     try {
-      // Stars gate (100★): pay an invoice, then assign. Free no-op when charging
-      // is disabled — payAndAssignCloudAgent runs runCloudAgent directly.
-      const r = await payAndAssignCloudAgent(project.id, async () => { await runCloudAgent(project.id); });
-      if (r === 'ok') { setDeployed(true); onCloudDeployed(); }
-      else if (r === 'failed' || r === 'unconfirmed') setError(true);
-      // 'cancelled' → user closed the payment sheet; leave the option idle.
+      // Assigning a cloud agent is free — no payment step (the Stars paywall was
+      // removed). Just run it; the backend assigns the builder and the build starts.
+      await runCloudAgent(project.id);
+      setDeployed(true); onCloudDeployed();
     } catch { setError(true); }
     setBusy(false);
   };
@@ -107,25 +103,12 @@ export function AgentManager({ T, project, cloudDeployed, onConnectNew, onCloudD
                 title={t('Cloud agent', 'Облачный агент')}
                 desc={deployed ? t('Deployed — running on our platform', 'Развёрнут — работает на нашей платформе')
                   : error ? t("Couldn't deploy — tap to retry", 'Не удалось развернуть — нажмите, чтобы повторить')
-                  : t(`We deploy and run one for you · ${STAR_COST.cloudAgent} ⭐`, `Мы развернём и запустим его за вас · ${STAR_COST.cloudAgent} ⭐`)}
+                  : t('We deploy and run it for you — free', 'Мы развернём и запустим его за вас — бесплатно')}
                 tone={deployed ? 'green' : error ? 'amber' : 'hint'}
                 onClick={deployCloud} disabled={deployed}
                 right={busy ? <Spinner color={T.accent} size={18} />
                   : deployed ? <TGIcon name="check" size={20} color={T.green} stroke={2.4} />
                   : <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />} />
-
-              {/* where to top up — first-time payers often have no Stars balance */}
-              {!deployed && (
-                <button onClick={() => openTgLink('https://t.me/PremiumBot')} style={{
-                  ...btnReset, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5,
-                  padding: '0 6px', marginTop: -4,
-                  fontFamily: T.font, fontSize: 12.5, fontWeight: 600, color: T.accent,
-                  WebkitTapHighlightColor: 'transparent',
-                }}>
-                  ⭐ {t('How to buy Stars — @PremiumBot', 'Как купить звёзды — @PremiumBot')}
-                  <TGIcon name="chevRight" size={13} color={T.accent} stroke={2.2} />
-                </button>
-              )}
 
               {/* local — connect your own agent with a code */}
               <Option T={T} icon="code"
