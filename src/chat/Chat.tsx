@@ -19,6 +19,7 @@ const POLL_BG_MS = 12000;
 export interface ChatState {
   messages: ChatMessage[];
   thinking: boolean;
+  thinkingStatus: string; // what the AI is doing right now (ai_thinking_status)
   send: (text: string) => void;
   retry: (m: ChatMessage) => void; // re-send a failed optimistic message
 }
@@ -26,13 +27,14 @@ export interface ChatState {
 export function useChat(projectId: string | null, active: boolean, focused = true): ChatState {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [thinking, setThinking] = useState(false);
+  const [thinkingStatus, setThinkingStatus] = useState('');
   const cursor = useRef(0);
   const seen = useRef<Set<number>>(new Set());
   const pollNow = useRef<() => void>(() => {});
 
   // fresh thread per project
   useEffect(() => {
-    setMessages([]); setThinking(false);
+    setMessages([]); setThinking(false); setThinkingStatus('');
     cursor.current = 0; seen.current = new Set();
   }, [projectId]);
 
@@ -58,6 +60,7 @@ export function useChat(projectId: string | null, active: boolean, focused = tru
         }
         busy = !!r.ai_thinking;
         setThinking(busy);
+        setThinkingStatus(busy ? (r.ai_thinking_status || '') : '');
       } catch { /* transient — next tick retries */ }
       timer = setTimeout(tick, !focused ? POLL_BG_MS : busy ? POLL_FAST_MS : POLL_IDLE_MS);
     };
@@ -88,7 +91,7 @@ export function useChat(projectId: string | null, active: boolean, focused = tru
     send(m.content);
   };
 
-  return { messages, thinking, send, retry };
+  return { messages, thinking, thinkingStatus, send, retry };
 }
 
 // quick replies belong to the LAST assistant message with no owner reply after it
@@ -163,8 +166,9 @@ function EventRow({ T, msg }: { T: Theme; msg: ChatMessage }) {
   );
 }
 
-export function ChatThread({ T, messages, thinking, onOption, onRetry, pendingNote }: {
+export function ChatThread({ T, messages, thinking, thinkingStatus, onOption, onRetry, pendingNote }: {
   T: Theme; messages: ChatMessage[]; thinking: boolean;
+  thinkingStatus?: string; // what the AI is doing right now — shown in the typing bubble
   onOption?: (label: string) => void;
   onRetry?: (m: ChatMessage) => void; // re-send a failed owner message
   pendingNote?: string | null; // e.g. "Generating your spec…" once the chat hands off
@@ -198,7 +202,7 @@ export function ChatThread({ T, messages, thinking, onOption, onRetry, pendingNo
           </div>
         );
       })}
-      {thinking && <TypingBubble T={T} />}
+      {thinking && <TypingBubble T={T} status={thinkingStatus} />}
       {/* quick replies live at the foot of the feed, terracotta bordered chips */}
       {opts && !thinking && onOption && (
         <QuickReplies T={T} options={opts.options} onPick={onOption} />

@@ -739,7 +739,7 @@ export default function App() {
           startBtn={mainBtn} />
       );
       case 'clarify': return (
-        <ClarifyScreen T={T} messages={clarifyChat.messages} thinking={clarifyChat.thinking}
+        <ClarifyScreen T={T} messages={clarifyChat.messages} thinking={clarifyChat.thinking} thinkingStatus={clarifyChat.thinkingStatus}
           status={project?.status ?? null} gen={gen} genError={genError}
           onOption={(label) => clarifyChat.send(label)}
           onRetry={() => { if (project) { setGen('generating'); setGenError(null); pollPlan(project.id); } }}
@@ -775,7 +775,7 @@ export default function App() {
   const body = tab === 'manage'
     ? (activeBot
       ? (manageView === 'chat'
-        ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking}
+        ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking} thinkingStatus={manageChat.thinkingStatus}
             showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)}
             onRetry={manageChat.retry}
             cloudAgent={cloudBots.has(activeBot.id)} />
