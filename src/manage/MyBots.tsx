@@ -182,11 +182,10 @@ function EmptyAction({ T, icon, label, sub, onClick }: {
 // ── the update conversation — the project's REAL chat feed ────
 // showIdentity: inside Telegram our mocked header is hidden (Telegram draws
 // its own chrome), so the bot identity moves into the chat body.
-export function BotChat({ T, bot, messages, thinking, thinkingStatus, loading, showIdentity, onOption, onRetry, onConnectAgent, cloudAgent }: {
+export function BotChat({ T, bot, messages, thinking, thinkingStatus, loading, showIdentity, onOption, onRetry }: {
   T: Theme; bot: MyBot; messages: ChatMessage[]; thinking: boolean; thinkingStatus?: string;
   loading?: boolean; showIdentity?: boolean; onOption?: (label: string) => void;
   onRetry?: (m: ChatMessage) => void;
-  onConnectAgent?: () => void; cloudAgent?: boolean;
 }) {
   const t = useT();
   const { lang } = useLang();
@@ -208,28 +207,9 @@ export function BotChat({ T, bot, messages, thinking, thinkingStatus, loading, s
       }}>
         <Mark T={T} size={17} radius={5} />
         <span style={{ fontFamily: T.font, fontSize: 12, color: T.hint, fontWeight: 500 }}>
-          {cloudAgent
-            ? t('Cloud agent · runs tasks & makes changes', 'Облачный агент · выполняет задачи и вносит изменения')
-            : t('Build agent · updates ship live', 'Агент сборки · обновления сразу в эфире')}
+          {t('Build agent · updates ship live', 'Агент сборки · обновления сразу в эфире')}
         </span>
       </div>
-
-      {/* tasks are open — let the owner (re)connect a coding agent anytime */}
-      {onConnectAgent && (
-        <button onClick={onConnectAgent} style={{
-          ...btnReset, display: 'flex', alignItems: 'center', gap: 11, padding: 12, textAlign: 'left',
-          borderRadius: T.cardRadius, background: T.cardBg, border: `1px solid ${T.sep}`, boxShadow: T.shadow,
-        }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <TGIcon name="bolt" size={18} color={T.accent} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.text }}>{t('Connect an agent', 'Подключить агента')}</div>
-            <div style={{ fontFamily: T.font, fontSize: 12, color: T.hint, marginTop: 1 }}>{t("Put your Claude or Codex on this bot's tasks", 'Поручите задачи бота вашему Claude или Codex')}</div>
-          </div>
-          <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />
-        </button>
-      )}
 
       {loading && messages.length === 0 && (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
@@ -239,13 +219,9 @@ export function BotChat({ T, bot, messages, thinking, thinkingStatus, loading, s
 
       {!loading && messages.length === 0 && !thinking && (
         <Bubble T={T} from="bot">
-          <span style={{ whiteSpace: 'pre-line' }}>{cloudAgent
-            ? t(
-                `I'm your cloud agent for ${bot.name}. Ask me to finish a task, change something, or run an action — I'll do it and report back.`,
-                `Я ваш облачный агент для ${bot.name}. Попросите завершить задачу, что-то изменить или выполнить действие — я всё сделаю и отчитаюсь.`)
-            : t(
-                `I'm live 🟢 ${previewText(lang, bot.preview)} Tell me anything you'd like to change and I'll ship it.`,
-                `Я в эфире 🟢 ${previewText(lang, bot.preview)} Скажите, что хотите изменить, и я выпущу обновление.`)}</span>
+          <span style={{ whiteSpace: 'pre-line' }}>{t(
+            `I'm live 🟢 ${previewText(lang, bot.preview)} Tell me anything you'd like to change and I'll ship it.`,
+            `Я в эфире 🟢 ${previewText(lang, bot.preview)} Скажите, что хотите изменить, и я выпущу обновление.`)}</span>
         </Bubble>
       )}
 

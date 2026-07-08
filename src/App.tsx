@@ -38,8 +38,6 @@ const BoardView = lazy(() => import('./manage/TaskManagerBoard').then(m => ({ de
 const TaskManagerInbox = lazy(() => import('./manage/TaskManagerInbox').then(m => ({ default: m.TaskManagerInbox })));
 const TaskDetail = lazy(() => import('./manage/TaskDetail').then(m => ({ default: m.TaskDetail })));
 const ActivityPage = lazy(() => import('./manage/Activity').then(m => ({ default: m.ActivityPage })));
-const AgentManager = lazy(() => import('./manage/AgentManager').then(m => ({ default: m.AgentManager })));
-const ConnectAgent = lazy(() => import('./manage/ConnectAgent').then(m => ({ default: m.ConnectAgent })));
 const BlueprintScreen = lazy(() => import('./manage/Blueprint').then(m => ({ default: m.BlueprintScreen })));
 
 const STEPS = ['prompt', 'clarify', 'agent'] as const;
@@ -78,12 +76,6 @@ function loadPaused(): Set<string> {
 const DISCOVER_OPTOUT_KEY = 'agentbot-discover-optout'; // bots the owner hid from Discovery (until the API carries `discoverable`)
 function loadDiscoverOptOut(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(DISCOVER_OPTOUT_KEY) || '[]') as string[]); }
-  catch { return new Set(); }
-}
-
-const CLOUD_KEY = 'agentbot-cloud'; // bots with a cloud agent deployed (max one per bot)
-function loadCloud(): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(CLOUD_KEY) || '[]') as string[]); }
   catch { return new Set(); }
 }
 
@@ -210,13 +202,11 @@ export default function App() {
   const [myBots, setMyBots] = useState<MyBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(false);
   const [manageBot, setManageBot] = useState<string | null>(null);
-  const [manageView, setManageView] = useState<'overview' | 'board' | 'taskboard' | 'inbox' | 'chat' | 'activity' | 'connect' | 'plan'>('overview');
+  const [manageView, setManageView] = useState<'overview' | 'board' | 'taskboard' | 'inbox' | 'chat' | 'activity' | 'plan'>('overview');
   const [detailTask, setDetailTask] = useState<string | null>(null); // task_manager TaskDetail overlay (slug)
   const [hiddenBots, setHiddenBots] = useState<Set<string>>(loadHidden);
   const [pausedBots, setPausedBots] = useState<Set<string>>(loadPaused);
   const [discoverOptOut, setDiscoverOptOut] = useState<Set<string>>(loadDiscoverOptOut);
-  const [cloudBots, setCloudBots] = useState<Set<string>>(loadCloud);
-  const [agentSheet, setAgentSheet] = useState(false); // "Add an agent" bottom sheet
   const [draft, setDraft] = useState('');
 
   // Discover tab — server-side feed of live bots (everyone's). Empty until the
@@ -376,7 +366,7 @@ export default function App() {
       setTab('manage');
       if (parts[1]) {
         setManageBot(parts[1]);
-        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'connect' ? 'connect' : parts[2] === 'taskboard' ? 'taskboard' : parts[2] === 'inbox' ? 'inbox' : parts[2] === 'board' ? 'board' : parts[2] === 'plan' ? 'plan' : 'overview');
+        setManageView(parts[2] === 'chat' ? 'chat' : parts[2] === 'activity' ? 'activity' : parts[2] === 'taskboard' ? 'taskboard' : parts[2] === 'inbox' ? 'inbox' : parts[2] === 'board' ? 'board' : parts[2] === 'plan' ? 'plan' : 'overview');
       }
       routeReady.current = true;
     } else if (parts[0] === 'discover') {
@@ -392,7 +382,7 @@ export default function App() {
 
   useEffect(() => {
     if (!routeReady.current) return;
-    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'connect' ? '/connect' : manageView === 'taskboard' ? '/taskboard' : manageView === 'inbox' ? '/inbox' : manageView === 'board' ? '/board' : manageView === 'plan' ? '/plan' : '';
+    const sub = manageView === 'chat' ? '/chat' : manageView === 'activity' ? '/activity' : manageView === 'taskboard' ? '/taskboard' : manageView === 'inbox' ? '/inbox' : manageView === 'board' ? '/board' : manageView === 'plan' ? '/plan' : '';
     const h = tab === 'manage'
       ? (manageBot ? `#/bots/${manageBot}${sub}` : '#/bots')
       : tab === 'discover' ? '#/discover'
@@ -508,10 +498,6 @@ export default function App() {
         }
       }
       const pid = pub.id;
-      // a cloud (platform) build means the platform's cloud agent already owns
-      // this bot — register it so the overview shows "Cloud agent" instead of
-      // prompting "Add an agent" for a builder the owner already chose
-      if (buildMode === 'platform') markCloudDeployed(pid);
       // surface the bot on the overview immediately (before the list refresh lands)
       setMyBots(prev => prev.some(b => b.id === pid) ? prev : [botFromProject(pub), ...prev]);
       // reset the build tab and jump to the bot's overview
@@ -647,15 +633,6 @@ export default function App() {
     });
   };
 
-  // remember a deployed cloud agent so the sheet enforces max one per bot
-  const markCloudDeployed = (botId: string) => {
-    setCloudBots(prev => {
-      const next = new Set(prev); next.add(botId);
-      localStorage.setItem(CLOUD_KEY, JSON.stringify([...next]));
-      return next;
-    });
-  };
-
   // ── restart / edit loops ──
   const resetPipeline = () => {
     cancelPoll.current();
@@ -716,7 +693,6 @@ export default function App() {
   const closeChat = () => {
     setDir(-1);
     if (detailTask) { setDetailTask(null); return; } // close the TaskDetail overlay first
-    if (agentSheet) { setAgentSheet(false); return; }
     if (manageView !== 'overview') setManageView('overview');
     else setManageBot(null);
   };
@@ -763,7 +739,7 @@ export default function App() {
   const header = insideTelegram ? null : (tab === 'manage'
     ? (activeBot
       ? <TGHeader T={T}
-          title={manageView === 'activity' ? t('Activity', 'События') : manageView === 'plan' ? t('The plan', 'План') : manageView === 'connect' ? t('Connect agent', 'Подключить агента') : manageView === 'board' || manageView === 'taskboard' ? t('Build board', 'Доска сборки') : manageView === 'inbox' ? t('Needs you', 'Требует внимания') : activeBot.name}
+          title={manageView === 'activity' ? t('Activity', 'События') : manageView === 'plan' ? t('The plan', 'План') : manageView === 'board' || manageView === 'taskboard' ? t('Build board', 'Доска сборки') : manageView === 'inbox' ? t('Needs you', 'Требует внимания') : activeBot.name}
           subtitle={manageView === 'overview' || manageView === 'chat' ? '@' + activeBot.handle + ' · ' + activeBot.version : '@' + activeBot.handle}
           onBack={closeChat} />
       : <TGHeader T={T} title={t('My Bots', 'Мои боты')} subtitle={t('Deployed on AgentBot', 'Развёрнуто на AgentBot')} />)
@@ -777,8 +753,7 @@ export default function App() {
       ? (manageView === 'chat'
         ? <BotChat T={T} bot={activeBot} messages={manageChat.messages} thinking={manageChat.thinking} thinkingStatus={manageChat.thinkingStatus}
             showIdentity={insideTelegram} onOption={(label) => manageChat.send(label)}
-            onRetry={manageChat.retry}
-            cloudAgent={cloudBots.has(activeBot.id)} />
+            onRetry={manageChat.retry} />
         : manageView === 'activity'
         ? <ActivityPage T={T} bot={activeBot} events={manageChat.messages.filter(m => m.role === 'system')} />
         : manageView === 'board'
@@ -793,32 +768,12 @@ export default function App() {
             onOpenTask={(slug) => { setDir(1); setDetailTask(slug); }} />
         : manageView === 'plan'
         ? <BlueprintScreen T={T} projectId={activeBot.id} />
-        : manageView === 'connect'
-        ? <ConnectAgent T={T} bot={activeBot} onConnected={() => {
-            // a local agent now owns the bot — it supersedes any cloud agent
-            setCloudBots(prev => {
-              if (!prev.has(activeBot.id)) return prev;
-              const next = new Set(prev); next.delete(activeBot.id);
-              localStorage.setItem(CLOUD_KEY, JSON.stringify([...next]));
-              return next;
-            });
-            setDir(-1); setManageView('overview');
-          }} />
         : <BotOverview T={T} bot={activeBot} messages={manageChat.messages}
             onOpenChat={() => { setDir(1); setManageView('chat'); }}
             onOpenBoard={() => { setDir(1); setManageView('taskboard'); }}
             onOpenInbox={() => { setDir(1); setManageView('inbox'); }}
             onOpenPlan={() => { setDir(1); setManageView('plan'); }}
             onViewActivity={() => { setDir(1); setManageView('activity'); }}
-            onManageAgents={() => setAgentSheet(true)}
-            onCloudDetected={() => markCloudDeployed(activeBot.id)}
-            onCloudGone={() => setCloudBots(prev => {
-              if (!prev.has(activeBot.id)) return prev;
-              const next = new Set(prev); next.delete(activeBot.id);
-              localStorage.setItem(CLOUD_KEY, JSON.stringify([...next]));
-              return next;
-            })}
-            cloudDeployed={cloudBots.has(activeBot.id)}
             paused={pausedBots.has(activeBot.id)}
             onTogglePause={() => togglePause(activeBot.id)}
             discoverable={!discoverOptOut.has(activeBot.id)}
@@ -844,8 +799,7 @@ export default function App() {
     ? null // the discover feed has no footer (no stray build CTA / composer)
     : tab === 'manage'
     ? (activeBot && manageView === 'chat'
-      ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false}
-          placeholder={cloudBots.has(activeBot.id) ? t('Ask your cloud agent…', 'Спросите облачного агента…') : undefined} />
+      ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false} />
       : null)
     : drafting
     ? <Composer T={T} draft={chatDraft} onChange={setChatDraft}
@@ -905,37 +859,10 @@ export default function App() {
       {((tab === 'build' && id === 'prompt') || tab === 'discover' || (tab === 'manage' && (!manageBot || manageView === 'overview'))) && (
         <TabBar T={T} tab={tab} onTab={(tb) => {
           setDir(1);
-          setAgentSheet(false); // never leave the sheet hanging over another tab
           // tapping My Bots pops to its root (the list), not the last-open bot
           if (tb === 'manage') { setManageBot(null); setManageView('overview'); }
           setTab(tb);
         }} />
-      )}
-
-      {/* "Add an agent" sheet — overlays everything, closed by scrim/back */}
-      {agentSheet && activeBot && (
-        <Suspense fallback={null}>
-        <AgentManager T={T} project={{ id: activeBot.id, name: activeBot.name }}
-          cloudDeployed={cloudBots.has(activeBot.id)}
-          onCloudDeployed={() => {
-            markCloudDeployed(activeBot.id);
-            // cloud agent ⇒ PLATFORM mode, so the build-mode gate lets the
-            // platform's agent pick up tasks (symmetric with the local path below)
-            const all = loadModes(); all[activeBot.id] = 'platform';
-            localStorage.setItem(MODE_KEY, JSON.stringify(all));
-            setBuildModeApi(activeBot.id, 'platform').catch(() => { /* PUT /build-mode not shipped yet */ });
-          }}
-          onConnectNew={() => {
-            setAgentSheet(false); setDir(1);
-            // local agent ⇒ mark the project LOCAL so the platform defers to it
-            const all = loadModes(); all[activeBot.id] = 'local';
-            localStorage.setItem(MODE_KEY, JSON.stringify(all));
-            setBuildModeApi(activeBot.id, 'local').catch(() => { /* endpoint not shipped yet */ });
-            // focused connect screen — just the code + CLI command
-            setManageView('connect');
-          }}
-          onClose={() => setAgentSheet(false)} />
-        </Suspense>
       )}
 
       {/* task_manager: per-task detail panel — overlay opened from the board/inbox */}
