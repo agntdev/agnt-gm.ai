@@ -190,8 +190,24 @@ export interface ChatStarted {
   poll_url?: string;
 }
 
-export function startChat(message: string): Promise<ChatStarted> {
-  return request('POST', '/builder/chat', { message });
+// A starter template (GET /builder/templates) — a starting point for the build.
+// Picking one pre-fills the idea box with `starter_brief` and rides back as
+// `template_id` on startChat; an unknown/omitted id falls back to the default
+// skeleton server-side, so the picker is always optional.
+export interface BotTemplate {
+  id: string;
+  emoji: string;
+  title: string;
+  description: string;
+  starter_brief?: string;
+}
+
+export function getTemplates(): Promise<{ templates: BotTemplate[] }> {
+  return request('GET', '/builder/templates');
+}
+
+export function startChat(message: string, templateId?: string): Promise<ChatStarted> {
+  return request('POST', '/builder/chat', { message, template_id: templateId || undefined });
 }
 
 export function sendChatMessage(idOrSlug: string, message: string): Promise<ChatPoll> {

@@ -180,6 +180,9 @@ export default function App() {
   const [dir, setDir] = useState(1);
   const [tab, setTab] = useState<Tab>('build');
   const [idea, setIdea] = useState('');
+  // Starter template picked on the prompt screen ('' = default skeleton). Rides
+  // back to startChat as template_id; picking one pre-fills the idea box.
+  const [templateId, setTemplateId] = useState('');
   const [changed, setChanged] = useState(false);
   const [starting, setStarting] = useState(false); // POST /builder/chat in flight
   const [startError, setStartError] = useState<string | null>(null);
@@ -240,7 +243,7 @@ export default function App() {
     if (!tgAuthed && !(await tryTgAuth())) return; // auth raced the tap — retry once
     setStarting(true); setStartError(null);
     try {
-      const r = await startChat(idea.trim());
+      const r = await startChat(idea.trim(), templateId);
       resetPipeline();
       const d = await getProject(r.project_id).catch(() => null);
       setProject(d?.project ?? ({ id: r.project_id, slug: '', name: 'New bot', status: r.status || 'draft' } as Project));
@@ -271,7 +274,7 @@ export default function App() {
     setMyBots(prev => prev.some(b => b.id === p.id) ? prev : [bot, ...prev]);
     resetPipeline();
     localStorage.removeItem(PIPELINE_KEY);
-    setIdea(''); setChanged(false); setStep(0);
+    setIdea(''); setTemplateId(''); setChanged(false); setStep(0);
     setManageBot(p.id); setManageView('overview'); setDir(1); setTab('manage');
     void refreshMyBots(p.id);
   };
@@ -503,7 +506,7 @@ export default function App() {
       // reset the build tab and jump to the bot's overview
       resetPipeline();
       localStorage.removeItem(PIPELINE_KEY);
-      setIdea(''); setChanged(false); setStep(0);
+      setIdea(''); setTemplateId(''); setChanged(false); setStep(0);
       setManageBot(pid); setManageView('overview'); setDir(1); setTab('manage');
       void refreshMyBots(pid);
     } catch (e) {
@@ -712,7 +715,8 @@ export default function App() {
       case 'prompt': return (
         <PromptScreen T={T} idea={idea} setIdea={setIdea} changed={changed}
           user={telegramUser()} onToggleTheme={toggleTheme} error={startError}
-          startBtn={mainBtn} />
+          startBtn={mainBtn} templateId={templateId}
+          onPickTemplate={(tm) => { setTemplateId(tm.id); if (tm.starter_brief) setIdea(tm.starter_brief); }} />
       );
       case 'clarify': return (
         <ClarifyScreen T={T} messages={clarifyChat.messages} thinking={clarifyChat.thinking} thinkingStatus={clarifyChat.thinkingStatus}
