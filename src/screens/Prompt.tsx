@@ -1,11 +1,12 @@
 // Prompt — onboarding hero: "Describe the bot you want" (Bold 1c).
 // Top row: AGNTDEV brand lockup left, "My bots" link right. Eyebrow pill,
 // two-tone hero, prompt card with a terracotta send button, and idea chips.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Theme, btnReset } from '../theme';
 import { TgUser } from '../telegram';
 import { TGIcon, Spinner, Wordmark } from '../ui';
 import { useLang, useT, tr } from '../i18n';
+import { getTemplates, type BotTemplate } from '../api/client';
 
 // Each example is a short button (title + blurb) that drops a rich, detailed
 // brief into the prompt box. That brief is what gets sent verbatim as the
@@ -160,15 +161,26 @@ function autoGrow(el: HTMLTextAreaElement | null) {
 
 export type StartBtn = { label: string; disabled?: boolean; busy?: boolean; onClick?: () => void };
 
-export function PromptScreen({ T, idea, setIdea, changed, error, startBtn }: {
+export function PromptScreen({ T, idea, setIdea, changed, error, startBtn, templateId, onPickTemplate }: {
   T: Theme; idea: string; setIdea: (v: string) => void; changed: boolean;
   user?: TgUser | null; onToggleTheme?: () => void; error?: string | null;
   startBtn?: StartBtn | null;
+  // Template gallery (GET /builder/templates): the chosen id rides back to
+  // startChat; picking one pre-fills the idea box with its starter_brief.
+  templateId?: string; onPickTemplate?: (t: BotTemplate) => void;
 }) {
   const t = useT();
   const { lang, setLang } = useLang();
   const taRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { autoGrow(taRef.current); }, [idea]);
+  // Fetch the template gallery once (best-effort: an error just hides the picker,
+  // so the plain describe-your-bot flow is unaffected).
+  const [templates, setTemplates] = useState<BotTemplate[]>([]);
+  useEffect(() => {
+    let alive = true;
+    getTemplates().then(r => { if (alive) setTemplates(r.templates || []); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   // A fixed set of starter ideas shown as wrapped chips (each still carries a
   // full brief in `.prompt`). No shuffle — matches the prototype's chip row.
   const chips = IDEA_EXAMPLES.slice(0, 6);
@@ -216,6 +228,33 @@ export function PromptScreen({ T, idea, setIdea, changed, error, startBtn }: {
         {t('Answer a few questions and we build a real Telegram bot and put it live — usually in a couple of minutes. No coding.',
            'Ответьте на пару вопросов — и мы соберём настоящего Telegram-бота и запустим его, обычно за пару минут. Без кода.')}
       </div>
+
+      {/* template picker — a working starting point; picking one pre-fills the idea */}
+      {templates.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontFamily: T.font, fontSize: 12, fontWeight: 700, color: T.hint, textTransform: 'uppercase', letterSpacing: 1.4, margin: '0 2px 10px' }}>
+            {t('Start from a template', 'Начните с шаблона')}
+          </div>
+          <div style={{ display: 'flex', gap: 9, overflowX: 'auto', paddingBottom: 2, margin: '0 -2px', WebkitOverflowScrolling: 'touch' }}>
+            {templates.map(tm => {
+              const active = (templateId || '') === tm.id || (!templateId && tm.id === 'general');
+              return (
+                <button key={tm.id} onClick={() => onPickTemplate?.(tm)} style={{
+                  ...btnReset, flex: '0 0 auto', width: 172, textAlign: 'left', padding: '11px 13px', borderRadius: 14,
+                  background: active ? T.accentSoft : T.inputBg,
+                  border: `1.5px solid ${active ? T.accent : T.sep}`, transition: 'border-color .15s, background .15s',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ fontSize: 16 }}>{tm.emoji}</span>
+                    <span style={{ fontFamily: T.font, fontSize: 13.5, fontWeight: 700, color: T.text, letterSpacing: -0.1 }}>{tm.title}</span>
+                  </div>
+                  <div style={{ fontFamily: T.font, fontSize: 11.8, color: T.sub, lineHeight: '15px', marginTop: 4 }}>{tm.description}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* prompt card with send button */}
       <div style={{
