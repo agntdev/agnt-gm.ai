@@ -23,7 +23,6 @@ export interface DiscoverBot {
   activeAgents?: number;
   merged7d?: number;
   openTasks?: number;
-  buildMode?: string;
   publishedAt?: string;
   createdAt?: string;
 }
@@ -41,7 +40,6 @@ export function discoverBotFromProject(p: Project): DiscoverBot | null {
     activeAgents: p.active_agents,
     merged7d: p.prs_merged_7d,
     openTasks: p.open_tasks,
-    buildMode: p.build_mode,
     publishedAt: p.published_at || p.bot_go_live_at,
     createdAt: p.created_at,
   };

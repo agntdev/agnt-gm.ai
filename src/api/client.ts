@@ -258,19 +258,6 @@ export function deleteProject(idOrSlug: string): Promise<unknown> {
   return request('DELETE', `/builder/projects/${encodeURIComponent(idOrSlug)}`);
 }
 
-// ── Build mode: who builds the tasks ──────────────────────────
-// 'platform' — the platform's agents build and ship PRs.
-// 'local'    — the owner's connected agent does the work; platform only
-//              runs gates + deploys.
-// Not in the API yet — set optimistically (404 tolerated, mode kept locally).
-export type BuildMode = 'platform' | 'local';
-
-export function setBuildModeApi(idOrSlug: string, mode: BuildMode): Promise<unknown> {
-  return request('PUT', `/builder/projects/${encodeURIComponent(idOrSlug)}/build-mode`, {
-    mode: mode === 'local' ? 'local_agent' : 'platform_agent',
-  });
-}
-
 export function listProjectsByAgent(agentId: string, limit = 50): Promise<ProjectList> {
   return request('GET', `/builder/projects?owner_agent_id=${encodeURIComponent(agentId)}&limit=${limit}`);
 }
