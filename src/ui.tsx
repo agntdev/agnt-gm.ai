@@ -238,20 +238,30 @@ export function Bubble({ T, from = 'bot', children, animateIn }: {
 }
 
 // typing indicator (three dots)
-export function TypingBubble({ T }: { T: Theme }) {
+// TypingBubble — the assistant "typing" indicator. When `status` is set (the
+// backend's ai_thinking_status), it reads WHAT the AI is doing right now instead
+// of anonymous dots.
+export function TypingBubble({ T, status }: { T: Theme; status?: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
       <div style={{
         padding: '13px 16px', borderRadius: 18, borderBottomLeftRadius: 5,
         background: T.botBubble, border: `0.5px solid ${T.sep}`, boxShadow: T.shadow,
-        display: 'flex', gap: 5, alignItems: 'center',
+        display: 'flex', gap: 9, alignItems: 'center',
       }}>
-        {[0, 1, 2].map(i => (
-          <span key={i} style={{
-            width: 7, height: 7, borderRadius: 999, background: T.hint,
-            animation: `tgtype 1.2s ease-in-out ${i * 0.16}s infinite`,
-          }} />
-        ))}
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+          {[0, 1, 2].map(i => (
+            <span key={i} style={{
+              width: 7, height: 7, borderRadius: 999, background: T.hint,
+              animation: `tgtype 1.2s ease-in-out ${i * 0.16}s infinite`,
+            }} />
+          ))}
+        </div>
+        {status && (
+          <span style={{ fontFamily: T.font, fontSize: 13, color: T.hint, whiteSpace: 'nowrap' }}>
+            {status}
+          </span>
+        )}
       </div>
     </div>
   );
