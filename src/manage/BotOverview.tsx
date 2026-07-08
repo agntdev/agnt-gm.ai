@@ -1,14 +1,15 @@
 // BotOverview — per-bot overview page (My Bots → bot). Everything real:
-// agent-link status, task/PR stats from the project, Test bot via the managed
+// build progress, task/PR stats from the project, Test bot via the managed
 // bot's @username, Recent Activity from the chat's system events (full feed on
-// the "View all" page). "Open chat" opens the owner ↔ build-agent chat; the
-// agent card's "Manage" opens the add-an-agent sheet.
+// the "View all" page). "Open chat" opens the owner ↔ build-agent chat. The
+// platform's cloud agent is assigned automatically on bot creation — there is
+// no agent-choice step.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Theme, btnReset, hexA } from '../theme';
 import {
-  ApiError, Project, TaskItem, ChatMessage, AgentLinkStatus, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, BotInitiate, BuildProgress as BuildProgressDTO,
-  getProject, fetchProjectTasks, getProjectBot, getAgentLink, listDeployments, getTaskDetail, getBotAnalytics,
-  botIsLive, retryDeploy, setAutoMerge, getCloudAgent, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
+  ApiError, Project, TaskItem, ChatMessage, Deployment, DagInfo, TaskDetail, BotAnalytics, ProjectBot, BotInitiate, BuildProgress as BuildProgressDTO,
+  getProject, fetchProjectTasks, getProjectBot, listDeployments, getTaskDetail, getBotAnalytics,
+  botIsLive, retryDeploy, setAutoMerge, initiateBot, postFeedback, publishProject, regenerateBotAvatar,
 } from '../api/client';
 import { openTgLink, openExternal } from '../telegram';
 import { TGIcon, Card, Pill, Dot, BotTile, Spinner, ProgressRing, Sparkline } from '../ui';
@@ -287,18 +288,16 @@ function UsageTile({ T, label, value, tone, dot, up }: {
 // cache, then the tick refreshes it — instead of six cold fetches every visit.
 interface OvSnap {
   detail: Project | null; tasks: TaskItem[]; dag: DagInfo | null; deploys: Deployment[];
-  botRow: ProjectBot | null; botUsername: string | null; link: AgentLinkStatus | null;
+  botRow: ProjectBot | null; botUsername: string | null;
   analytics: BotAnalytics | null; isTaskManager: boolean;
 }
 const OV_CACHE = new Map<string, OvSnap>();
 
-export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onOpenPlan, onDelete, onViewActivity, onManageAgents, onCloudDetected, onCloudGone, cloudDeployed, paused, onTogglePause, discoverable, onToggleDiscoverable }: {
+export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenInbox, onOpenPlan, onDelete, onViewActivity, paused, onTogglePause, discoverable, onToggleDiscoverable }: {
   T: Theme; bot: MyBot; messages: ChatMessage[];
   onOpenChat: () => void; onOpenBoard: () => void; onOpenInbox?: () => void; onOpenPlan?: () => void; onDelete: () => void;
-  onViewActivity: () => void; onManageAgents: () => void;
-  onCloudDetected?: () => void; // API revealed a cloud agent this client hadn't recorded
-  onCloudGone?: () => void;     // API says no cloud agent — clear a stale local mark
-  cloudDeployed: boolean; paused: boolean; onTogglePause: () => void;
+  onViewActivity: () => void;
+  paused: boolean; onTogglePause: () => void;
   discoverable: boolean; onToggleDiscoverable: () => void;
 }) {
   const t = useT();
@@ -311,15 +310,12 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const [deploys, setDeploys] = useState<Deployment[]>(seed?.deploys ?? []);
   const [botUsername, setBotUsername] = useState<string | null>(seed?.botUsername ?? null);
   const [botRow, setBotRow] = useState<ProjectBot | null>(seed?.botRow ?? null);
-  const [link, setLink] = useState<AgentLinkStatus | null>(seed?.link ?? null);
   const [analytics, setAnalytics] = useState<BotAnalytics | null>(seed?.analytics ?? null);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetail | 'loading' | 'none'>>({});
   const [isTaskManager, setIsTaskManager] = useState(seed?.isTaskManager ?? bot.isTaskManager ?? false); // verdict from cache → bot prop → /dag node_kind
   const blocked = useBlocked(bot.id, isTaskManager); // attention badge (owner /blocked)
-  const [cloudApi, setCloudApi] = useState<boolean | null>(null); // GET /cloud-agent → deployed?
-  const cloudNotified = useRef(false);
   const [creatingBot, setCreatingBot] = useState(false);
   const [botInit, setBotInit] = useState<BotInitiate | null>(null); // deep link issued, waiting for Telegram
   const [createBotErr, setCreateBotErr] = useState<string | null>(null);
@@ -443,12 +439,11 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
-      const [d, t, dep, b, l, an] = await Promise.all([
+      const [d, t, dep, b, an] = await Promise.all([
         getProject(bot.id).catch(() => null),
         fetchProjectTasks(bot.id).catch(() => null),
         listDeployments(bot.id).catch(() => null),
         getProjectBot(bot.id).catch(() => null),
-        getAgentLink(bot.id).catch(() => null),
         getBotAnalytics(bot.id).catch(() => null),
       ]);
       if (cancelled) return;
@@ -456,7 +451,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       if (t) { setTasks(t.tasks); setDag(t.dag ?? null); }
       if (dep) setDeploys(dep.deployments || []);
       if (b) { setBotRow(b); if (b.bot_username) setBotUsername(b.bot_username); }
-      if (l) setLink(l);
       if (an) setAnalytics(an);
       // route old vs new: build_pipeline (once it ships) else node_kind off the
       // DAG fetchProjectTasks already loaded — no second /dag round-trip.
@@ -473,7 +467,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         deploys: dep?.deployments ?? prev?.deploys ?? [],
         botRow: b ?? prev?.botRow ?? null,
         botUsername: b?.bot_username ?? prev?.botUsername ?? null,
-        link: l ?? prev?.link ?? null,
         analytics: an ?? prev?.analytics ?? null,
         isTaskManager: d?.project.build_pipeline ? d.project.build_pipeline === 'task_manager' : (t?.isTaskManager || prev?.isTaskManager || bot.isTaskManager || false),
       });
@@ -486,34 +479,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     void tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [bot.id]);
-
-  // cloud-agent status from the API — the source of truth for "is a cloud agent
-  // running", so a server-side deploy (or one made on another device) reflects
-  // even if this client never recorded it locally. Re-fetched whenever a deploy
-  // is recorded (e.g. right after paying) so the verdict catches up instead of
-  // lagging until the page is reloaded. Reset to null first so a stale 'false'
-  // can't trip onCloudGone (below) and wipe the fresh deploy before we re-confirm.
-  useEffect(() => {
-    let cancelled = false;
-    setCloudApi(null);
-    void getCloudAgent(bot.id)
-      .then(c => { if (!cancelled) setCloudApi(c?.deployed ?? null); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [bot.id, cloudDeployed]);
-
-  // sync the app/local cloud state to the API verdict: a real deployed agent
-  // (cloudApi true) records it once; the API saying NO agent (false) clears a
-  // stale local mark. build_mode is intentionally NOT a trigger.
-  useEffect(() => {
-    if (cloudApi === true && !cloudNotified.current && !cloudDeployed) {
-      cloudNotified.current = true;
-      onCloudDetected?.();
-    } else if (cloudApi === false && cloudDeployed) {
-      onCloudGone?.();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cloudApi, cloudDeployed]);
 
   const repoUrl = detail?.github_repo_url;
   // the bot's blueprint (build brief) lives in the repo; the "Spec" action links it
@@ -531,14 +496,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const latestDeploy = deploys[0] ?? null;
   const latestDeployFailed = deployFailed(latestDeploy);
   const latestDeployActive = deployActive(latestDeploy);
-  const connected = link?.status === 'connected';
-  // Show "Cloud agent" when the API confirms a deployed agent (GET /cloud-agent
-  // → deployed:true) OR this client just recorded a payment-confirmed deploy
-  // (cloudDeployed). The optimistic flag avoids the lag where the card stayed on
-  // "no agent" until refresh; the re-fetch above reconciles it to the API verdict.
-  // (build_mode is still NOT a trigger — that produced a fake "running" agent.)
-  const cloudActive = cloudApi === true || cloudDeployed;
-  const agentClient = (link?.connected_client || '').split('/')[0];
   const since = detail?.published_at || detail?.created_at;
   const uptime = since ? relTime(since, lang) : null;
   // the real go-live signal (NOT project.status): current_phase==='published'
@@ -567,14 +524,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // no bot_username there is nothing actually live, so the CTA must persist.
   // `!!detail` still gates the flash before the first poll lands.
   const suggestConnect = !isTaskManager && !!detail && !botUsername;
-  // onboarding sequence on the overview: assign a builder agent FIRST, then
-  // create the bot. `agentAssigned` gates the create step; `needsCreate` is the
-  // pre-bot state (either pipeline) that shows the two-step onboarding card.
-  const agentAssigned = cloudActive || connected;
+  // onboarding on the overview: `needsCreate` is the pre-bot state (either
+  // pipeline) that shows the single "Create bot" step. The platform's cloud
+  // agent is assigned automatically on bot creation — no agent-choice step.
   const needsCreate = needsBot || suggestConnect;
-  // awaiting_agent: a build is queued but can't start until a builder agent is
-  // assigned — it is NOT "building", so it must not read as a running build.
-  const awaitingAgent = wholeBot && bp?.stage === 'awaiting_agent';
   const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
   const testResult = latestTests(sys);
   const testsFailed = !!testResult && testResult.passed < testResult.total;
@@ -596,8 +549,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // and must not read as an eternally running build.
   const gapsLive = wholeBot && bp?.stage === 'live_with_gaps';
   const health: { label: string; color: string; bg: string; pulse: boolean; action?: { label: string; icon: string; onClick: () => void } } = (() => {
-    if (awaitingAgent) return { label: t('Waiting for a builder', 'Ожидает сборщика'), color: T.gold, bg: T.goldSoft, pulse: true,
-      action: { label: t('Assign', 'Назначить'), icon: 'chevRight', onClick: onManageAgents } };
     if (buildFailed || testsFailed || latestDeployFailed) return { label: t('Build needs a fix', 'Сборка требует правки'), color: T.red, bg: T.redSoft, pulse: false,
       action: { label: t('Fix in chat', 'Исправить в чате'), icon: 'chat', onClick: onOpenChat } };
     if (buildRunning || wholeBotBuilding) {
@@ -705,11 +656,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
         </button>
       )}
 
-      {/* Onboarding (either pipeline) before the bot exists: a two-step sequence —
-          (1) assign a builder agent, then (2) create the bot, which is locked
-          until an agent is assigned. Creating the bot publishes the project and
-          kicks off the build (see the create poll above). Replaces the old
-          spec-wizard "create bot" step now that there's no review screen. */}
+      {/* Onboarding (either pipeline) before the bot exists: a single step —
+          create the bot. Creating it publishes the project and kicks off the
+          build (see the create poll above); the platform's cloud agent is
+          assigned automatically on creation, so there's no agent-choice step. */}
       {needsCreate && (
         <Card T={T} pad={0} style={{ border: `1px solid ${T.accentBorder}` }}>
           {botInit ? (
@@ -721,40 +671,22 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
               </div>
             </div>
           ) : (
-            <>
-              {/* Step 1 — assign a builder agent (cloud or local) */}
-              <button onClick={onManageAgents} style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 11, background: agentAssigned ? hexA(T.green, 0.14) : T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {agentAssigned ? <TGIcon name="check" size={19} color={T.green} stroke={2.6} /> : <TGIcon name="cloud" size={19} color={T.accent} stroke={1.9} />}
+            <button
+              onClick={() => void createBot()}
+              disabled={creatingBot}
+              style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px', cursor: creatingBot ? 'default' : 'pointer' }}
+            >
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {creatingBot ? <Spinner color={T.accent} size={18} /> : <TGIcon name="send" size={19} color={T.accent} stroke={1.9} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>{t('Create bot', 'Создать бота')}</div>
+                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>
+                  {t('Set it up on Telegram — no BotFather or tokens. Your bot starts building right after.', 'Настройте в Telegram — без BotFather и токенов. Сборка начнётся сразу после.')}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 700, color: T.hint, letterSpacing: 0.4, textTransform: 'uppercase' }}>{t('Step 1', 'Шаг 1')}</div>
-                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text, marginTop: 1 }}>{t('Assign a builder agent', 'Назначьте агента-сборщика')}</div>
-                  <div style={{ fontFamily: T.font, fontSize: 12.5, color: agentAssigned ? T.green : T.hint, marginTop: 1 }}>
-                    {agentAssigned ? (cloudActive ? t('Cloud agent ready', 'Облачный агент готов') : `${agentClient || t('Local agent', 'Локальный агент')} ${t('connected', 'подключён')}`) : t('Cloud, or connect your own local agent', 'Облачный или подключите свой локальный агент')}
-                  </div>
-                </div>
-                {!agentAssigned && <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />}
-              </button>
-              {/* Step 2 — create the bot, locked until an agent is assigned */}
-              <button
-                onClick={() => { if (agentAssigned) void createBot(); }}
-                disabled={!agentAssigned || creatingBot}
-                style={{ ...btnReset, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, padding: '14px 16px', borderTop: `0.5px solid ${T.sep}`, cursor: agentAssigned ? 'pointer' : 'default', opacity: agentAssigned ? 1 : 0.55 }}
-              >
-                <div style={{ width: 38, height: 38, borderRadius: 11, background: agentAssigned ? T.accentSoft : T.nestedBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {creatingBot ? <Spinner color={T.accent} size={18} /> : <TGIcon name="send" size={19} color={agentAssigned ? T.accent : T.hint} stroke={1.9} />}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: T.font, fontSize: 10.5, fontWeight: 700, color: T.hint, letterSpacing: 0.4, textTransform: 'uppercase' }}>{t('Step 2', 'Шаг 2')}</div>
-                  <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: agentAssigned ? T.text : T.hint, marginTop: 1 }}>{t('Create the bot', 'Создайте бота')}</div>
-                  <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>
-                    {agentAssigned ? t('Set it up on Telegram — no BotFather or tokens', 'Настройте в Telegram — без BotFather и токенов') : t('Assign a builder agent first', 'Сначала назначьте агента-сборщика')}
-                  </div>
-                </div>
-                {agentAssigned && <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />}
-              </button>
-            </>
+              </div>
+              {!creatingBot && <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />}
+            </button>
           )}
           {createBotErr && (
             <div style={{ padding: '0 16px 12px', fontFamily: T.font, fontSize: 12.5, color: T.amber, lineHeight: '17px' }}>{createBotErr}</div>
@@ -765,19 +697,8 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
       {/* primary action — the Lovable-style feedback loop. While a build is in
           flight the change CTA is paused (the backend rejects changes mid-build)
           and there's nothing to show here — the build card below is the single
-          status surface. It returns the moment the bot is live again.
-          awaiting_agent is the exception: the build can't start until a builder
-          agent is assigned, so make that the action (one tap to the agents
-          sheet). */}
-      {awaitingAgent ? (
-        <button onClick={onManageAgents} style={{
-          ...btnReset, width: '100%', height: 54, borderRadius: 15, background: T.accent, color: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          fontFamily: T.font, fontSize: 17, fontWeight: 600, boxShadow: `0 6px 18px ${hexA(T.accent, 0.32)}`,
-        }}>
-          <TGIcon name="cloud" size={20} color="#fff" stroke={2} /> {t('Assign a builder agent', 'Назначить агента-сборщика')}
-        </button>
-      ) : buildRunning ? null : (() => {
+          status surface. It returns the moment the bot is live again. */}
+      {buildRunning ? null : (() => {
         const label = live ? t('Ask for change', 'Запросить изменение') : latestDeployFailed || testsFailed || buildFailed ? t('Fix with agent', 'Исправить с агентом') : t('Message agent', 'Написать агенту');
         return (
         <button onClick={onOpenChat} style={{
@@ -967,37 +888,6 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           <TGIcon name="chevRight" size={18} color={T.hint} stroke={2} />
         </button>
       )}
-
-      {/* Settings — public visibility · auto-updates · who builds it */}
-
-      {/* assigned builder agent summary → add-an-agent sheet (cloud or local) */}
-      <div>
-        <SectionLabel T={T}>{t('Builder', 'Сборщик')}</SectionLabel>
-        <button onClick={onManageAgents} style={{ ...btnReset, width: '100%', textAlign: 'left' }}>
-          <Card T={T} pad={0}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 11, background: T.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <TGIcon name={cloudActive ? 'cloud' : connected ? 'code' : 'plus'} size={19} color={T.accent} stroke={1.9} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>
-                  {cloudActive ? t('Cloud agent', 'Облачный агент') : connected ? t('Local agent', 'Локальный агент') : t('Builder agents', 'Агенты-сборщики')}
-                </div>
-                <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {cloudActive
-                    ? <><Dot color={T.green} size={6} /> {t('running', 'работает')}</>
-                    : connected
-                      ? <><Dot color={T.green} size={6} /> {agentClient || 'Claude'} · {t('online', 'онлайн')}</>
-                      : t('Optional cloud/local builder controls', 'Опциональные настройки облачного/локального сборщика')}
-                </div>
-              </div>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.accent }}>
-                {t('Manage', 'Управление')} <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />
-              </span>
-            </div>
-          </Card>
-        </button>
-      </div>
 
       {/* blueprint is reachable via the "Spec" action under the message button */}
 
