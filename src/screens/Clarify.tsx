@@ -12,8 +12,8 @@ import { useT } from '../i18n';
 // generation status driven by the real project lifecycle
 export type GenPhase = 'idle' | 'generating' | 'ready' | 'error';
 
-export function ClarifyScreen({ T, messages, thinking, status, gen, genError, onOption, onRetry, onRetrySend }: {
-  T: Theme; messages: ChatMessage[]; thinking: boolean;
+export function ClarifyScreen({ T, messages, thinking, thinkingStatus, status, gen, genError, onOption, onRetry, onRetrySend }: {
+  T: Theme; messages: ChatMessage[]; thinking: boolean; thinkingStatus?: string;
   status: string | null; // project status: draft | validating | ready_to_publish…
   gen: GenPhase; genError?: string | null;
   onOption: (label: string) => void; onRetry?: () => void;
@@ -65,7 +65,7 @@ export function ClarifyScreen({ T, messages, thinking, status, gen, genError, on
         </span>
       </div>
 
-      <ChatThread T={T} messages={messages} thinking={thinking}
+      <ChatThread T={T} messages={messages} thinking={thinking} thinkingStatus={thinkingStatus}
         onOption={handedOff ? undefined : onOption}
         onRetry={onRetrySend}
         pendingNote={handedOff && gen === 'generating' ? t('Brief accepted — generating your spec…', 'Бриф принят — генерируем спецификацию…') : null} />

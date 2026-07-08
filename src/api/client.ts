@@ -179,6 +179,9 @@ export interface ChatMessage {
 export interface ChatPoll {
   messages: ChatMessage[];
   ai_thinking?: boolean;
+  // a short phrase for what the assistant is doing right now (only while
+  // ai_thinking) — e.g. "Thinking it through…". Shown in the typing indicator.
+  ai_thinking_status?: string;
 }
 
 export interface ChatStarted {
