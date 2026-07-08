@@ -4,12 +4,33 @@
 // the CLI command, with a live waiting → connected status. Mints a code via
 // POST .../agent-link and polls GET .../agent-link until the CLI claims it.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Theme } from '../theme';
+import { Theme, btnReset } from '../theme';
 import { mintAgentLink, getAgentLink, getProject, Project } from '../api/client';
 import { TGIcon, Card, Dot, Spinner } from '../ui';
-import { firstPrompt, CopyCard, INSTALL_CMD } from '../screens/Agent';
 import { MyBot } from './MyBots';
 import { useT } from '../i18n';
+
+export const INSTALL_CMD = 'npx skills add agntdev/skills --all';
+
+// The first prompt the owner pastes into their agent — carries the one-time
+// connect code and the exact commands to run (install skills → connect → build).
+export function firstPrompt(project: Project | null, code: string): string {
+  // Without the project loaded we don't know the real slug — never bake a
+  // made-up one ("my-project") into a command the agent will actually run.
+  const slug = project?.slug || null;
+  return [
+    `Use the agnt-cli-builder skill to build my Telegram bot on agnt-gm.ai.`,
+    ``,
+    ...(slug ? [`Project: ${project?.name || slug} (${slug})`] : []),
+    `Connect code: ${code}`,
+    ``,
+    `1) If the agnt skills are missing, install them: ${INSTALL_CMD}`,
+    `2) Run: agnt connect ${code}`,
+    slug
+      ? `3) Then run \`agnt tasks ${slug}\` and build the tasks one by one as the skill instructs.`
+      : `3) Then run \`agnt tasks\` for the connected project and build the tasks one by one as the skill instructs.`,
+  ].join('\n');
+}
 
 function Label({ T, children }: { T: Theme; children: ReactNode }) {
   return (
@@ -119,5 +140,46 @@ export function ConnectAgent({ T, bot, onConnected }: { T: Theme; bot: MyBot; on
         <TGIcon name="clock" size={19} color={T.amber} stroke={1.9} />
       </Card>
     </div>
+  );
+}
+
+// A copyable code/prompt block: the text, plus a tap-to-copy footer that flips
+// to "Copied". Falls back to execCommand for older Telegram webviews.
+export function CopyCard({ T, text, mono, small }: { T: Theme; text: string; mono?: boolean; small?: boolean }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const flash = () => { setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  // legacy fallback for webviews without navigator.clipboard (older Telegram)
+  const legacyCopy = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { if (document.execCommand('copy')) flash(); } catch { /* give up quietly */ }
+    document.body.removeChild(ta);
+  };
+  // only show "Copied" when the copy actually landed
+  const copy = () => {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(flash).catch(legacyCopy);
+    } else {
+      legacyCopy();
+    }
+  };
+  return (
+    <Card T={T} pad={0} style={{ overflow: 'hidden' }}>
+      <div style={{
+        padding: '11px 14px', fontFamily: mono ? T.mono : T.font, fontSize: small ? 12 : 13.5,
+        lineHeight: small ? '18px' : '20px', color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+      }}>{text}</div>
+      <button onClick={copy} style={{
+        ...btnReset, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+        padding: '10px 14px', borderTop: `0.5px solid ${T.sep}`,
+        background: T.nestedBg,
+        color: copied ? T.green : T.accent, fontFamily: T.font, fontSize: 13.5, fontWeight: 600,
+      }}>
+        <TGIcon name={copied ? 'check' : 'copy'} size={16} color={copied ? T.green : T.accent} stroke={2} />
+        {copied ? t('Copied', 'Скопировано') : t('Copy', 'Копировать')}
+      </button>
+    </Card>
   );
 }

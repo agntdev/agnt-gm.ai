@@ -10,8 +10,7 @@ import {
 } from './telegram';
 import {
   ApiError, Project,
-  startChat, getProject, getProjectPipeline, publishProject, deleteProject,
-  BuildMode, setBuildModeApi,
+  startChat, getProject, getProjectPipeline, deleteProject,
   listProjectsByAgent, authTelegram, setAuthToken,
   getProjectBot, BotInitiate,
   setBotPaused,
@@ -23,13 +22,12 @@ import { useT } from './i18n';
 import { TGHeader, MainButton, TabBar, Tab, Spinner } from './ui';
 import { PromptScreen } from './screens/Prompt';
 import { ClarifyScreen, GenPhase } from './screens/Clarify';
-import { AgentScreen } from './screens/Agent';
 import { MyBotsList, BotChat, Composer, MyBot, botFromProject } from './manage/MyBots';
 import { DiscoveryPage, DiscoverBot, discoverBotFromProject } from './manage/Discovery';
 
 // Heavy manage-tab detail screens + overlays are reached only via navigation —
 // load them on demand (code-split) so they stay out of the initial bundle and
-// the mini-app opens faster. The build flow (prompt→clarify→spec→agent) and the
+// the mini-app opens faster. The build flow (prompt→clarify) and the
 // My Bots / Discover lists stay eager: they're the first paint and export
 // helpers used in App's data layer.
 const BotOverview = lazy(() => import('./manage/BotOverview').then(m => ({ default: m.BotOverview })));
@@ -42,27 +40,17 @@ const AgentManager = lazy(() => import('./manage/AgentManager').then(m => ({ def
 const ConnectAgent = lazy(() => import('./manage/ConnectAgent').then(m => ({ default: m.ConnectAgent })));
 const BlueprintScreen = lazy(() => import('./manage/Blueprint').then(m => ({ default: m.BlueprintScreen })));
 
-const STEPS = ['prompt', 'clarify', 'agent'] as const;
+const STEPS = ['prompt', 'clarify'] as const;
 type StepId = typeof STEPS[number];
 
 // [en, ru] pairs — translated at the single render site with t(...STAGE_SUB[id]).
 const STAGE_SUB: Record<StepId, [string, string]> = {
   prompt: ['New bot', 'Новый бот'], clarify: ['Tell me more', 'Расскажите подробнее'],
-  agent: ['Advanced builder', 'Продвинутый сборщик'],
 };
 
 const THEME_KEY = 'agentbot-theme';
 const PIPELINE_KEY = 'agentbot-pipeline';
 const HIDDEN_KEY = 'agentbot-hidden'; // deleted-bot ids (local fallback until the API has DELETE)
-const MODE_KEY = 'agentbot-buildmode'; // per-project build mode (until the API carries build_mode)
-
-function loadModes(): Record<string, BuildMode> {
-  try { return JSON.parse(localStorage.getItem(MODE_KEY) || '{}'); } catch { return {}; }
-}
-function modeFor(p: { id: string; build_mode?: string } | null): BuildMode {
-  if (p?.build_mode) return p.build_mode === 'local_agent' ? 'local' : 'platform';
-  return (p && loadModes()[p.id]) || 'platform';
-}
 
 function loadHidden(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]') as string[]); }
@@ -94,8 +82,6 @@ interface PipelineSnap {
   idea: string;
   botCreated: boolean;
   botUsername: string | null;
-  connected: boolean;
-  agentName: string | null;
 }
 
 function loadSnap(): PipelineSnap | null {
@@ -200,11 +186,6 @@ export default function App() {
   const [botCreated, setBotCreated] = useState(false);
   const [botInit, setBotInit] = useState<BotInitiate | null>(null); // deep link issued, waiting for Telegram
   const [botUsername, setBotUsername] = useState<string | null>(null); // the real managed bot
-  const [connected, setConnected] = useState(false);
-  const [buildMode, setBuildMode] = useState<BuildMode>('platform');
-  const [agentName, setAgentName] = useState<string | null>(null);
-  const [building, setBuilding] = useState(false); // "Start building" → publish in flight
-  const [buildError, setBuildError] = useState<string | null>(null);
 
   // My Bots tab
   const [myBots, setMyBots] = useState<MyBot[]>([]);
@@ -230,10 +211,6 @@ export default function App() {
   const goTo = (i: number, d = 1) => { setDir(d); setStep(i); };
   const back = () => goTo(Math.max(0, step - 1), -1);
 
-  // a stale "couldn't start the build" error shouldn't linger when you leave
-  // (or re-enter) the review/build step
-  useEffect(() => { if (id !== 'agent') setBuildError(null); }, [id]);
-
   // close the TaskDetail overlay whenever the open bot or view changes, so a
   // stale slug never bleeds across bots/screens
   useEffect(() => { setDetailTask(null); }, [manageBot, manageView]);
@@ -255,7 +232,6 @@ export default function App() {
       const d = await getProject(r.project_id).catch(() => null);
       setProject(d?.project ?? ({ id: r.project_id, slug: '', name: 'New bot', status: r.status || 'draft' } as Project));
       setGen('generating');
-      setBuildMode('platform');
       pollPlan(r.project_id);
       goTo(STEPS.indexOf('clarify'), 1);
     } catch (e) {
@@ -329,16 +305,6 @@ export default function App() {
     setTimeout(tick, 3000);
   };
 
-  // who builds: persisted per project; API informed when the endpoint exists
-  const chooseBuildMode = (m: BuildMode) => {
-    setBuildMode(m);
-    if (project) {
-      const all = loadModes(); all[project.id] = m;
-      localStorage.setItem(MODE_KEY, JSON.stringify(all));
-      setBuildModeApi(project.id, m).catch(() => { /* endpoint not shipped yet */ });
-    }
-  };
-
   // Managed-bot creation now lives on the bot overview page (BotOverview owns the
   // initiate + deep-link + poll flow). App only tracks botInit/botCreated for the
   // build-pipeline snapshot + the resume path below.
@@ -405,55 +371,45 @@ export default function App() {
     if (!project) return; // cleared explicitly on restart / edit-idea
     const snap: PipelineSnap = {
       projectId: project.id, step: id, idea,
-      botCreated, botUsername, connected, agentName,
+      botCreated, botUsername,
     };
     localStorage.setItem(PIPELINE_KEY, JSON.stringify(snap));
-  }, [project?.id, id, idea, botCreated, botUsername, connected, agentName]);
+  }, [project?.id, id, idea, botCreated, botUsername]);
 
   // resume an in-progress bot from My Bots. A published bot opens its
-  // overview; an unfinished one re-enters the build pipeline at the right
-  // step. `target` forces a build step, bypassing the published→overview shortcut.
-  const resumeBuild = async (projectId: string, target?: StepId) => {
+  // overview; an unfinished one re-enters the build pipeline at the right step.
+  const resumeBuild = async (projectId: string) => {
     const d = await getProject(projectId).catch(() => null);
     if (!d) return;
     const p = d.project;
     const published = p.status === 'live' || p.status === 'completed' || p.status === 'publishing';
-    if (published && !target) {
+    if (published) {
       cancelPoll.current();
       setManageBot(p.id); setManageView('overview'); setDir(1); setTab('manage');
       routeReady.current = true;
       void refreshMyBots(p.id);
       return;
     }
-    // task_manager projects auto-decompose — they have no spec/agent/publish
-    // wizard. Reopening one mid-build drops onto the living board (the fresh-chat
+    // task_manager projects auto-decompose — they have no spec/publish wizard.
+    // Reopening one mid-build drops onto the living board (the fresh-chat
     // handoff), not the wizard (which would 409 on publish). Detect via the same
     // signals as pollPlan: build_pipeline, the 'generating' proxy, else a /dag probe.
-    if (!target) {
-      const tm = p.build_pipeline === 'task_manager'
-        || p.status === 'generating'
-        || (await getProjectPipeline(p.id)) === 'task_manager';
-      if (tm) { handoffTaskManager(p); routeReady.current = true; return; }
-    }
+    const tm = p.build_pipeline === 'task_manager'
+      || p.status === 'generating'
+      || (await getProjectPipeline(p.id)) === 'task_manager';
+    if (tm) { handoffTaskManager(p); routeReady.current = true; return; }
     // re-enter the build pipeline (phase projects)
     setDir(1); setTab('build');
     cancelPoll.current();
     resetPipeline();
     setProject(p);
-    setBuildMode(modeFor(p));
     routeReady.current = true;
     const snap = loadSnap();
     const inFlight = p.status === 'draft' || p.status === 'validating';
     if (inFlight) { setGen('generating'); pollPlan(p.id); }
     else setGen('ready');
 
-    if (target) {
-      setIdea(snap?.projectId === p.id ? snap.idea : p.name);
-      if (snap && snap.projectId === p.id) { setConnected(snap.connected); setAgentName(snap.agentName); }
-      const bot = await getProjectBot(p.id).catch(() => null);
-      if (bot?.bot_username) { setBotUsername(bot.bot_username); setBotCreated(true); setBotInit({}); }
-      goTo(STEPS.indexOf(target), 1);
-    } else if (p.status === 'draft') {
+    if (p.status === 'draft') {
       // still clarifying — the chat history reloads from the server
       setIdea(snap?.projectId === p.id ? snap.idea : p.name);
       goTo(STEPS.indexOf('clarify'), 1);
@@ -461,7 +417,6 @@ export default function App() {
       // same device — restore the exact state
       setIdea(snap.idea);
       setBotUsername(snap.botUsername); setBotCreated(snap.botCreated || !!snap.botUsername);
-      setConnected(snap.connected); setAgentName(snap.agentName);
       // only the early build-pipeline steps live on the build tab now; anything
       // past clarify (the old spec/agent steps) is driven from the bot overview.
       if (snap.step === 'prompt' || snap.step === 'clarify') goTo(STEPS.indexOf(snap.step), 1);
@@ -476,56 +431,6 @@ export default function App() {
       const bot = await getProjectBot(p.id).catch(() => null);
       if (bot?.bot_username) { setBotUsername(bot.bot_username); setBotCreated(true); setBotInit({}); }
       handoffToOverview(p);
-    }
-  };
-
-  // ── "Start building": publish the repo, then land on the bot's overview ──
-  // Publishing creates the GitHub repo + the plan/tasks the platform (or the
-  // owner's agent) builds. Everything after is watched on the overview page.
-  const startBuild = async () => {
-    if (!project || building) return;
-    setBuilding(true); setBuildError(null);
-    setBuildModeApi(project.id, buildMode).catch(() => { /* endpoint not shipped yet */ });
-    try {
-      let pub: Project = project;
-      // task_manager projects auto-build (draft→validating→generating→live) with
-      // NO manual publish step — only the old phase flow calls publishProject.
-      // Skip it when the project is task_manager or already building/published;
-      // otherwise a publish 409s ("project not ready_to_publish, status: generating").
-      const BUILDING = new Set(['live', 'publishing', 'completed', 'generating']);
-      const alreadyBuilding = BUILDING.has(project.status) || project.build_pipeline === 'task_manager';
-      if (!alreadyBuilding) {
-        try {
-          const r = await publishProject(project.id);
-          pub = r.project ?? { ...project, status: 'live', github_repo_url: r.github_repo_url };
-        } catch (e) {
-          // re-fetch: if it's already moving forward (incl. task_manager's
-          // auto-build), go watch it on the overview instead of erroring.
-          const d = await getProject(project.id).catch(() => null);
-          const s = d?.project.status;
-          if (s && (BUILDING.has(s) || s === 'validating')) pub = d!.project;
-          else throw e;
-        }
-      }
-      const pid = pub.id;
-      // a cloud (platform) build means the platform's cloud agent already owns
-      // this bot — register it so the overview shows "Cloud agent" instead of
-      // prompting "Add an agent" for a builder the owner already chose
-      if (buildMode === 'platform') markCloudDeployed(pid);
-      // surface the bot on the overview immediately (before the list refresh lands)
-      setMyBots(prev => prev.some(b => b.id === pid) ? prev : [botFromProject(pub), ...prev]);
-      // reset the build tab and jump to the bot's overview
-      resetPipeline();
-      localStorage.removeItem(PIPELINE_KEY);
-      setIdea(''); setChanged(false); setStep(0);
-      setManageBot(pid); setManageView('overview'); setDir(1); setTab('manage');
-      void refreshMyBots(pid);
-    } catch (e) {
-      setBuildError(e instanceof ApiError
-        ? `${t("Couldn't start the build", 'Не удалось запустить сборку')} — ${e.message}${e.details ? ` (${e.details})` : ''}`
-        : t("Couldn't start the build — network error. Tap to retry.", 'Не удалось запустить сборку — ошибка сети. Нажмите, чтобы повторить.'));
-    } finally {
-      setBuilding(false);
     }
   };
 
@@ -662,8 +567,6 @@ export default function App() {
     setProject(null); setGen('idle'); setGenError(null); setChatDraft('');
     setBotCreated(false);
     setBotInit(null); setBotUsername(null);
-    setBuilding(false); setBuildError(null);
-    setConnected(false); setAgentName(null);
   };
 
   // Plan ready → hand straight off to the bot's OVERVIEW page (no review screen).
@@ -694,17 +597,6 @@ export default function App() {
       // inline "generating…" loader, and we auto-advance to the bot overview
       // when the plan is ready (see the effect above).
       case 'clarify': return null;
-      case 'agent': {
-        const ready = buildMode === 'platform' || connected;
-        return {
-          label: building
-            ? t('Starting…', 'Запуск…')
-            : ready ? t('Start building', 'Начать сборку') : t('Connecting…', 'Подключение…'),
-          disabled: !ready || building,
-          busy: building || (buildMode === 'local' && !connected),
-          onClick: () => void startBuild(),
-        };
-      }
     }
   })();
 
@@ -744,17 +636,6 @@ export default function App() {
           onOption={(label) => clarifyChat.send(label)}
           onRetry={() => { if (project) { setGen('generating'); setGenError(null); pollPlan(project.id); } }}
           onRetrySend={clarifyChat.retry} />
-      );
-      case 'agent': return (
-        <AgentScreen T={T} connected={connected} agentName={agentName} project={project}
-          mode={buildMode} onMode={chooseBuildMode} error={buildError}
-          onConnected={(client) => {
-            setAgentName((client || 'Claude').split('/')[0]);
-            setConnected(true);
-            // agent is live — no extra tap: publish and go straight to the overview
-            // (on failure startBuild surfaces the error and the manual button returns)
-            void startBuild();
-          }} />
       );
     }
   })();
@@ -917,20 +798,9 @@ export default function App() {
         <Suspense fallback={null}>
         <AgentManager T={T} project={{ id: activeBot.id, name: activeBot.name }}
           cloudDeployed={cloudBots.has(activeBot.id)}
-          onCloudDeployed={() => {
-            markCloudDeployed(activeBot.id);
-            // cloud agent ⇒ PLATFORM mode, so the build-mode gate lets the
-            // platform's agent pick up tasks (symmetric with the local path below)
-            const all = loadModes(); all[activeBot.id] = 'platform';
-            localStorage.setItem(MODE_KEY, JSON.stringify(all));
-            setBuildModeApi(activeBot.id, 'platform').catch(() => { /* PUT /build-mode not shipped yet */ });
-          }}
+          onCloudDeployed={() => markCloudDeployed(activeBot.id)}
           onConnectNew={() => {
             setAgentSheet(false); setDir(1);
-            // local agent ⇒ mark the project LOCAL so the platform defers to it
-            const all = loadModes(); all[activeBot.id] = 'local';
-            localStorage.setItem(MODE_KEY, JSON.stringify(all));
-            setBuildModeApi(activeBot.id, 'local').catch(() => { /* endpoint not shipped yet */ });
             // focused connect screen — just the code + CLI command
             setManageView('connect');
           }}
