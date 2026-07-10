@@ -528,6 +528,10 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   // pipeline) that shows the single "Create bot" step. The platform's cloud
   // agent is assigned automatically on bot creation — no agent-choice step.
   const needsCreate = needsBot || suggestConnect;
+  // whole_bot build that CAN'T start because no bot is connected (→ no cloud agent).
+  // The ~5% "building" ring/health is a lie here — nothing runs until the owner
+  // connects a bot. Surface the create-bot CTA instead (the reported stuck-at-5% bug).
+  const awaitingBotConnect = wholeBot && bp?.stage === 'awaiting_agent';
   const decomposing = isTaskManager && tasks.length === 0; // DAG still being built
   const testResult = latestTests(sys);
   const testsFailed = !!testResult && testResult.passed < testResult.total;
@@ -535,6 +539,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
     if (pausedEffective) return { label: `${t('Paused', 'На паузе')} · ${bot.version}`, tone: 'neutral' as const, color: T.hint, pulse: false };
     if (live) return { label: `${t('Live', 'В эфире')}${uptime ? ` · ${t('up', 'работает')} ${uptime}` : ''} · ${bot.version}`, tone: 'green' as const, color: T.green, pulse: false };
     if (needsBot) return { label: t('Create bot to continue', 'Создайте бота, чтобы продолжить'), tone: 'accent' as const, color: T.accent, pulse: true };
+    if (awaitingBotConnect) return { label: t('Connect your bot', 'Привяжите бота'), tone: 'accent' as const, color: T.accent, pulse: true };
     if (latestDeployFailed || testsFailed || buildFailed) return { label: t('Needs a fix', 'Нужна правка'), tone: 'neutral' as const, color: T.red, pulse: false };
     if (blocked.items.length > 0) return { label: t('Needs you', 'Требуется ваше внимание'), tone: 'accent' as const, color: T.accent, pulse: true };
     if (latestDeployActive) return { label: t('Deploying', 'Деплой'), tone: 'accent' as const, color: T.accent, pulse: true };
@@ -551,6 +556,9 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
   const health: { label: string; color: string; bg: string; pulse: boolean; action?: { label: string; icon: string; onClick: () => void } } = (() => {
     if (buildFailed || testsFailed || latestDeployFailed) return { label: t('Build needs a fix', 'Сборка требует правки'), color: T.red, bg: T.redSoft, pulse: false,
       action: { label: t('Fix in chat', 'Исправить в чате'), icon: 'chat', onClick: onOpenChat } };
+    // Nothing is actually building — the bot isn't connected. Don't show a fake %.
+    if (awaitingBotConnect) return { label: t('Connect your bot to start', 'Привяжите бота, чтобы начать'), color: T.accent, bg: T.accentSoft, pulse: true,
+      action: { label: t('Create bot', 'Создать бота'), icon: 'send', onClick: () => void createBot() } };
     if (buildRunning || wholeBotBuilding) {
       const p = bp ? Math.max(3, Math.min(100, bp.percent)) : null;
       return { label: `${t('Building your bot', 'Собираю бота')}${p != null ? ` · ${p}%` : '…'}`, color: T.gold, bg: T.goldSoft, pulse: true };
@@ -682,7 +690,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>{t('Create bot', 'Создать бота')}</div>
                 <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>
-                  {t('Set it up on Telegram — no BotFather or tokens. Your bot starts building right after.', 'Настройте в Telegram — без BotFather и токенов. Сборка начнётся сразу после.')}
+                  {t('Nothing builds or goes live until you connect it. Set it up on Telegram — no BotFather or tokens; building starts right after.', 'Пока не привяжете бота — ничего не собирается и не запускается. Настройте в Telegram, без BotFather и токенов; сборка начнётся сразу после.')}
                 </div>
               </div>
               {!creatingBot && <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />}
@@ -793,7 +801,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
           Test→Live stepper is dropped to avoid stacking three redundant status
           indicators. The stepper stays for task_manager/phase bots, which have no
           build card. */}
-      {(!wholeBot || (buildRunning && bp)) && (
+      {(!wholeBot || (buildRunning && bp)) && !awaitingBotConnect && (
         <div>
           <SectionLabel T={T}>{t('Build progress', 'Прогресс сборки')}</SectionLabel>
           {wholeBot && bp
