@@ -690,7 +690,7 @@ export function BotOverview({ T, bot, messages, onOpenChat, onOpenBoard, onOpenI
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.text }}>{t('Create bot', 'Создать бота')}</div>
                 <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1 }}>
-                  {t('Nothing builds or goes live until you connect it. Set it up on Telegram — no BotFather or tokens; building starts right after.', 'Пока не привяжете бота — ничего не собирается и не запускается. Настройте в Telegram, без BotFather и токенов; сборка начнётся сразу после.')}
+                  {t('Your bot is building now — connect a Telegram bot to put it live when it’s ready. No BotFather or tokens.', 'Бот уже собирается — привяжите Telegram-бота, чтобы запустить его, когда будет готов. Без BotFather и токенов.')}
                 </div>
               </div>
               {!creatingBot && <TGIcon name="chevRight" size={16} color={T.accent} stroke={2} />}
