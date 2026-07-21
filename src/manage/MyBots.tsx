@@ -53,8 +53,15 @@ function previewText(lang: Lang, preview: string): string {
 
 export function botFromProject(p: Project): MyBot {
   const isTaskManager = p.build_pipeline ? p.build_pipeline === 'task_manager' : undefined;
+  // Phase is authoritative when the API provides it: a bot is "live" only once
+  // its build reaches published (or bot_go_live_at is stamped).
   const runtimeLive = p.current_phase === 'published' || !!p.bot_go_live_at;
-  const legacyLive = isTaskManager !== true && (p.status === 'live' || p.status === 'completed');
+  // legacyLive is ONLY for old rows that carry no current_phase, where the
+  // lifecycle status was the sole go-live signal. It must NOT fire when a phase
+  // is present: whole_bot sets status='live' EARLY (at general→building), so a
+  // still-building bot would otherwise show a green "Live" badge over a bot that
+  // has not gone live (observed: traty — status='live', current_phase='building').
+  const legacyLive = !p.current_phase && isTaskManager !== true && (p.status === 'live' || p.status === 'completed');
   const deployed = runtimeLive || legacyLive;
   const desc = p.short_description || p.goal_of_project || (deployed
     ? DEPLOYED_FALLBACK
@@ -132,7 +139,10 @@ export function MyBotsList({ T, bots, loading, authed, onOpen, onBuildFirst }: {
 
       <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {bots.map(bot => {
-          const liveB = bot.status === 'live';
+          // Use the derived deploy flag, NOT the raw lifecycle status: a building
+          // whole_bot carries status='live' but inProgress=true, and must show its
+          // build state (gold "Building…"), not a green "Live".
+          const liveB = !bot.inProgress;
           return (
             <button key={bot.id} onClick={() => onOpen(bot.id)} style={{
               ...btnReset, textAlign: 'left', width: '100%', display: 'flex', alignItems: 'center', gap: 13,
