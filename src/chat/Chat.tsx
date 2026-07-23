@@ -7,6 +7,7 @@ import { Theme } from '../theme';
 import { ChatMessage, getChatMessages, sendChatMessage } from '../api/client';
 import { Bubble, TypingBubble, Spinner, EventCard, QuickReplies, TGIcon } from '../ui';
 import { ChatMarkdown } from './markdown';
+import { pendingEnvAsk, maskSecret } from './env';
 import { useT } from '../i18n';
 
 // adaptive polling: tight while an AI turn is running (the answer can land
@@ -53,9 +54,13 @@ export function useChat(projectId: string | null, active: boolean, focused = tru
           incoming.forEach(m => seen.current.add(m.id));
           cursor.current = Math.max(cursor.current, ...incoming.map(m => m.id));
           setMessages(prev => {
-            // drop optimistic copies (negative ids) the server has now echoed
+            // Drop optimistic copies (negative ids) the server has now echoed.
+            // Normally that's a content match — but an answer to an env question
+            // is stored MASKED (and, when rejected, not stored at all), so its
+            // echo can never match. Anything arriving from the server means that
+            // turn landed, so drop env echoes on progress instead of on match.
             const echoed = new Set(incoming.filter(m => m.role === 'owner').map(m => m.content));
-            return [...prev.filter(m => !(m.id < 0 && echoed.has(m.content))), ...incoming];
+            return [...prev.filter(m => !(m.id < 0 && (m.envEcho || echoed.has(m.content)))), ...incoming];
           });
         }
         busy = !!r.ai_thinking;
@@ -73,7 +78,19 @@ export function useChat(projectId: string | null, active: boolean, focused = tru
     const t = text.trim();
     if (!projectId || !t) return;
     const tempId = -Date.now();
-    setMessages(prev => [...prev, { id: tempId, role: 'owner', content: t }]); // optimistic
+    // While the chat is asking for one of the bot's settings, THIS message is
+    // that value. The server never stores it as typed — only a mask — so the
+    // optimistic copy must not render it either: otherwise the secret sits in
+    // the thread, in the clear, for the rest of the session.
+    const ask = pendingEnvAsk(messages);
+    // …unless they tapped one of the question's own chips ("Skip for now", "Use
+    // my Telegram ID"): that's a button, not a value, and masking it would flash
+    // "••••now" back at the owner.
+    const tapped = !!activeOptions(messages)?.options.includes(t);
+    const optimistic: ChatMessage = ask?.secret && !tapped
+      ? { id: tempId, role: 'owner', content: maskSecret(t), envEcho: true, raw: t }
+      : { id: tempId, role: 'owner', content: t, envEcho: !!ask };
+    setMessages(prev => [...prev, optimistic]);
     setThinking(true);
     // poll immediately once the server accepts — don't wait out the interval
     sendChatMessage(projectId, t)
@@ -86,9 +103,12 @@ export function useChat(projectId: string | null, active: boolean, focused = tru
       });
   };
 
+  // Retry re-sends what was TYPED, not what is displayed — for a masked env
+  // answer those differ, and re-sending "••••1234" would store the mask as the
+  // bot's API key.
   const retry = (m: ChatMessage) => {
     setMessages(prev => prev.filter(x => x.id !== m.id));
-    send(m.content);
+    send(m.raw ?? m.content);
   };
 
   return { messages, thinking, thinkingStatus, send, retry };
@@ -180,12 +200,18 @@ export function ChatThread({ T, messages, thinking, thinkingStatus, onOption, on
 }) {
   const t = useT();
   const opts = onOption ? activeOptions(messages) : null;
+  // The one open env question, if any — see the caption below.
+  const envAsk = pendingEnvAsk(messages);
   return (
     <>
       {messages.map(m => {
         const data = m.data as { kind?: string } | undefined;
         if (data?.kind === 'action' || m.role === 'system') return <EventRow key={m.id} T={T} msg={m} />;
         const own = m.role === 'owner';
+        // The OPEN question for a secret says where the value goes, before it's
+        // typed — this is the one place in the chat whose answer isn't kept.
+        // Only the open one: on an answered question the note is just noise.
+        const secretAsk = !!envAsk?.secret && envAsk.msgId === m.id;
         return (
           <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, opacity: m.failed ? 0.65 : 1 }}>
             <Bubble T={T} from={own ? 'user' : 'bot'} animateIn={m.id < 0}>
@@ -193,6 +219,15 @@ export function ChatThread({ T, messages, thinking, thinkingStatus, onOption, on
                 ? <span style={{ whiteSpace: 'pre-line' }}>{m.content}</span>
                 : <ChatMarkdown T={T} text={m.content} />}
             </Bubble>
+            {secretAsk && (
+              <span style={{
+                alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 4px',
+                fontFamily: T.font, fontSize: 12, color: T.hint,
+              }}>
+                <TGIcon name="lock" size={12} color={T.hint} stroke={2} />
+                {t('Stored encrypted · never shown in this chat', 'Хранится в зашифрованном виде · в чате не показывается')}
+              </span>
+            )}
             {m.failed && (
               <button onClick={onRetry ? () => onRetry(m) : undefined} style={{
                 alignSelf: 'flex-end', display: 'inline-flex', alignItems: 'center', gap: 5,

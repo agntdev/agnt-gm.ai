@@ -19,6 +19,7 @@ import {
   setDiscoverable,
 } from './api/client';
 import { useChat } from './chat/Chat';
+import { pendingEnvAsk, EnvAsk } from './chat/env';
 import { useT } from './i18n';
 import { TGHeader, MainButton, TabBar, Tab, Spinner } from './ui';
 import { PromptScreen } from './screens/Prompt';
@@ -233,6 +234,15 @@ export default function App() {
   // active across all bot views (the overview reads its activity feed), but only
   // FAST-polls when the chat is the focused view — elsewhere it ticks slowly.
   const manageChat = useChat(manageBot, tab === 'manage' && !!manageBot, manageView === 'chat');
+  // An open env question turns the composer into a masked field: the next
+  // message is one of the bot's settings, not a sentence to the assistant.
+  const clarifyEnvAsk = pendingEnvAsk(clarifyChat.messages);
+  const manageEnvAsk = pendingEnvAsk(manageChat.messages);
+  // Name the key in the placeholder — with the field masked, that label is the
+  // only thing telling the owner WHICH setting they're pasting.
+  const envPlaceholder = (ask: EnvAsk) => (ask.key
+    ? t(`Paste ${ask.key}…`, `Вставьте ${ask.key}…`)
+    : t('Paste the value…', 'Вставьте значение…'));
 
   // "Start generating": create the draft project from the idea and enter the chat
   const startChatFlow = async () => {
@@ -799,12 +809,14 @@ export default function App() {
     ? null // the discover feed has no footer (no stray build CTA / composer)
     : tab === 'manage'
     ? (activeBot && manageView === 'chat'
-      ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false} />
+      ? <Composer T={T} draft={draft} onChange={setDraft} onSend={sendUpdate} disabled={false}
+          secret={!!manageEnvAsk?.secret} placeholder={manageEnvAsk ? envPlaceholder(manageEnvAsk) : undefined} />
       : null)
     : drafting
     ? <Composer T={T} draft={chatDraft} onChange={setChatDraft}
         onSend={() => { const t = chatDraft.trim(); if (t) { clarifyChat.send(t); setChatDraft(''); } }}
-        disabled={false} placeholder={t('Type your answer…', 'Введите ответ…')} />
+        disabled={false} secret={!!clarifyEnvAsk?.secret}
+        placeholder={clarifyEnvAsk ? envPlaceholder(clarifyEnvAsk) : t('Type your answer…', 'Введите ответ…')} />
     : id === 'prompt'
     ? null // prompt step renders its "Start generating" button inline (inside the textarea card)
     : (mainBtn ? <MainButton T={T} {...mainBtn} /> : null);

@@ -241,26 +241,43 @@ export function BotChat({ T, bot, messages, thinking, thinkingStatus, loading, s
 }
 
 // ── composer (sits above the tab bar) ─────────────────────────
-export function Composer({ T, draft, onChange, onSend, disabled, placeholder }: {
+export function Composer({ T, draft, onChange, onSend, disabled, placeholder, secret }: {
   T: Theme; draft: string; onChange: (v: string) => void; onSend: () => void; disabled: boolean;
   placeholder?: string;
+  // secret: the chat is asking for one of the bot's settings (an API key, a
+  // token). Swap the textarea for a masked single-line field so the value isn't
+  // sitting in the clear on a phone screen, and keep the browser's autofill,
+  // autocorrect and spellcheck away from it.
+  secret?: boolean;
 }) {
   const t = useT();
   const can = !!draft.trim() && !disabled;
+  const field: React.CSSProperties = {
+    flex: 1, resize: 'none', maxHeight: 96, minHeight: 42, padding: '11px 15px', borderRadius: 21,
+    background: T.inputBg, border: `1px solid ${T.sep}`, color: T.text,
+    fontFamily: T.font, fontSize: 15, lineHeight: '20px', outline: 'none', boxSizing: 'border-box',
+  };
   return (
     <div style={{ padding: '9px 10px 11px', background: T.headerBg, borderTop: `1px solid ${T.sep}`, position: 'relative', zIndex: 5 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+        {secret ? (
+          <input
+            type="password"
+            value={draft}
+            onChange={e => onChange(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (can) onSend(); } }}
+            placeholder={placeholder || t('Paste the value…', 'Вставьте значение…')}
+            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+            style={field} />
+        ) : (
         <textarea
           value={draft}
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (can) onSend(); } }}
           placeholder={placeholder || (disabled ? t('Shipping your update…', 'Отправляем обновление…') : t('Describe an update to ship…', 'Опишите обновление для отправки…'))}
           rows={1}
-          style={{
-            flex: 1, resize: 'none', maxHeight: 96, minHeight: 42, padding: '11px 15px', borderRadius: 21,
-            background: T.inputBg, border: `1px solid ${T.sep}`, color: T.text,
-            fontFamily: T.font, fontSize: 15, lineHeight: '20px', outline: 'none', boxSizing: 'border-box',
-          }} />
+          style={field} />
+        )}
         <button onClick={can ? onSend : undefined} style={{
           ...btnReset, width: 42, height: 42, borderRadius: 999, flexShrink: 0,
           background: can ? T.accent : T.nestedBg,
