@@ -441,20 +441,67 @@ export function EventCard({ T, palette = 'neutral', icon, title, sub, action, on
   );
 }
 
-// Terracotta bordered quick-reply chips (wrap); tapping sends the label.
-export function QuickReplies({ T, options, onPick }: {
-  T: Theme; options: string[]; onPick: (label: string) => void;
+// Terracotta bordered quick-reply chips (wrap).
+//   single (default): tapping a chip sends that label immediately.
+//   multi:            chips toggle and a confirm button sends them comma-joined.
+// Either way these are only SHORTCUTS — the composer stays live below, so the
+// owner can always type a different answer instead of using them.
+export function QuickReplies({ T, options, onPick, multi = false }: {
+  T: Theme; options: string[]; onPick: (label: string) => void; multi?: boolean;
 }) {
+  const t = useT();
+  const [picked, setPicked] = React.useState<string[]>([]);
+
+  const chip = (o: string, on: boolean, onClick: () => void) => (
+    <button key={o} onClick={onClick} style={{
+      ...btnReset, padding: '11px 18px', borderRadius: 999,
+      display: 'inline-flex', alignItems: 'center', gap: 7,
+      background: on ? T.accent : '#FBF3EC',
+      color: on ? T.accentText : T.accentPressed,
+      border: `1.5px solid ${T.accent}`,
+      fontFamily: T.font, fontSize: 15, fontWeight: 600, letterSpacing: -0.1,
+      transition: 'transform .1s ease, background .15s ease, color .15s ease',
+    }}>
+      {multi && <TGIcon name={on ? 'check' : 'plus'} size={15} color={on ? T.accentText : T.accent} stroke={2.4} />}
+      {o}
+    </button>
+  );
+
+  if (!multi) {
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {options.map(o => chip(o, false, () => onPick(o)))}
+      </div>
+    );
+  }
+
+  const toggle = (o: string) =>
+    setPicked(p => (p.includes(o) ? p.filter(x => x !== o) : [...p, o]));
+
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-      {options.map(o => (
-        <button key={o} onClick={() => onPick(o)} style={{
-          ...btnReset, padding: '11px 18px', borderRadius: 999,
-          background: '#FBF3EC', color: T.accentPressed, border: `1.5px solid ${T.accent}`,
-          fontFamily: T.font, fontSize: 15, fontWeight: 600, letterSpacing: -0.1,
-          transition: 'transform .1s ease',
-        }}>{o}</button>
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, padding: '0 2px' }}>
+        {t('Pick any that apply', 'Выберите любые подходящие')}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {options.map(o => chip(o, picked.includes(o), () => toggle(o)))}
+      </div>
+      <button
+        onClick={() => { if (picked.length) onPick(picked.join(', ')); }}
+        disabled={picked.length === 0}
+        style={{
+          ...btnReset, alignSelf: 'flex-start', marginTop: 2,
+          padding: '10px 18px', borderRadius: 999,
+          display: 'inline-flex', alignItems: 'center', gap: 7,
+          background: picked.length ? T.accent : T.accentSoft,
+          color: picked.length ? T.accentText : T.hint,
+          cursor: picked.length ? 'pointer' : 'default',
+          fontFamily: T.font, fontSize: 14.5, fontWeight: 600, letterSpacing: -0.1,
+          transition: 'background .15s ease, color .15s ease',
+        }}>
+        <TGIcon name="arrowUp" size={15} color={picked.length ? T.accentText : T.hint} stroke={2.4} />
+        {picked.length ? `${t('Send', 'Отправить')} · ${picked.length}` : t('Send', 'Отправить')}
+      </button>
     </div>
   );
 }
