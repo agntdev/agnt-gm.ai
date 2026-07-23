@@ -174,6 +174,13 @@ export interface ChatMessage {
   created_at?: string;
   // client-side only: an optimistic message whose POST failed (retryable)
   failed?: boolean;
+  // client-side only: this optimistic copy answers an env question, so the
+  // server's version will NOT match it by content (that one is masked — or
+  // absent, when the value was rejected). Dropped on any server progress.
+  envEcho?: boolean;
+  // client-side only: what the owner actually typed, when `content` is a mask.
+  // Never rendered; exists so a retry re-sends the value, not its placeholder.
+  raw?: string;
 }
 
 export interface ChatPoll {
