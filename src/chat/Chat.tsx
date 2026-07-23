@@ -95,12 +95,17 @@ export function useChat(projectId: string | null, active: boolean, focused = tru
 }
 
 // quick replies belong to the LAST assistant message with no owner reply after it
-export function activeOptions(messages: ChatMessage[]): { msgId: number; options: string[] } | null {
+export function activeOptions(messages: ChatMessage[]): { msgId: number; options: string[]; multi: boolean } | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role === 'owner') return null;
     if (m.role === 'assistant') {
-      return m.options?.length ? { msgId: m.id, options: m.options } : null;
+      if (!m.options?.length) return null;
+      // multi_select rides in the message's generic `data` payload (no schema
+      // change server-side). Absent on every question written before this
+      // shipped → single-select, exactly as before. Needs 2+ chips to combine.
+      const multi = !!(m.data as { multi_select?: boolean } | undefined)?.multi_select && m.options.length > 1;
+      return { msgId: m.id, options: m.options, multi };
     }
   }
   return null;
@@ -205,7 +210,7 @@ export function ChatThread({ T, messages, thinking, thinkingStatus, onOption, on
       {thinking && <TypingBubble T={T} status={thinkingStatus} />}
       {/* quick replies live at the foot of the feed, terracotta bordered chips */}
       {opts && !thinking && onOption && (
-        <QuickReplies T={T} options={opts.options} onPick={onOption} />
+        <QuickReplies T={T} options={opts.options} onPick={onOption} multi={opts.multi} />
       )}
       {pendingNote && !thinking && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, alignSelf: 'center', padding: '4px 0' }}>
