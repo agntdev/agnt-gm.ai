@@ -803,8 +803,14 @@ export default function App() {
   // ── footer (above the tab bar) ──
   // clarify-while-drafting uses the chat composer; once the brief is accepted
   // (status leaves draft) the MainButton takes over.
+  //
+  // …with one exception: an OPEN env question needs an answer, so the composer
+  // must survive a system message that happens to land beside it. Without this
+  // the owner would be looking at a question with no way to answer it — and the
+  // stage swallows their next message, so there is no way around it either.
   const drafting = id === 'clarify' && project?.status === 'draft' && gen !== 'error'
-    && !clarifyChat.messages.some(m => m.role === 'system'); // system msg = brief locked, even before the status poll catches up
+    && (!clarifyChat.messages.some(m => m.role === 'system') // system msg = brief locked, even before the status poll catches up
+      || !!clarifyEnvAsk);
   const footer = tab === 'discover'
     ? null // the discover feed has no footer (no stray build CTA / composer)
     : tab === 'manage'
