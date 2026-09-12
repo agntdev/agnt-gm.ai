@@ -446,3 +446,11 @@ export async function getBlueprint(idOrSlug: string): Promise<Blueprint | null> 
     throw e;
   }
 }
+
+export interface DeployPayment { payment_required: boolean; star_cost: number; paid?: boolean; billing?: string; confirming?: boolean }
+export function getDeployPayment(id: string): Promise<DeployPayment> {
+ return request('GET', `/builder/projects/${encodeURIComponent(id)}/deploy/payment`);
+}
+export function createDeployInvoice(id: string): Promise<DeployPayment & { invoice_url?: string }> {
+ return request('POST', `/builder/projects/${encodeURIComponent(id)}/deploy/invoice`, { terms_version: '2026-09-12' });
+}

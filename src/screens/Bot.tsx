@@ -6,14 +6,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Theme, btnReset, hexA, toneFor } from '../theme';
 import {
-  ApiError, Project, ProjectBot, BotAnalytics, Deployment, humanError,
+  DeployPayment, getDeployPayment, createDeployInvoice, ApiError, Project, ProjectBot, BotAnalytics, Deployment, humanError,
   getProject, getProjectBot, getBotAnalytics, listDeployments, deployFailed,
   initiateBot, botIsLive, setBotPaused, setDiscoverable, regenerateBotAvatar, retryDeploy, rebuildBot, deleteProject,
 } from '../api/client';
 import { useChat, ChatThread } from '../chat/Chat';
 import { Composer, isDraftSlug } from '../manage/MyBots';
 import { UsageCard } from '../manage/Usage';
-import { openTgLink, haptic } from '../telegram';
+import { openStarInvoice, openTgLink, haptic } from '../telegram';
 import { useVisible } from '../util/visible';
 import { navigate } from '../router';
 import { useT, useLang, tr } from '../i18n';
@@ -26,6 +26,7 @@ const JUST_BUILD_IT: [string, string] = [
   'Decide everything else yourself with sensible defaults and start building.',
   'Реши всё остальное сам с разумными настройками по умолчанию и начинай собирать.',
 ];
+class CheckoutError extends Error {}
 const NAMING_RETRY_MS = 3000;
 const NAMING_MAX_TRIES = 40;     // ≈ 2 min of "Naming your bot…"
 const WAITING_TIMEOUT_MS = 90000; // "Finishing in Telegram…" before offering a way out
@@ -68,7 +69,7 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
   const [sheet, setSheet] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
-  const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
+  const [note, setNote] = useState<{ text: string; error?: boolean; payment?: boolean } | null>(null);
   const [draft, setDraft] = useState('');
 
   // ── derived state (server truth) ──
@@ -139,8 +140,10 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
 
   // ── polling: bot 5 s while one is expected (Create tapped, or the project says
   // it exists and this poll hasn't caught up), else 20 s; never when closed ──
+  const [payment, setPayment] = useState<DeployPayment | null>(null);
+  const [paymentPending, setPaymentPending] = useState(false);
   const botFast = useRef(false);
-  botFast.current = !bot?.bot_username && (create.step !== 'idle' || !!project?.bot_username);
+  botFast.current = paymentPending || (!bot?.bot_username && (create.step !== 'idle' || !!project?.bot_username));
   const pollBotNow = useRef<() => void>(() => {});
   useEffect(() => {
     if (closed) return;
@@ -158,6 +161,10 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
         if (cancelled) return;
         if (b !== undefined) setBot(prev => (same(prev, b) ? prev : b));
         if (b?.bot_username) {
+          const billing = await getDeployPayment(projectId).catch(() => null);
+          if (cancelled) return;
+          if (billing) { setPayment(billing); if (!billing.payment_required) { setPaymentPending(false); setNote(n => n?.payment ? null : n); } else if (billing.confirming) setPaymentPending(true); }
+
           const dep = await listDeployments(projectId).catch(() => null);
           if (cancelled) return;
           if (dep) { const d = dep.deployments?.[0] ?? null; setLatestDeploy(prev => (same(prev, d) ? prev : d)); }
@@ -277,7 +284,7 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
     try { await fn(); haptic('success'); if (done) setNote({ text: done }); }
     catch (e) {
       haptic('error');
-      setNote({ error: true, text: e instanceof ApiError && e.warning ? e.warning : humanError(e, lang) });
+      setNote({ error: true, text: e instanceof CheckoutError ? e.message : e instanceof ApiError && e.warning ? e.warning : humanError(e, lang) });
     } finally { busyRef.current = null; setBusy(null); }
   };
   const togglePause = () => run('pause', async () => {
@@ -295,6 +302,19 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
     t('New avatar is on its way — it lands in a minute.', 'Новый аватар уже в пути — появится через минуту.'));
   const redeploy = () => run('deploy', async () => { await retryDeploy(projectId); pollBotNow.current(); },
     t('Deploy started — watching for it to come online.', 'Деплой запущен — ждём, когда бот выйдет в онлайн.'));
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const payDeploy = () => run('deploy', async () => {
+    const invoice = await createDeployInvoice(projectId);
+    if (!invoice.payment_required) { setPayment(invoice); await retryDeploy(projectId); pollBotNow.current(); return; }
+    if (!invoice.invoice_url) throw new CheckoutError(t('Checkout unavailable. Please retry.', 'Оплата недоступна. Попробуйте снова.'));
+    const result = await openStarInvoice(invoice.invoice_url).catch(() => { throw new CheckoutError(t('Open this app in Telegram to pay with Stars.', 'Откройте приложение в Telegram для оплаты звёздами.')); });
+    if (result === 'cancelled') return;
+    if (result === 'failed') throw new CheckoutError(t('Payment failed. No deployment started.', 'Оплата не прошла. Деплой не запущен.'));
+    setPaymentPending(true);
+    setNote({ payment: true, text: t('Confirming your payment. Deployment starts automatically; do not pay again.', 'Подтверждаем оплату. Деплой начнётся автоматически; не платите повторно.') });
+    // Only the server receipt grants deployment. The Telegram callback is a hint.
+    pollBotNow.current();
+  });
   const rebuild = () => run('rebuild', async () => { await rebuildBot(projectId); pollProjectNow.current(); },
     t('Rebuild started — watch the chat for progress.', 'Пересборка запущена — следите за ходом в чате.'));
   // Delete stops the bot first: an archive alone leaves the container answering
@@ -315,6 +335,8 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
   const statusLine = rejected ? t("Can't build this one", 'Это не собрать')
     : status === 'failed' ? t("Build couldn't start", 'Сборка не запустилась')
     : status === 'archived' ? t('Deleted', 'Удалён')
+    : paymentPending ? t('Confirming payment…', 'Подтверждаем оплату…')
+    : payment?.payment_required && buildDone ? t('Ready to deploy', 'Готов к запуску')
     : botLive && !buildDone ? t('Live · still building', 'В эфире · ещё собирается')
     : bot?.paused ? t('Paused', 'На паузе')
     : status === 'draft' ? intakeLine
@@ -392,6 +414,12 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
           {/* primary action — exactly one */}
           {closed ? (
             <PrimaryButton T={T} icon="plus" label={t('Start a new bot', 'Начать нового бота')} onClick={() => navigate({ name: 'home' })} />
+          ) : payment?.payment_required && hasBot && buildDone && !bot?.paused ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}><input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} /> {t('I agree to the ', 'Я принимаю ')}<a href="https://agnt-gm.ai/app/payment-terms.html" target="_blank" rel="noreferrer">{t('payment terms', 'условия оплаты')}</a>.</label>
+              <PrimaryButton T={T} icon="arrowUp" label={paymentPending ? t('Confirming payment…', 'Подтверждаем оплату…') : t(`Deploy · ${payment.star_cost} Stars`, `Запустить · ${payment.star_cost} Stars`)} busy={busy === 'deploy' || paymentPending} disabled={!termsAccepted} onClick={() => { if (!paymentPending && termsAccepted) void payDeploy(); }} />
+              <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, textAlign: 'center' }}>{t('One payment for this bot. Failed deployment retries are included.', 'Одна оплата за этого бота. Повтор после ошибки деплоя включён.')}</div>
+            </div>
           ) : !hasBot ? (
             create.step === 'waiting' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px' }}>
@@ -400,7 +428,7 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontFamily: T.font, fontSize: 14.5, fontWeight: 600, color: T.text }}>{t('Finishing in Telegram…', 'Завершаем в Telegram…')}</div>
                     <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, marginTop: 1, lineHeight: '16px' }}>
-                      {t('Confirm the bot in the window that opened. It starts answering about a minute after that.', 'Подтвердите бота в открывшемся окне. Примерно через минуту после этого он начнёт отвечать.')}
+                      {t('Confirm the bot in the window that opened. When the build is ready, deploy it from this page.', 'Подтвердите бота в открывшемся окне. Когда сборка готова, запустите его на этой странице.')}
                     </div>
                   </div>
                 </div>
@@ -505,13 +533,13 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
   );
 }
 
-function PrimaryButton({ T, icon, label, onClick, busy }: { T: Theme; icon: string; label: string; onClick: () => void; busy?: boolean }) {
+function PrimaryButton({ T, icon, label, onClick, busy, disabled }: { T: Theme; icon: string; label: string; onClick: () => void; busy?: boolean; disabled?: boolean }) {
   return (
-    <button onClick={busy ? undefined : onClick} style={{
+    <button disabled={!!busy || disabled} onClick={busy || disabled ? undefined : onClick} style={{
       ...btnReset, width: '100%', height: 50, borderRadius: 15, background: T.accent, color: T.accentText,
       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
       fontFamily: T.font, fontSize: 16, fontWeight: 700, letterSpacing: -0.2, boxShadow: T.ctaShadow,
-      cursor: busy ? 'default' : 'pointer',
+      cursor: busy || disabled ? 'default' : 'pointer', opacity: disabled ? 0.55 : 1,
     }}>
       {busy ? <Spinner color={T.accentText} size={18} /> : <TGIcon name={icon} size={18} color={T.accentText} stroke={2.2} />}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>

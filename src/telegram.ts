@@ -11,6 +11,7 @@ interface TelegramWebApp {
   onEvent(event: string, cb: () => void): void;
   offEvent(event: string, cb: () => void): void;
   openLink?(url: string): void;
+  openInvoice?(url: string, callback: (status: 'paid' | 'cancelled' | 'failed' | 'pending') => void): void;
   openTelegramLink?(url: string): void;
   initData?: string;
   platform?: string;
@@ -205,4 +206,9 @@ export function openTgLink(url: string): void {
   if (insideTelegram && webApp?.openTelegramLink) { webApp.openTelegramLink(url); return; }
   if (insideTelegram && webApp?.openLink) { webApp.openLink(url); return; }
   window.open(url, '_blank', 'noopener');
+}
+
+export function openStarInvoice(url: string): Promise<string> {
+  if (!insideTelegram || !webApp?.openInvoice) return Promise.reject(new Error('Open this bot in Telegram to pay with Stars.'));
+  return new Promise(resolve => webApp.openInvoice!(url, resolve));
 }
