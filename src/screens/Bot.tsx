@@ -69,7 +69,7 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
   const [sheet, setSheet] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
-  const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
+  const [note, setNote] = useState<{ text: string; error?: boolean; payment?: boolean } | null>(null);
   const [draft, setDraft] = useState('');
 
   // ── derived state (server truth) ──
@@ -163,7 +163,7 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
         if (b?.bot_username) {
           const billing = await getDeployPayment(projectId).catch(() => null);
           if (cancelled) return;
-          if (billing) { setPayment(billing); if (billing.paid) setPaymentPending(false); else if (billing.confirming) setPaymentPending(true); }
+          if (billing) { setPayment(billing); if (!billing.payment_required) { setPaymentPending(false); setNote(n => n?.payment ? null : n); } else if (billing.confirming) setPaymentPending(true); }
 
           const dep = await listDeployments(projectId).catch(() => null);
           if (cancelled) return;
@@ -302,6 +302,7 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
     t('New avatar is on its way — it lands in a minute.', 'Новый аватар уже в пути — появится через минуту.'));
   const redeploy = () => run('deploy', async () => { await retryDeploy(projectId); pollBotNow.current(); },
     t('Deploy started — watching for it to come online.', 'Деплой запущен — ждём, когда бот выйдет в онлайн.'));
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const payDeploy = () => run('deploy', async () => {
     const invoice = await createDeployInvoice(projectId);
     if (!invoice.payment_required) { setPayment(invoice); await retryDeploy(projectId); pollBotNow.current(); return; }
@@ -310,7 +311,7 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
     if (result === 'cancelled') return;
     if (result === 'failed') throw new CheckoutError(t('Payment failed. No deployment started.', 'Оплата не прошла. Деплой не запущен.'));
     setPaymentPending(true);
-    setNote({ text: t('Confirming your payment. Deployment starts automatically; do not pay again.', 'Подтверждаем оплату. Деплой начнётся автоматически; не платите повторно.') });
+    setNote({ payment: true, text: t('Confirming your payment. Deployment starts automatically; do not pay again.', 'Подтверждаем оплату. Деплой начнётся автоматически; не платите повторно.') });
     // Only the server receipt grants deployment. The Telegram callback is a hint.
     pollBotNow.current();
   });
@@ -415,7 +416,8 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
             <PrimaryButton T={T} icon="plus" label={t('Start a new bot', 'Начать нового бота')} onClick={() => navigate({ name: 'home' })} />
           ) : payment?.payment_required && hasBot && buildDone && !bot?.paused ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <PrimaryButton T={T} icon="arrowUp" label={paymentPending ? t('Confirming payment…', 'Подтверждаем оплату…') : t(`Deploy · ${payment.star_cost} Stars`, `Запустить · ${payment.star_cost} Stars`)} busy={busy === 'deploy' || paymentPending} onClick={() => { if (!paymentPending) void payDeploy(); }} />
+              <label style={{ fontFamily: T.font, fontSize: 13, color: T.hint }}><input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} /> {t('I agree to the ', 'Я принимаю ')}<a href="https://agnt-gm.ai/app/payment-terms.html" target="_blank" rel="noreferrer">{t('payment terms', 'условия оплаты')}</a>.</label>
+              <PrimaryButton T={T} icon="arrowUp" label={paymentPending ? t('Confirming payment…', 'Подтверждаем оплату…') : t(`Deploy · ${payment.star_cost} Stars`, `Запустить · ${payment.star_cost} Stars`)} busy={busy === 'deploy' || paymentPending} disabled={!termsAccepted} onClick={() => { if (!paymentPending && termsAccepted) void payDeploy(); }} />
               <div style={{ fontFamily: T.font, fontSize: 12.5, color: T.hint, textAlign: 'center' }}>{t('One payment for this bot. Failed deployment retries are included.', 'Одна оплата за этого бота. Повтор после ошибки деплоя включён.')}</div>
             </div>
           ) : !hasBot ? (
@@ -531,13 +533,13 @@ export function BotScreen({ T, projectId }: { T: Theme; projectId: string }) {
   );
 }
 
-function PrimaryButton({ T, icon, label, onClick, busy }: { T: Theme; icon: string; label: string; onClick: () => void; busy?: boolean }) {
+function PrimaryButton({ T, icon, label, onClick, busy, disabled }: { T: Theme; icon: string; label: string; onClick: () => void; busy?: boolean; disabled?: boolean }) {
   return (
-    <button disabled={!!busy} onClick={busy ? undefined : onClick} style={{
+    <button disabled={!!busy || disabled} onClick={busy || disabled ? undefined : onClick} style={{
       ...btnReset, width: '100%', height: 50, borderRadius: 15, background: T.accent, color: T.accentText,
       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
       fontFamily: T.font, fontSize: 16, fontWeight: 700, letterSpacing: -0.2, boxShadow: T.ctaShadow,
-      cursor: busy ? 'default' : 'pointer',
+      cursor: busy || disabled ? 'default' : 'pointer', opacity: disabled ? 0.55 : 1,
     }}>
       {busy ? <Spinner color={T.accentText} size={18} /> : <TGIcon name={icon} size={18} color={T.accentText} stroke={2.2} />}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
