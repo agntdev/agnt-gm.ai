@@ -30,7 +30,20 @@ export default {
     // /app/assets/index-abc.js → /assets/index-abc.js
     if (url.pathname.startsWith(`${PREFIX}/`)) {
       url.pathname = url.pathname.slice(PREFIX.length) || '/';
-      return env.ASSETS.fetch(new Request(url, request));
+      const response = await env.ASSETS.fetch(new Request(url, request));
+      // Assets canonicalizes .html URLs. Keep its redirects inside the app
+      // mount instead of sending customers to the separate promo site.
+      const location = response.headers.get('Location');
+      if (response.status >= 300 && response.status < 400 && location) {
+        const target = new URL(location, url);
+        if (target.origin === url.origin) {
+          target.pathname = `${PREFIX}${target.pathname}`;
+          const redirected = new Response(response.body, response);
+          redirected.headers.set('Location', target.toString());
+          return redirected;
+        }
+      }
+      return response;
     }
 
     return env.ASSETS.fetch(request);
